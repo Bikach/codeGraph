@@ -33,47 +33,68 @@ const config = {
 };
 
 /**
- * Output schema definitions for structured responses
+ * Compact output formatters for token optimization
+ *
+ * Format convention (reduces tokens by ~70%):
+ * - One line per result
+ * - Pipe-separated fields
+ * - Header line with count
+ *
+ * Examples:
+ * - Class:    "class | UserService | public | /src/services/UserService.kt:45"
+ * - Function: "caller:1 | AuthController.login() | /src/controllers/Auth.kt:20"
+ * - Search:   "function | validateAge | UserValidator.kt:30"
  */
-const ClassInfoSchema = z.object({
-  name: z.string(),
-  type: z.enum(['class', 'interface', 'object']),
-  filePath: z.string(),
-  lineNumber: z.number(),
-  visibility: z.string(),
-  properties: z.record(z.string(), z.string()).optional(),
-});
+const formatters = {
+  /**
+   * Format: "type | Name | visibility | filePath:line"
+   * Example: "class | UserService | public | /src/services/UserService.kt:45"
+   */
+  classInfo: (c: { name: string; type: string; visibility: string; filePath: string; lineNumber: number }) =>
+    `${c.type} | ${c.name} | ${c.visibility} | ${c.filePath}:${c.lineNumber}`,
 
-const DependencySchema = z.object({
-  name: z.string(),
-  type: z.string(),
-  depth: z.number(),
-  filePath: z.string().optional(),
-});
+  /**
+   * Format: "depth | Type | Name | filePath"
+   * Example: "1 | class | UserRepository | /src/repos/UserRepository.kt"
+   */
+  dependency: (d: { name: string; type: string; depth: number; filePath?: string }) =>
+    `${d.depth} | ${d.type} | ${d.name}${d.filePath ? ` | ${d.filePath}` : ''}`,
 
-const ImplementationSchema = z.object({
-  name: z.string(),
-  filePath: z.string(),
-  lineNumber: z.number(),
-  isDirect: z.boolean(),
-});
+  /**
+   * Format: "direct/indirect | ClassName | filePath:line"
+   * Example: "direct | UserRepositoryImpl | /src/repos/UserRepositoryImpl.kt:10"
+   */
+  implementation: (i: { name: string; filePath: string; lineNumber: number; isDirect: boolean }) =>
+    `${i.isDirect ? 'direct' : 'indirect'} | ${i.name} | ${i.filePath}:${i.lineNumber}`,
 
-const CallTraceSchema = z.object({
-  functionName: z.string(),
-  className: z.string().optional(),
-  filePath: z.string(),
-  lineNumber: z.number(),
-  direction: z.enum(['caller', 'callee']),
-  depth: z.number(),
-});
+  /**
+   * Format: "direction:depth | Class.function() | filePath:line"
+   * Example: "caller:1 | AuthController.login() | /src/controllers/AuthController.kt:45"
+   */
+  callTrace: (t: { functionName: string; className?: string; filePath: string; lineNumber: number; direction: string; depth: number }) =>
+    `${t.direction}:${t.depth} | ${t.className ? `${t.className}.` : ''}${t.functionName}() | ${t.filePath}:${t.lineNumber}`,
 
-const SearchResultSchema = z.object({
-  name: z.string(),
-  type: z.enum(['class', 'function', 'property', 'interface']),
-  filePath: z.string(),
-  lineNumber: z.number(),
-  snippet: z.string().optional(),
-});
+  /**
+   * Format: "type | name | filePath:line"
+   * Example: "function | validateUser | /src/services/UserService.kt:120"
+   */
+  searchResult: (r: { name: string; type: string; filePath: string; lineNumber: number }) =>
+    `${r.type} | ${r.name} | ${r.filePath}:${r.lineNumber}`,
+};
+
+/**
+ * Build compact text output for MCP responses
+ */
+function buildCompactOutput<T>(
+  header: string,
+  items: T[],
+  formatter: (item: T) => string
+): string {
+  if (items.length === 0) {
+    return `${header}: No results found.`;
+  }
+  return `${header} (${items.length}):\n${items.map(formatter).join('\n')}`;
+}
 
 /**
  * Main MCP server class
@@ -121,7 +142,7 @@ class CodeGraphServer {
         title: 'Find Class',
         description:
           'Search for a class or interface by name in the code graph. ' +
-          'Returns detailed information including file path, properties, methods, and relationships.',
+          'Returns compact format: "type | Name | visibility | filePath:line"',
         inputSchema: {
           name: z.string().describe('Name of the class or interface to search for'),
           exact_match: z
@@ -129,10 +150,6 @@ class CodeGraphServer {
             .optional()
             .default(false)
             .describe('If true, exact match. If false, partial match (CONTAINS)'),
-        },
-        outputSchema: {
-          classes: z.array(ClassInfoSchema),
-          count: z.number(),
         },
       },
       async ({ name, exact_match }) => {
@@ -147,7 +164,7 @@ class CodeGraphServer {
         title: 'Get Dependencies',
         description:
           'List all direct and transitive dependencies of a class. ' +
-          'Useful for understanding change impact or analyzing coupling.',
+          'Returns compact format: "depth | Type | Name | filePath"',
         inputSchema: {
           class_name: z.string().describe('Name of the class to get dependencies for'),
           depth: z
@@ -162,10 +179,6 @@ class CodeGraphServer {
             .optional()
             .default(false)
             .describe('Include external dependencies (npm packages)'),
-        },
-        outputSchema: {
-          dependencies: z.array(DependencySchema),
-          count: z.number(),
         },
       },
       async ({ class_name, depth, include_external }) => {
@@ -184,7 +197,7 @@ class CodeGraphServer {
         title: 'Get Implementations',
         description:
           'Find all classes that implement a given interface. ' +
-          'Supports TypeScript interfaces and abstract classes.',
+          'Returns compact format: "direct/indirect | ClassName | filePath:line"',
         inputSchema: {
           interface_name: z.string().describe('Name of the interface or abstract class'),
           include_indirect: z
@@ -192,10 +205,6 @@ class CodeGraphServer {
             .optional()
             .default(false)
             .describe('Include indirect implementations (via inheritance)'),
-        },
-        outputSchema: {
-          implementations: z.array(ImplementationSchema),
-          count: z.number(),
         },
       },
       async ({ interface_name, include_indirect }) => {
@@ -213,7 +222,8 @@ class CodeGraphServer {
         title: 'Trace Calls',
         description:
           'Trace function calls: who calls this function (callers) ' +
-          'or which functions it calls (callees). Useful for impact analysis.',
+          'or which functions it calls (callees). ' +
+          'Returns compact format: "direction:depth | Class.function() | filePath:line"',
         inputSchema: {
           function_name: z.string().describe('Name of the function to trace'),
           class_name: z
@@ -233,10 +243,6 @@ class CodeGraphServer {
             .default(2)
             .describe('Trace depth'),
         },
-        outputSchema: {
-          traces: z.array(CallTraceSchema),
-          count: z.number(),
-        },
       },
       async ({ function_name, class_name, direction, depth }) => {
         return await this.handleTraceCalls({
@@ -255,7 +261,7 @@ class CodeGraphServer {
         title: 'Search Code',
         description:
           'Full-text search in source code indexed in Neo4j. ' +
-          'Searches in class names, functions, properties, and comments.',
+          'Returns compact format: "type | name | filePath:line"',
         inputSchema: {
           query: z.string().describe('Search term'),
           entity_types: z
@@ -270,10 +276,6 @@ class CodeGraphServer {
             .default(20)
             .describe('Maximum number of results'),
         },
-        outputSchema: {
-          results: z.array(SearchResultSchema),
-          count: z.number(),
-        },
       },
       async ({ query, entity_types, limit }) => {
         return await this.handleSearchCode({
@@ -287,27 +289,26 @@ class CodeGraphServer {
 
   /**
    * Tool Handler: find_class
+   * Output format: "type | Name | visibility | filePath:line"
    */
   private async handleFindClass(_args: { name: string; exact_match: boolean }) {
     // TODO: Implementation with Neo4j query
-    const output = {
-      classes: [] as z.infer<typeof ClassInfoSchema>[],
-      count: 0,
-    };
+    // Example query:
+    // MATCH (c:Class) WHERE c.name CONTAINS $name OR c.name = $name
+    // RETURN c.name, labels(c)[0] as type, c.visibility, c.filePath, c.lineNumber
+
+    const classes: Array<{ name: string; type: string; visibility: string; filePath: string; lineNumber: number }> = [];
+
+    const text = buildCompactOutput('CLASSES', classes, formatters.classInfo);
 
     return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify(output, null, 2),
-        },
-      ],
-      structuredContent: output,
+      content: [{ type: 'text' as const, text }],
     };
   }
 
   /**
    * Tool Handler: get_dependencies
+   * Output format: "depth | Type | Name | filePath"
    */
   private async handleGetDependencies(_args: {
     class_name: string;
@@ -315,48 +316,44 @@ class CodeGraphServer {
     include_external: boolean;
   }) {
     // TODO: Implementation with Neo4j query
-    const output = {
-      dependencies: [] as z.infer<typeof DependencySchema>[],
-      count: 0,
-    };
+    // Example query:
+    // MATCH (c:Class {name: $name})-[:USES|DEPENDS_ON*1..$depth]->(dep)
+    // RETURN dep.name, labels(dep)[0] as type, length(path) as depth, dep.filePath
+
+    const dependencies: Array<{ name: string; type: string; depth: number; filePath?: string }> = [];
+
+    const text = buildCompactOutput('DEPENDENCIES', dependencies, formatters.dependency);
 
     return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify(output, null, 2),
-        },
-      ],
-      structuredContent: output,
+      content: [{ type: 'text' as const, text }],
     };
   }
 
   /**
    * Tool Handler: get_implementations
+   * Output format: "direct/indirect | ClassName | filePath:line"
    */
   private async handleGetImplementations(_args: {
     interface_name: string;
     include_indirect: boolean;
   }) {
     // TODO: Implementation with Neo4j query
-    const output = {
-      implementations: [] as z.infer<typeof ImplementationSchema>[],
-      count: 0,
-    };
+    // Example query:
+    // MATCH (c:Class)-[:IMPLEMENTS]->(i:Interface {name: $name})
+    // RETURN c.name, c.filePath, c.lineNumber, true as isDirect
+
+    const implementations: Array<{ name: string; filePath: string; lineNumber: number; isDirect: boolean }> = [];
+
+    const text = buildCompactOutput('IMPLEMENTATIONS', implementations, formatters.implementation);
 
     return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify(output, null, 2),
-        },
-      ],
-      structuredContent: output,
+      content: [{ type: 'text' as const, text }],
     };
   }
 
   /**
    * Tool Handler: trace_calls
+   * Output format: "direction:depth | Class.function() | filePath:line"
    */
   private async handleTraceCalls(_args: {
     function_name: string;
@@ -365,24 +362,22 @@ class CodeGraphServer {
     depth: number;
   }) {
     // TODO: Implementation with Neo4j query
-    const output = {
-      traces: [] as z.infer<typeof CallTraceSchema>[],
-      count: 0,
-    };
+    // Example query for callers:
+    // MATCH (caller:Function)-[:CALLS*1..$depth]->(f:Function {name: $name})
+    // RETURN caller.name, caller.className, caller.filePath, caller.lineNumber, 'caller' as direction
+
+    const traces: Array<{ functionName: string; className?: string; filePath: string; lineNumber: number; direction: string; depth: number }> = [];
+
+    const text = buildCompactOutput('CALL TRACES', traces, formatters.callTrace);
 
     return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify(output, null, 2),
-        },
-      ],
-      structuredContent: output,
+      content: [{ type: 'text' as const, text }],
     };
   }
 
   /**
    * Tool Handler: search_code
+   * Output format: "type | name | filePath:line"
    */
   private async handleSearchCode(_args: {
     query: string;
@@ -390,19 +385,16 @@ class CodeGraphServer {
     limit: number;
   }) {
     // TODO: Implementation with Neo4j query
-    const output = {
-      results: [] as z.infer<typeof SearchResultSchema>[],
-      count: 0,
-    };
+    // Example query:
+    // MATCH (n) WHERE n.name CONTAINS $query AND labels(n)[0] IN $types
+    // RETURN n.name, labels(n)[0] as type, n.filePath, n.lineNumber LIMIT $limit
+
+    const results: Array<{ name: string; type: string; filePath: string; lineNumber: number }> = [];
+
+    const text = buildCompactOutput('SEARCH RESULTS', results, formatters.searchResult);
 
     return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify(output, null, 2),
-        },
-      ],
-      structuredContent: output,
+      content: [{ type: 'text' as const, text }],
     };
   }
 
