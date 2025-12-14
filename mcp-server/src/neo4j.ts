@@ -3,8 +3,8 @@
  *
  * Wrapper around the official Neo4j driver with:
  * - Connection management
- * - Helper for Cypher queries
- * - Transaction management
+ * - Modern executeQuery API with routing
+ * - Transaction management for complex operations
  * - TypeScript typing for results
  */
 
@@ -13,6 +13,7 @@ import neo4j, {
   ManagedTransaction,
   Record as Neo4jRecord,
   Neo4jError,
+  RoutingControl,
 } from 'neo4j-driver';
 
 /**
@@ -36,7 +37,7 @@ export interface QueryOptions {
 export type ResultRecord = { [key: string]: any };
 
 /**
- * Neo4j client with simplified API
+ * Neo4j client with modern executeQuery API
  */
 export class Neo4jClient {
   private driver: Driver | null = null;
@@ -82,7 +83,7 @@ export class Neo4jClient {
   }
 
   /**
-   * Execute a read-only Cypher query
+   * Execute a read-only Cypher query using modern executeQuery API
    *
    * @param cypher Cypher query
    * @param parameters Query parameters
@@ -104,14 +105,10 @@ export class Neo4jClient {
       throw new Error('Neo4j driver not connected. Call connect() first.');
     }
 
-    const session = this.driver.session({
-      database: options.database || 'neo4j',
-      defaultAccessMode: neo4j.session.READ,
-    });
-
     try {
-      const result = await session.run(cypher, parameters, {
-        timeout: options.timeout,
+      const result = await this.driver.executeQuery(cypher, parameters, {
+        database: options.database || 'neo4j',
+        routing: neo4j.routing.READ,
       });
 
       return result.records.map((record) => this.recordToObject<T>(record));
@@ -120,13 +117,11 @@ export class Neo4jClient {
         throw new Error(`Neo4j query error: ${error.message} (code: ${error.code})`);
       }
       throw error;
-    } finally {
-      await session.close();
     }
   }
 
   /**
-   * Execute a write Cypher query
+   * Execute a write Cypher query using modern executeQuery API
    *
    * @param cypher Cypher query
    * @param parameters Query parameters
@@ -148,14 +143,10 @@ export class Neo4jClient {
       throw new Error('Neo4j driver not connected. Call connect() first.');
     }
 
-    const session = this.driver.session({
-      database: options.database || 'neo4j',
-      defaultAccessMode: neo4j.session.WRITE,
-    });
-
     try {
-      const result = await session.run(cypher, parameters, {
-        timeout: options.timeout,
+      const result = await this.driver.executeQuery(cypher, parameters, {
+        database: options.database || 'neo4j',
+        routing: neo4j.routing.WRITE,
       });
 
       return result.records.map((record) => this.recordToObject<T>(record));
@@ -164,25 +155,72 @@ export class Neo4jClient {
         throw new Error(`Neo4j write error: ${error.message} (code: ${error.code})`);
       }
       throw error;
-    } finally {
-      await session.close();
+    }
+  }
+
+  /**
+   * Execute a query with explicit routing control
+   *
+   * @param cypher Cypher query
+   * @param parameters Query parameters
+   * @param routing Routing control (READ or WRITE)
+   * @param options Query options
+   * @returns Query results with summary
+   *
+   * @example
+   * const { records, summary } = await client.execute(
+   *   'MATCH (c:Class) RETURN c LIMIT 10',
+   *   {},
+   *   neo4j.routing.READ
+   * );
+   */
+  async execute<T = ResultRecord>(
+    cypher: string,
+    parameters: { [key: string]: any } = {},
+    routing: RoutingControl = neo4j.routing.READ,
+    options: QueryOptions = {}
+  ): Promise<{ records: T[]; summary: { counters: any; queryType: string } }> {
+    if (!this.driver) {
+      throw new Error('Neo4j driver not connected. Call connect() first.');
+    }
+
+    try {
+      const result = await this.driver.executeQuery(cypher, parameters, {
+        database: options.database || 'neo4j',
+        routing,
+      });
+
+      return {
+        records: result.records.map((record) => this.recordToObject<T>(record)),
+        summary: {
+          counters: result.summary.counters.updates(),
+          queryType: result.summary.queryType,
+        },
+      };
+    } catch (error) {
+      if (error instanceof Neo4jError) {
+        throw new Error(`Neo4j execute error: ${error.message} (code: ${error.code})`);
+      }
+      throw error;
     }
   }
 
   /**
    * Execute multiple queries in a read transaction
+   * Use this when you need to run multiple related read queries atomically
    *
    * @param fn Function containing queries to execute
    * @param options Transaction options
    * @returns Function result
    *
    * @example
-   * const result = await client.executeReadTransaction(async (tx) => {
-   *   const result = await tx.run('MATCH (c:Class {name: $name}) RETURN c', { name: 'MyClass' });
-   *   return result.records;
+   * const result = await client.readTransaction(async (tx) => {
+   *   const classes = await tx.run('MATCH (c:Class) RETURN c');
+   *   const interfaces = await tx.run('MATCH (i:Interface) RETURN i');
+   *   return { classes: classes.records, interfaces: interfaces.records };
    * });
    */
-  async executeReadTransaction<T>(
+  async readTransaction<T>(
     fn: (tx: ManagedTransaction) => Promise<T>,
     options: QueryOptions = {}
   ): Promise<T> {
@@ -204,18 +242,20 @@ export class Neo4jClient {
 
   /**
    * Execute multiple queries in a write transaction
+   * Use this when you need to run multiple related write queries atomically
    *
    * @param fn Function containing queries to execute
    * @param options Transaction options
    * @returns Function result
    *
    * @example
-   * await client.executeWriteTransaction(async (tx) => {
+   * await client.writeTransaction(async (tx) => {
    *   await tx.run('CREATE (c:Class {name: $name})', { name: 'Class1' });
    *   await tx.run('CREATE (c:Class {name: $name})', { name: 'Class2' });
+   *   await tx.run('MATCH (a:Class {name: "Class1"}), (b:Class {name: "Class2"}) CREATE (a)-[:DEPENDS_ON]->(b)');
    * });
    */
-  async executeWriteTransaction<T>(
+  async writeTransaction<T>(
     fn: (tx: ManagedTransaction) => Promise<T>,
     options: QueryOptions = {}
   ): Promise<T> {
@@ -232,43 +272,6 @@ export class Neo4jClient {
       return await session.executeWrite((tx) => fn(tx));
     } finally {
       await session.close();
-    }
-  }
-
-  /**
-   * Execute a simple one-off query using driver.executeQuery
-   *
-   * @param cypher Cypher query
-   * @param parameters Query parameters
-   * @param options Query options
-   * @returns Query results
-   *
-   * @example
-   * const results = await client.executeQuery(
-   *   'MATCH (c:Class {name: $name}) RETURN c',
-   *   { name: 'MyClass' }
-   * );
-   */
-  async executeQuery<T = ResultRecord>(
-    cypher: string,
-    parameters: { [key: string]: any } = {},
-    options: QueryOptions = {}
-  ): Promise<T[]> {
-    if (!this.driver) {
-      throw new Error('Neo4j driver not connected. Call connect() first.');
-    }
-
-    try {
-      const result = await this.driver.executeQuery(cypher, parameters, {
-        database: options.database || 'neo4j',
-      });
-
-      return result.records.map((record) => this.recordToObject<T>(record));
-    } catch (error) {
-      if (error instanceof Neo4jError) {
-        throw new Error(`Neo4j executeQuery error: ${error.message} (code: ${error.code})`);
-      }
-      throw error;
     }
   }
 
@@ -370,15 +373,9 @@ export class Neo4jClient {
   }
 
   /**
-   * Return driver statistics
+   * Get the routing constants for external use
    */
-  getDriverMetrics() {
-    if (!this.driver) {
-      return null;
-    }
-
-    return {
-      connected: true,
-    };
+  static get routing() {
+    return neo4j.routing;
   }
 }
