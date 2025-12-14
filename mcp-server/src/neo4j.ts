@@ -15,26 +15,10 @@ import neo4j, {
   Neo4jError,
   RoutingControl,
 } from 'neo4j-driver';
+import type { QueryOptions, ResultRecord } from './neo4j.types.js';
 
-/**
- * Query options
- */
-export interface QueryOptions {
-  /**
-   * Database to use (default: neo4j)
-   */
-  database?: string;
-
-  /**
-   * Timeout in milliseconds
-   */
-  timeout?: number;
-}
-
-/**
- * Result record type
- */
-export type ResultRecord = { [key: string]: any };
+// Re-export types for backward compatibility
+export type { QueryOptions, ResultRecord };
 
 /**
  * Neo4j client with modern executeQuery API
