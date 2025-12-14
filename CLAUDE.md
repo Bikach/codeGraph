@@ -51,9 +51,16 @@ Access Neo4j Browser at http://localhost:7474 (Bolt: bolt://localhost:7687). Aut
 codegraph/
 ├── mcp-server/           # TypeScript MCP server
 │   └── src/
-│       ├── index.ts      # Entry point, MCP server with tool handlers
-│       ├── neo4j.ts      # Neo4j client wrapper (modern executeQuery API)
-│       └── tools/        # Tool implementations (TODO)
+│       ├── index.ts      # Entry point, MCP server with tool registration
+│       ├── config/
+│       │   ├── config.ts       # Server configuration from env vars
+│       │   └── config.types.ts # Configuration type definitions
+│       ├── neo4j/
+│       │   ├── neo4j.ts        # Neo4j client wrapper (modern executeQuery API)
+│       │   └── neo4j.types.ts  # Neo4j type definitions
+│       └── tools/
+│           ├── index.ts        # Tool handlers (find_class, get_dependencies, etc.)
+│           └── formatters.ts   # Compact output formatters for token optimization
 ├── docs/
 │   └── SCHEMA.md         # Neo4j schema for Kotlin code analysis
 └── docker-compose.yml    # Neo4j 5 Community container
@@ -61,13 +68,18 @@ codegraph/
 
 ### MCP Server Structure
 
-- **CodeGraphServer class** (`index.ts`): Main server using `@modelcontextprotocol/sdk`. Registers 5 tools with Zod schemas for input/output validation.
-- **Neo4jClient class** (`neo4j.ts`): Wrapper around `neo4j-driver` with:
+- **CodeGraphServer class** (`index.ts`): Main server using `@modelcontextprotocol/sdk`. Registers 5 tools with Zod schemas for input validation.
+- **Configuration** (`config/`):
+  - `config.ts`: Server configuration from environment variables
+  - `config.types.ts`: TypeScript interfaces (`Neo4jConfig`, `ServerConfig`, `Config`)
+- **Neo4jClient class** (`neo4j/neo4j.ts`): Wrapper around `neo4j-driver` with:
   - `query()`: Read-only queries with automatic routing
   - `write()`: Write queries
   - `execute()`: Queries with explicit routing control
   - `readTransaction()`/`writeTransaction()`: Multi-query transactions
   - Automatic conversion of Neo4j types (Node, Relationship, Path, Integer) to JS objects
+- **Tool handlers** (`tools/index.ts`): Handler functions for each MCP tool
+- **Formatters** (`tools/formatters.ts`): Compact output formatters for token optimization
 
 ### MCP Tools
 
@@ -79,7 +91,7 @@ codegraph/
 | `trace_calls` | Trace function callers/callees with configurable depth |
 | `search_code` | Full-text search across classes, functions, properties |
 
-Tool handlers in `index.ts` return stub data - Cypher query implementations are TODO.
+Tool handlers in `tools/index.ts` return stub data - Cypher query implementations are TODO.
 
 ### Output Format Convention
 
@@ -107,7 +119,7 @@ interface | Repository | public | /src/domain/Repository.kt:5
 class | UserRepositoryImpl | internal | /src/infra/UserRepositoryImpl.kt:15
 ```
 
-Formatters are defined in `formatters` object and `buildCompactOutput()` helper in `index.ts`.
+Formatters are defined in `tools/formatters.ts` (`formatters` object and `buildCompactOutput()` helper).
 
 ### Neo4j Schema (Kotlin-focused)
 

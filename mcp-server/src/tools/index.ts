@@ -5,7 +5,7 @@
  * optimized for LLM token efficiency (~70% reduction vs JSON).
  */
 
-import { Neo4jClient } from '../neo4j.js';
+import { Neo4jClient } from '../neo4j/neo4j.js';
 import { formatters, buildCompactOutput } from './formatters.js';
 
 /**

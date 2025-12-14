@@ -7,10 +7,16 @@ MCP (Model Context Protocol) server that exposes a Neo4j code graph to LLMs for 
 ```
 mcp-server/
 ├── src/
-│   ├── index.ts          # Entry point, main MCP server
-│   ├── neo4j.ts          # Neo4j client with helpers
-│   └── tools/            # MCP tools implementation
-│       └── index.ts      # TODO: Handlers for each tool
+│   ├── index.ts              # Entry point, main MCP server
+│   ├── config/
+│   │   ├── config.ts         # Server configuration from env vars
+│   │   └── config.types.ts   # Configuration type definitions
+│   ├── neo4j/
+│   │   ├── neo4j.ts          # Neo4j client with helpers
+│   │   └── neo4j.types.ts    # Neo4j type definitions
+│   └── tools/
+│       ├── index.ts          # Tool handlers implementation
+│       └── formatters.ts     # Compact output formatters
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -170,9 +176,16 @@ Full-text search in code.
 
 ### Code Structure
 
-- **src/index.ts**: Main MCP server with tool handlers
-- **src/neo4j.ts**: Neo4j client with simplified API
-- **src/tools/**: Detailed implementation of each tool (to be developed)
+- **src/index.ts**: Main MCP server with tool registration
+- **src/config/**: Configuration module
+  - `config.ts`: Server configuration from environment variables
+  - `config.types.ts`: TypeScript interfaces (Neo4jConfig, ServerConfig, Config)
+- **src/neo4j/**: Neo4j client module
+  - `neo4j.ts`: Neo4j client with simplified API
+  - `neo4j.types.ts`: TypeScript types (QueryOptions, ResultRecord)
+- **src/tools/**: Tool handlers module
+  - `index.ts`: Handler functions for each MCP tool
+  - `formatters.ts`: Compact output formatters for token optimization
 
 ### Next Steps
 

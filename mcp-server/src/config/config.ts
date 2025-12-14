@@ -2,21 +2,10 @@
  * Server configuration from environment variables
  */
 
-export interface Neo4jConfig {
-  uri: string;
-  user: string;
-  password: string;
-}
+import type { Config } from './config/config.types.js';
 
-export interface ServerConfig {
-  name: string;
-  version: string;
-}
-
-export interface Config {
-  neo4j: Neo4jConfig;
-  server: ServerConfig;
-}
+// Re-export types for backward compatibility
+export type { Neo4jConfig, ServerConfig, Config } from './config/config.types.js';
 
 export const config: Config = {
   neo4j: {
