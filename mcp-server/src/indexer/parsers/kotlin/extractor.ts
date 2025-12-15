@@ -177,7 +177,7 @@ function extractSuperTypes(
           // For interfaces, all are super-interfaces
           if (kind === 'interface') {
             interfaces.push(typeName);
-          } else if (interfaces.length === 0 && !superClass) {
+          } else if (interfaces.length === 0) {
             // First one could be class or interface - we can't know without type resolution
             // For now, treat first as superClass, rest as interfaces
             interfaces.push(typeName);

@@ -44,27 +44,11 @@ export const kotlinParser: LanguageParser = {
  */
 function setFilePathInLocations(parsed: ParsedFile, filePath: string): void {
   for (const cls of parsed.classes) {
-    cls.location.filePath = filePath;
-    for (const fn of cls.functions) {
-      fn.location.filePath = filePath;
-      for (const call of fn.calls) {
-        call.location.filePath = filePath;
-      }
-    }
-    for (const prop of cls.properties) {
-      prop.location.filePath = filePath;
-    }
-    // Recursively handle nested classes
-    for (const nested of cls.nestedClasses) {
-      setFilePathInClass(nested, filePath);
-    }
+    setFilePathInClass(cls, filePath);
   }
 
   for (const fn of parsed.topLevelFunctions) {
-    fn.location.filePath = filePath;
-    for (const call of fn.calls) {
-      call.location.filePath = filePath;
-    }
+    setFilePathInFunction(fn, filePath);
   }
 
   for (const prop of parsed.topLevelProperties) {
@@ -74,16 +58,23 @@ function setFilePathInLocations(parsed: ParsedFile, filePath: string): void {
 
 function setFilePathInClass(cls: ParsedFile['classes'][0], filePath: string): void {
   cls.location.filePath = filePath;
+
   for (const fn of cls.functions) {
-    fn.location.filePath = filePath;
-    for (const call of fn.calls) {
-      call.location.filePath = filePath;
-    }
+    setFilePathInFunction(fn, filePath);
   }
+
   for (const prop of cls.properties) {
     prop.location.filePath = filePath;
   }
+
   for (const nested of cls.nestedClasses) {
     setFilePathInClass(nested, filePath);
+  }
+}
+
+function setFilePathInFunction(fn: ParsedFile['topLevelFunctions'][0], filePath: string): void {
+  fn.location.filePath = filePath;
+  for (const call of fn.calls) {
+    call.location.filePath = filePath;
   }
 }
