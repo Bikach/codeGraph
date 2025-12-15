@@ -58,6 +58,14 @@ codegraph/
 │       ├── neo4j/
 │       │   ├── neo4j.ts        # Neo4j client wrapper (modern executeQuery API)
 │       │   └── neo4j.types.ts  # Neo4j type definitions
+│       ├── indexer/            # Multi-language code indexer
+│       │   ├── index.ts        # Module exports
+│       │   ├── types.ts        # Common types (ParsedFile, LanguageParser, etc.)
+│       │   ├── parsers/
+│       │   │   ├── registry.ts # Parser registry with dynamic imports
+│       │   │   └── kotlin/     # Kotlin parser (tree-sitter based)
+│       │   ├── resolver.ts     # Symbol resolution (TODO)
+│       │   └── writer.ts       # Neo4j batch writer (TODO)
 │       └── tools/
 │           ├── <tool-name>/    # One directory per tool (e.g., search-nodes/)
 │           │   ├── definition.ts  # Zod schema for input validation
@@ -67,7 +75,8 @@ codegraph/
 │           ├── formatters.ts   # Compact output formatters for token optimization
 │           └── index.ts        # Re-exports all tools
 ├── docs/
-│   └── SCHEMA.md         # Neo4j schema for Kotlin code analysis
+│   ├── SCHEMA.md         # Neo4j schema for Kotlin code analysis
+│   └── PLAN-INDEXER.md   # Implementation plan for the indexer
 └── docker-compose.yml    # Neo4j 5 Community container
 ```
 
@@ -78,6 +87,25 @@ codegraph/
 - **Neo4jClient class** (`neo4j/neo4j.ts`): Wrapper around `neo4j-driver` with read/write queries, transactions, and automatic type conversion
 - **Tool modules** (`tools/<tool-name>/`): Each tool is a self-contained module with definition, handler, and types
 - **Formatters** (`tools/formatters.ts`): Compact output formatters for token optimization
+
+### Indexer Module (`indexer/`)
+
+Multi-language code indexer that parses source files and populates the Neo4j graph.
+
+**Architecture**:
+- **Modular parsers**: Each language has its own parser in `parsers/<language>/` (~300-400 lines each)
+- **Registry pattern**: `parsers/registry.ts` maps file extensions to parsers with lazy loading
+- **Shared components**: `resolver.ts` and `writer.ts` are language-agnostic
+
+**Key types** (`types.ts`):
+- `LanguageParser`: Interface all parsers must implement
+- `ParsedFile`: Normalized output from any parser (classes, functions, imports, etc.)
+- `ResolvedFile`: ParsedFile with resolved cross-references
+
+**Adding a new language**:
+1. Create `parsers/<language>/` with `parser.ts`, `extractor.ts`, `index.ts`
+2. Implement `LanguageParser` interface
+3. Register in `registry.ts`
 
 ### MCP Tools
 

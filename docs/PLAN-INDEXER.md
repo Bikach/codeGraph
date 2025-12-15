@@ -20,12 +20,18 @@ codegraph/
 │   └── src/
 │       ├── index.ts              # MCP server (existant)
 │       ├── cli.ts                # NEW: Entry point CLI `codegraph-indexer`
-│       ├── indexer/              # NEW: Module indexeur (logique partagée)
-│       │   ├── parser.ts         # Parsing tree-sitter-kotlin
-│       │   ├── extractor.ts      # Extraction des symboles depuis AST
-│       │   ├── resolver.ts       # Résolution des appels (heuristiques)
-│       │   ├── writer.ts         # Écriture batch Neo4j
-│       │   ├── types.ts          # Types TypeScript
+│       ├── indexer/              # NEW: Module indexeur
+│       │   ├── parsers/          # Parsers par langage (modulaires)
+│       │   │   ├── kotlin/
+│       │   │   │   ├── parser.ts     # Parsing tree-sitter-kotlin
+│       │   │   │   ├── extractor.ts  # Extraction spécifique Kotlin
+│       │   │   │   └── index.ts
+│       │   │   ├── java/             # (future)
+│       │   │   ├── php/              # (future)
+│       │   │   └── registry.ts   # Registre des parsers disponibles
+│       │   ├── resolver.ts       # Résolution des appels (partagé)
+│       │   ├── writer.ts         # Écriture batch Neo4j (partagé)
+│       │   ├── types.ts          # Types communs
 │       │   └── index.ts          # Exports
 │       └── tools/
 │           └── index-codebase/   # NEW: Outil MCP générique (auto-détecte les langages)
@@ -40,6 +46,13 @@ codegraph/
     └── commands/
         └── codegraph-indexer.md  # NEW: Slash command (à copier dans ~/.claude/)
 ```
+
+### Pourquoi des parsers modulaires ?
+
+- **Isolation** : Chaque langage ~300-400 lignes, isolé dans son dossier
+- **Contexte LLM** : Claude peut lire uniquement le parser pertinent
+- **Extensibilité** : Ajout d'un langage = nouveau dossier, sans toucher aux autres
+- **Code partagé** : resolver, writer, types restent communs à tous les langages
 
 ## Deux façons d'indexer
 
@@ -98,21 +111,30 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 
 ## Étapes d'implémentation
 
-### Étape 1 : Setup tree-sitter-kotlin
-- [ ] Installer `tree-sitter` et `tree-sitter-kotlin`
-- [ ] Créer `mcp-server/src/indexer/parser.ts` avec initialisation tree-sitter
-- [ ] Tester le parsing d'un fichier .kt simple
-
-### Étape 2 : Extracteur de symboles
-- [ ] Créer `mcp-server/src/indexer/types.ts` avec les interfaces :
+### Étape 1 : Setup structure et types communs
+- [ ] Créer `mcp-server/src/indexer/types.ts` avec les interfaces communes :
   - `ParsedFile`, `ParsedClass`, `ParsedFunction`, `ParsedProperty`
   - `ParsedCall`, `ParsedImport`
-- [ ] Créer `mcp-server/src/indexer/extractor.ts` :
+  - `LanguageParser` (interface pour tous les parsers)
+- [ ] Créer `mcp-server/src/indexer/parsers/registry.ts` :
+  - Registre des parsers par extension (`.kt` → kotlin, `.java` → java)
+  - Fonction `getParserForFile(filePath): LanguageParser`
+
+### Étape 2 : Parser Kotlin
+- [ ] Installer `tree-sitter` et `tree-sitter-kotlin`
+- [ ] Créer `mcp-server/src/indexer/parsers/kotlin/parser.ts` :
+  - Initialisation tree-sitter-kotlin
+  - Fonction `parse(source: string): Tree`
+- [ ] Créer `mcp-server/src/indexer/parsers/kotlin/extractor.ts` :
   - Parcours de l'AST tree-sitter
   - Extraction des classes, interfaces, objects
   - Extraction des fonctions et propriétés
   - Extraction des appels de fonction (syntaxiques)
   - Extraction des imports et extends/implements
+- [ ] Créer `mcp-server/src/indexer/parsers/kotlin/index.ts` :
+  - Export du parser Kotlin implémentant `LanguageParser`
+- [ ] Enregistrer le parser Kotlin dans `registry.ts`
+- [ ] Tester le parsing d'un fichier .kt simple
 
 ### Étape 3 : Résolveur de symboles
 - [ ] Créer `mcp-server/src/indexer/resolver.ts` :
@@ -169,11 +191,13 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 |---------|--------|
 | `mcp-server/package.json` | Ajouter dépendances + bin |
 | `mcp-server/src/cli.ts` | Créer (CLI codegraph-indexer) |
-| `mcp-server/src/indexer/types.ts` | Créer |
-| `mcp-server/src/indexer/parser.ts` | Créer |
-| `mcp-server/src/indexer/extractor.ts` | Créer |
-| `mcp-server/src/indexer/resolver.ts` | Créer |
-| `mcp-server/src/indexer/writer.ts` | Créer |
+| `mcp-server/src/indexer/types.ts` | Créer (types communs) |
+| `mcp-server/src/indexer/parsers/registry.ts` | Créer (registre des parsers) |
+| `mcp-server/src/indexer/parsers/kotlin/parser.ts` | Créer |
+| `mcp-server/src/indexer/parsers/kotlin/extractor.ts` | Créer |
+| `mcp-server/src/indexer/parsers/kotlin/index.ts` | Créer |
+| `mcp-server/src/indexer/resolver.ts` | Créer (partagé) |
+| `mcp-server/src/indexer/writer.ts` | Créer (partagé) |
 | `mcp-server/src/indexer/index.ts` | Créer |
 | `mcp-server/src/tools/index-codebase/*` | Créer (4 fichiers) |
 | `mcp-server/src/index.ts` | Modifier (enregistrer tool) |
@@ -207,22 +231,34 @@ Les nœuds et relations suivent le schema existant dans `docs/SCHEMA.md` :
 ```
 UserService.kt
      │
-     ▼ [parser.ts]
+     ▼ [registry.ts]
+   Détecte .kt → charge parsers/kotlin/
+     │
+     ▼ [parsers/kotlin/parser.ts]
    AST tree-sitter
      │
-     ▼ [extractor.ts]
+     ▼ [parsers/kotlin/extractor.ts]
    ParsedFile {
      classes: [{ name: "UserService", functions: [...] }],
      imports: ["com.example.User"],
      ...
    }
      │
-     ▼ [resolver.ts]
+     ▼ [resolver.ts] (partagé)
    ResolvedFile {
      classes: [...],
      calls: [{ from: "UserService.save", to: "UserRepository.save" }]
    }
      │
-     ▼ [writer.ts]
+     ▼ [writer.ts] (partagé)
    Neo4j: CREATE (c:Class), CREATE (f:Function), CREATE (c)-[:DECLARES]->(f)
 ```
+
+## Ajout d'un nouveau langage
+
+Pour ajouter Java par exemple :
+
+1. Créer `mcp-server/src/indexer/parsers/java/`
+2. Implémenter `parser.ts` et `extractor.ts` selon l'interface `LanguageParser`
+3. Enregistrer dans `registry.ts` : `.java` → java parser
+4. C'est tout ! Le resolver et writer sont réutilisés.
