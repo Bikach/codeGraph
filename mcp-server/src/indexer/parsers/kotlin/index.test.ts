@@ -56,6 +56,21 @@ describe('kotlinParser', () => {
       const result = await kotlinParser.parse(source, '/test/MyClass.kt');
       expect(result.imports[0]!.isWildcard).toBe(true);
     });
+
+    it('should extract import alias', async () => {
+      const source = `
+        import com.example.domain.User as AppUser
+        import com.example.util.Logger as Log
+
+        class MyClass
+      `;
+      const result = await kotlinParser.parse(source, '/test/MyClass.kt');
+      expect(result.imports).toHaveLength(2);
+      expect(result.imports[0]!.path).toBe('com.example.domain.User');
+      expect(result.imports[0]!.alias).toBe('AppUser');
+      expect(result.imports[1]!.path).toBe('com.example.util.Logger');
+      expect(result.imports[1]!.alias).toBe('Log');
+    });
   });
 
   describe('class extraction', () => {
@@ -110,6 +125,27 @@ describe('kotlinParser', () => {
       const result = await kotlinParser.parse(source, '/test/Priority.kt');
       expect(result.classes[0]!.name).toBe('Priority');
       expect(result.classes[0]!.kind).toBe('enum');
+    });
+
+    it('should extract annotation class', async () => {
+      const source = `annotation class MyAnnotation`;
+      const result = await kotlinParser.parse(source, '/test/MyAnnotation.kt');
+      expect(result.classes).toHaveLength(1);
+      expect(result.classes[0]!.name).toBe('MyAnnotation');
+      expect(result.classes[0]!.kind).toBe('annotation');
+    });
+
+    it('should extract annotation class with target', async () => {
+      const source = `
+        @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
+        @Retention(AnnotationRetention.RUNTIME)
+        annotation class Validated
+      `;
+      const result = await kotlinParser.parse(source, '/test/Validated.kt');
+      expect(result.classes[0]!.name).toBe('Validated');
+      expect(result.classes[0]!.kind).toBe('annotation');
+      expect(result.classes[0]!.annotations.map((a) => a.name)).toContain('Target');
+      expect(result.classes[0]!.annotations.map((a) => a.name)).toContain('Retention');
     });
 
     it('should extract visibility modifiers', async () => {
@@ -283,6 +319,21 @@ describe('kotlinParser', () => {
       expect(result.topLevelFunctions[0]!.name).toBe('greet');
     });
 
+    it('should extract function annotations', async () => {
+      const source = `
+        class Service {
+          @Deprecated("Use newMethod instead")
+          @Suppress("UNCHECKED_CAST")
+          fun oldMethod(): Unit {}
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      const fn = result.classes[0]!.functions[0]!;
+      expect(fn.annotations).toHaveLength(2);
+      expect(fn.annotations.map((a) => a.name)).toContain('Deprecated');
+      expect(fn.annotations.map((a) => a.name)).toContain('Suppress');
+    });
+
     it('should extract extension functions', async () => {
       const source = `
         fun String.capitalizeFirst(): String = this.replaceFirstChar { it.uppercase() }
@@ -290,6 +341,17 @@ describe('kotlinParser', () => {
       const result = await kotlinParser.parse(source, '/test/extensions.kt');
       expect(result.topLevelFunctions).toHaveLength(1);
       expect(result.topLevelFunctions[0]!.isExtension).toBe(true);
+    });
+
+    it('should extract extension function receiver type', async () => {
+      const source = `
+        fun String.capitalize(): String = this.uppercase()
+        fun List<User>.findActive(): List<User> = this.filter { it.active }
+      `;
+      const result = await kotlinParser.parse(source, '/test/extensions.kt');
+      expect(result.topLevelFunctions).toHaveLength(2);
+      expect(result.topLevelFunctions[0]!.receiverType).toBe('String');
+      expect(result.topLevelFunctions[1]!.receiverType).toBe('List<User>');
     });
   });
 
@@ -341,6 +403,23 @@ describe('kotlinParser', () => {
       const result = await kotlinParser.parse(source, '/test/Config.kt');
       expect(result.classes[0]!.properties[0]!.type).toBe('String');
       expect(result.classes[0]!.properties[1]!.type).toBe('User?');
+    });
+
+    it('should extract property annotations', async () => {
+      const source = `
+        class Service {
+          @Inject
+          val repository: Repository = Repository()
+
+          @Deprecated("Use newField")
+          var oldField: String = ""
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      expect(result.classes[0]!.properties[0]!.annotations).toHaveLength(1);
+      expect(result.classes[0]!.properties[0]!.annotations[0]!.name).toBe('Inject');
+      expect(result.classes[0]!.properties[1]!.annotations).toHaveLength(1);
+      expect(result.classes[0]!.properties[1]!.annotations[0]!.name).toBe('Deprecated');
     });
   });
 

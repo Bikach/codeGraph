@@ -94,7 +94,9 @@ function extractImports(root: SyntaxNode): ParsedImport[] {
 
         imports.push({
           path: path.replace(/\.\*$/, ''),
-          alias: aliasNode ? findChildByType(aliasNode, 'simple_identifier')?.text : undefined,
+          alias: aliasNode
+            ? (findChildByType(aliasNode, 'type_identifier') ?? findChildByType(aliasNode, 'simple_identifier'))?.text
+            : undefined,
           isWildcard,
         });
       }
@@ -148,12 +150,17 @@ function mapClassKind(node: SyntaxNode): ParsedClass['kind'] {
   const hasInterface = node.children.some((c) => c.type === 'interface');
   const hasObject = node.children.some((c) => c.type === 'object');
   const hasEnum = node.children.some((c) => c.type === 'enum');
-  const hasAnnotation = node.children.some((c) => c.type === 'annotation');
+
+  // Check for annotation class (modifier in modifiers > class_modifier > annotation)
+  const modifiers = findChildByType(node, 'modifiers');
+  const hasAnnotationModifier = modifiers?.children.some(
+    (c) => c.type === 'class_modifier' && c.children.some((m) => m.type === 'annotation')
+  );
 
   if (hasInterface) return 'interface';
   if (hasObject) return 'object';
   if (hasEnum) return 'enum';
-  if (hasAnnotation) return 'annotation';
+  if (hasAnnotationModifier) return 'annotation';
 
   switch (node.type) {
     case 'object_declaration':
@@ -488,10 +495,19 @@ function extractAnnotations(node: SyntaxNode): ParsedAnnotation[] {
 
   for (const child of modifiersList.children) {
     if (child.type === 'annotation') {
-      const nameNode = findChildByType(child, 'user_type') ?? findChildByType(child, 'simple_identifier');
+      // Annotation can be:
+      // - @Name -> user_type directly
+      // - @Name("arg") -> constructor_invocation > user_type
+      const constructorInvocation = findChildByType(child, 'constructor_invocation');
+      const nameNode = constructorInvocation
+        ? findChildByType(constructorInvocation, 'user_type')
+        : findChildByType(child, 'user_type') ?? findChildByType(child, 'simple_identifier');
+
       if (nameNode) {
+        // Extract just the annotation name (e.g., "Deprecated" not "Deprecated(\"msg\")")
+        const typeIdentifier = findChildByType(nameNode, 'type_identifier');
         annotations.push({
-          name: nameNode.text,
+          name: typeIdentifier?.text ?? nameNode.text,
           arguments: undefined, // TODO: extract annotation arguments
         });
       }
