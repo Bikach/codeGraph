@@ -716,4 +716,354 @@ class SecondClass`;
       expect(result.topLevelFunctions[1]!.visibility).toBe('internal');
     });
   });
+
+  describe('function modifiers (inline, infix, operator)', () => {
+    it('should extract inline function modifier', async () => {
+      const source = `
+        class Utils {
+          inline fun <T> measure(block: () -> T): T = block()
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Utils.kt');
+      expect(result.classes[0]!.functions[0]!.isInline).toBe(true);
+    });
+
+    it('should extract infix function modifier', async () => {
+      const source = `
+        class Vector {
+          infix fun add(other: Vector): Vector = Vector()
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Vector.kt');
+      expect(result.classes[0]!.functions[0]!.isInfix).toBe(true);
+    });
+
+    it('should extract operator function modifier', async () => {
+      const source = `
+        class Money {
+          operator fun plus(other: Money): Money = Money()
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Money.kt');
+      expect(result.classes[0]!.functions[0]!.isOperator).toBe(true);
+    });
+
+    it('should extract multiple modifiers on same function', async () => {
+      const source = `
+        class Container {
+          inline operator fun get(index: Int): String = ""
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Container.kt');
+      const fn = result.classes[0]!.functions[0]!;
+      expect(fn.isInline).toBe(true);
+      expect(fn.isOperator).toBe(true);
+    });
+
+    it('should extract top-level inline function', async () => {
+      const source = `
+        inline fun <T> runCatching(block: () -> T): Result<T> = Result.success(block())
+      `;
+      const result = await kotlinParser.parse(source, '/test/utils.kt');
+      expect(result.topLevelFunctions[0]!.isInline).toBe(true);
+    });
+  });
+
+  describe('type aliases', () => {
+    it('should extract simple type alias', async () => {
+      const source = `
+        typealias UserList = List<User>
+      `;
+      const result = await kotlinParser.parse(source, '/test/types.kt');
+      expect(result.typeAliases).toHaveLength(1);
+      expect(result.typeAliases[0]!.name).toBe('UserList');
+      expect(result.typeAliases[0]!.aliasedType).toBe('List<User>');
+    });
+
+    it('should extract type alias with visibility', async () => {
+      const source = `
+        private typealias InternalMap = HashMap<String, Any>
+      `;
+      const result = await kotlinParser.parse(source, '/test/types.kt');
+      expect(result.typeAliases[0]!.visibility).toBe('private');
+    });
+
+    it('should extract type alias for function type', async () => {
+      const source = `
+        typealias Handler = (String) -> Unit
+      `;
+      const result = await kotlinParser.parse(source, '/test/types.kt');
+      expect(result.typeAliases).toHaveLength(1);
+      expect(result.typeAliases[0]!.name).toBe('Handler');
+    });
+  });
+
+  describe('annotation arguments', () => {
+    it('should extract positional annotation argument', async () => {
+      const source = `
+        @Deprecated("Use newMethod instead")
+        fun oldMethod() {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      const annotation = result.topLevelFunctions[0]!.annotations[0]!;
+      expect(annotation.name).toBe('Deprecated');
+      expect(annotation.arguments).toBeDefined();
+      expect(annotation.arguments!['_0']).toBe('"Use newMethod instead"');
+    });
+
+    it('should extract named annotation arguments', async () => {
+      const source = `
+        @Deprecated(message = "old", replaceWith = ReplaceWith("newMethod"))
+        fun oldMethod() {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      const annotation = result.topLevelFunctions[0]!.annotations[0]!;
+      expect(annotation.arguments).toBeDefined();
+      expect(annotation.arguments!['message']).toBe('"old"');
+    });
+
+    it('should handle annotation without arguments', async () => {
+      const source = `
+        @Override
+        fun toString(): String = ""
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      const annotation = result.topLevelFunctions[0]!.annotations[0]!;
+      expect(annotation.arguments).toBeUndefined();
+    });
+  });
+
+  describe('companion objects', () => {
+    it('should extract companion object', async () => {
+      const source = `
+        class User {
+          companion object {
+            fun create(): User = User()
+          }
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/User.kt');
+      expect(result.classes[0]!.companionObject).toBeDefined();
+      expect(result.classes[0]!.companionObject!.kind).toBe('object');
+      expect(result.classes[0]!.companionObject!.functions).toHaveLength(1);
+      expect(result.classes[0]!.companionObject!.functions[0]!.name).toBe('create');
+    });
+
+    it('should extract named companion object', async () => {
+      const source = `
+        class User {
+          companion object Factory {
+            fun create(): User = User()
+          }
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/User.kt');
+      expect(result.classes[0]!.companionObject).toBeDefined();
+      expect(result.classes[0]!.companionObject!.name).toBe('Factory');
+    });
+
+    it('should extract companion object properties', async () => {
+      const source = `
+        class Config {
+          companion object {
+            val DEFAULT_TIMEOUT = 30
+            val MAX_RETRIES = 3
+          }
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Config.kt');
+      expect(result.classes[0]!.companionObject!.properties).toHaveLength(2);
+    });
+  });
+
+  describe('primary constructor properties', () => {
+    it('should extract val properties from primary constructor', async () => {
+      const source = `
+        class User(val id: String, val name: String)
+      `;
+      const result = await kotlinParser.parse(source, '/test/User.kt');
+      expect(result.classes[0]!.properties).toHaveLength(2);
+      expect(result.classes[0]!.properties[0]!.name).toBe('id');
+      expect(result.classes[0]!.properties[0]!.isVal).toBe(true);
+      expect(result.classes[0]!.properties[1]!.name).toBe('name');
+    });
+
+    it('should extract var properties from primary constructor', async () => {
+      const source = `
+        class Counter(var count: Int)
+      `;
+      const result = await kotlinParser.parse(source, '/test/Counter.kt');
+      expect(result.classes[0]!.properties[0]!.isVal).toBe(false);
+    });
+
+    it('should not extract non-property constructor parameters', async () => {
+      const source = `
+        class Service(val repo: Repository, config: Config)
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      // Only 'repo' is a property (has val), 'config' is just a parameter
+      expect(result.classes[0]!.properties).toHaveLength(1);
+      expect(result.classes[0]!.properties[0]!.name).toBe('repo');
+    });
+
+    it('should extract property visibility from primary constructor', async () => {
+      const source = `
+        class User(private val id: String, internal val name: String)
+      `;
+      const result = await kotlinParser.parse(source, '/test/User.kt');
+      expect(result.classes[0]!.properties[0]!.visibility).toBe('private');
+      expect(result.classes[0]!.properties[1]!.visibility).toBe('internal');
+    });
+
+    it('should merge primary constructor and body properties', async () => {
+      const source = `
+        class User(val id: String) {
+          val createdAt: Long = System.currentTimeMillis()
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/User.kt');
+      expect(result.classes[0]!.properties).toHaveLength(2);
+      expect(result.classes[0]!.properties.map(p => p.name)).toContain('id');
+      expect(result.classes[0]!.properties.map(p => p.name)).toContain('createdAt');
+    });
+  });
+
+  describe('secondary constructors', () => {
+    it('should extract secondary constructor', async () => {
+      const source = `
+        class User(val name: String) {
+          constructor(id: Int) : this("User#$id")
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/User.kt');
+      expect(result.classes[0]!.secondaryConstructors).toBeDefined();
+      expect(result.classes[0]!.secondaryConstructors).toHaveLength(1);
+    });
+
+    it('should extract secondary constructor parameters', async () => {
+      const source = `
+        class User {
+          constructor(name: String, age: Int)
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/User.kt');
+      const ctor = result.classes[0]!.secondaryConstructors![0]!;
+      expect(ctor.parameters).toHaveLength(2);
+      expect(ctor.parameters[0]!.name).toBe('name');
+      expect(ctor.parameters[1]!.name).toBe('age');
+    });
+
+    it('should extract delegation to this()', async () => {
+      const source = `
+        class User(val name: String, val age: Int) {
+          constructor(name: String) : this(name, 0)
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/User.kt');
+      expect(result.classes[0]!.secondaryConstructors![0]!.delegatesTo).toBe('this');
+    });
+
+    it('should extract multiple secondary constructors', async () => {
+      const source = `
+        class User(val name: String) {
+          constructor() : this("Anonymous")
+          constructor(id: Int) : this("User#$id")
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/User.kt');
+      expect(result.classes[0]!.secondaryConstructors).toHaveLength(2);
+    });
+  });
+
+  describe('generics / type parameters', () => {
+    it('should extract class type parameters', async () => {
+      const source = `
+        class Container<T>
+      `;
+      const result = await kotlinParser.parse(source, '/test/Container.kt');
+      expect(result.classes[0]!.typeParameters).toBeDefined();
+      expect(result.classes[0]!.typeParameters).toHaveLength(1);
+      expect(result.classes[0]!.typeParameters![0]!.name).toBe('T');
+    });
+
+    it('should extract multiple type parameters', async () => {
+      const source = `
+        class Pair<K, V>
+      `;
+      const result = await kotlinParser.parse(source, '/test/Pair.kt');
+      expect(result.classes[0]!.typeParameters).toHaveLength(2);
+      expect(result.classes[0]!.typeParameters![0]!.name).toBe('K');
+      expect(result.classes[0]!.typeParameters![1]!.name).toBe('V');
+    });
+
+    it('should extract type parameter bounds', async () => {
+      const source = `
+        class Repository<T : Entity>
+      `;
+      const result = await kotlinParser.parse(source, '/test/Repository.kt');
+      expect(result.classes[0]!.typeParameters![0]!.bounds).toContain('Entity');
+    });
+
+    it('should extract variance annotations (out)', async () => {
+      const source = `
+        class Producer<out T>
+      `;
+      const result = await kotlinParser.parse(source, '/test/Producer.kt');
+      expect(result.classes[0]!.typeParameters![0]!.variance).toBe('out');
+    });
+
+    it('should extract variance annotations (in)', async () => {
+      const source = `
+        class Consumer<in T>
+      `;
+      const result = await kotlinParser.parse(source, '/test/Consumer.kt');
+      expect(result.classes[0]!.typeParameters![0]!.variance).toBe('in');
+    });
+
+    it('should extract generic function type parameters', async () => {
+      const source = `
+        fun <T> identity(value: T): T = value
+      `;
+      const result = await kotlinParser.parse(source, '/test/utils.kt');
+      expect(result.topLevelFunctions[0]!.typeParameters).toBeDefined();
+      expect(result.topLevelFunctions[0]!.typeParameters![0]!.name).toBe('T');
+    });
+
+    it('should extract generic function with bounds', async () => {
+      const source = `
+        fun <T : Comparable<T>> max(a: T, b: T): T = if (a > b) a else b
+      `;
+      const result = await kotlinParser.parse(source, '/test/utils.kt');
+      const typeParam = result.topLevelFunctions[0]!.typeParameters![0]!;
+      expect(typeParam.name).toBe('T');
+      expect(typeParam.bounds).toBeDefined();
+    });
+  });
+
+  describe('destructuring declarations', () => {
+    it('should extract top-level destructuring declaration', async () => {
+      const source = `
+        val (first, second) = Pair("a", "b")
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.destructuringDeclarations).toHaveLength(1);
+      expect(result.destructuringDeclarations[0]!.componentNames).toEqual(['first', 'second']);
+    });
+
+    it('should extract destructuring with types', async () => {
+      const source = `
+        val (name: String, age: Int) = person
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.destructuringDeclarations[0]!.componentTypes).toBeDefined();
+    });
+
+    it('should detect val vs var in destructuring', async () => {
+      const source = `
+        var (x, y) = coordinates
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.destructuringDeclarations[0]!.isVal).toBe(false);
+    });
+  });
 });

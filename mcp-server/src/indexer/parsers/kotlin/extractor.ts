@@ -15,6 +15,11 @@ import type {
   ParsedImport,
   ParsedAnnotation,
   ParsedCall,
+  ParsedTypeAlias,
+  ParsedTypeParameter,
+  ParsedConstructor,
+  ParsedDestructuringDeclaration,
+  ParsedObjectExpression,
   SourceLocation,
   Visibility,
 } from '../../types.js';
@@ -36,6 +41,9 @@ export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
     classes: [],
     topLevelFunctions: [],
     topLevelProperties: [],
+    typeAliases: [],
+    destructuringDeclarations: [],
+    objectExpressions: [],
   };
 
   // Traverse top-level declarations
@@ -53,11 +61,25 @@ export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
         result.topLevelFunctions.push(extractFunction(child));
         break;
 
-      case 'property_declaration':
-        result.topLevelProperties.push(extractProperty(child));
+      case 'property_declaration': {
+        // Check for destructuring declaration
+        const destructuring = extractDestructuringDeclaration(child);
+        if (destructuring) {
+          result.destructuringDeclarations.push(destructuring);
+        } else {
+          result.topLevelProperties.push(extractProperty(child));
+        }
+        break;
+      }
+
+      case 'type_alias':
+        result.typeAliases.push(extractTypeAlias(child));
         break;
     }
   }
+
+  // Extract object expressions from all function bodies for dependency tracking
+  result.objectExpressions = extractAllObjectExpressions(root);
 
   return result;
 }
@@ -121,12 +143,21 @@ function extractClass(node: SyntaxNode): ParsedClass {
   const modifiers = extractModifiers(node);
   const annotations = extractAnnotations(node);
 
+  // Extract type parameters (generics)
+  const typeParameters = extractTypeParameters(node);
+
   // Extract super types (delegation_specifier nodes are direct children of class_declaration)
-  const { superClass, interfaces } = extractSuperTypes(node, kind);
+  const { superClass, interfaces } = extractSuperTypes(node);
+
+  // Extract primary constructor properties
+  const primaryConstructorProps = extractPrimaryConstructorProperties(node);
 
   // Extract body members
   const classBody = findChildByType(node, 'class_body') ?? findChildByType(node, 'enum_class_body');
-  const { properties, functions, nestedClasses } = extractClassBody(classBody);
+  const { properties, functions, nestedClasses, companionObject, secondaryConstructors } = extractClassBody(classBody);
+
+  // Merge primary constructor properties with body properties
+  const allProperties = [...primaryConstructorProps, ...properties];
 
   return {
     name,
@@ -137,10 +168,13 @@ function extractClass(node: SyntaxNode): ParsedClass {
     isSealed: modifiers.isSealed,
     superClass,
     interfaces,
+    typeParameters: typeParameters.length > 0 ? typeParameters : undefined,
     annotations,
-    properties,
+    properties: allProperties,
     functions,
     nestedClasses,
+    companionObject,
+    secondaryConstructors: secondaryConstructors.length > 0 ? secondaryConstructors : undefined,
     location: nodeLocation(node),
   };
 }
@@ -172,10 +206,7 @@ function mapClassKind(node: SyntaxNode): ParsedClass['kind'] {
   }
 }
 
-function extractSuperTypes(
-  classNode: SyntaxNode,
-  kind: ParsedClass['kind']
-): { superClass?: string; interfaces: string[] } {
+function extractSuperTypes(classNode: SyntaxNode): { superClass?: string; interfaces: string[] } {
   const interfaces: string[] = [];
 
   // delegation_specifier nodes are direct children of class_declaration
@@ -200,13 +231,17 @@ function extractClassBody(classBody: SyntaxNode | undefined): {
   properties: ParsedProperty[];
   functions: ParsedFunction[];
   nestedClasses: ParsedClass[];
+  companionObject?: ParsedClass;
+  secondaryConstructors: ParsedConstructor[];
 } {
   const properties: ParsedProperty[] = [];
   const functions: ParsedFunction[] = [];
   const nestedClasses: ParsedClass[] = [];
+  const secondaryConstructors: ParsedConstructor[] = [];
+  let companionObject: ParsedClass | undefined;
 
   if (!classBody) {
-    return { properties, functions, nestedClasses };
+    return { properties, functions, nestedClasses, companionObject, secondaryConstructors };
   }
 
   for (const child of classBody.children) {
@@ -221,14 +256,30 @@ function extractClassBody(classBody: SyntaxNode | undefined): {
 
       case 'class_declaration':
       case 'interface_declaration':
-      case 'object_declaration':
       case 'enum_class_declaration':
         nestedClasses.push(extractClass(child));
+        break;
+
+      case 'object_declaration':
+        // Check if this is a companion object
+        if (isCompanionObject(child)) {
+          companionObject = extractClass(child);
+        } else {
+          nestedClasses.push(extractClass(child));
+        }
+        break;
+
+      case 'companion_object':
+        companionObject = extractCompanionObject(child);
+        break;
+
+      case 'secondary_constructor':
+        secondaryConstructors.push(extractSecondaryConstructor(child));
         break;
     }
   }
 
-  return { properties, functions, nestedClasses };
+  return { properties, functions, nestedClasses, companionObject, secondaryConstructors };
 }
 
 // =============================================================================
@@ -243,6 +294,9 @@ function extractFunction(node: SyntaxNode): ParsedFunction {
   const annotations = extractAnnotations(node);
   const parameters = extractParameters(node);
   const returnType = extractReturnType(node);
+
+  // Extract type parameters (generics)
+  const typeParameters = extractTypeParameters(node);
 
   // Check for extension function
   const receiverType = extractReceiverType(node);
@@ -260,6 +314,10 @@ function extractFunction(node: SyntaxNode): ParsedFunction {
     isSuspend: modifiers.isSuspend,
     isExtension: !!receiverType,
     receiverType,
+    isInline: modifiers.isInline,
+    isInfix: modifiers.isInfix,
+    isOperator: modifiers.isOperator,
+    typeParameters: typeParameters.length > 0 ? typeParameters : undefined,
     annotations,
     location: nodeLocation(node),
     calls,
@@ -438,6 +496,9 @@ interface Modifiers {
   isData: boolean;
   isSealed: boolean;
   isSuspend: boolean;
+  isInline: boolean;
+  isInfix: boolean;
+  isOperator: boolean;
 }
 
 function extractModifiers(node: SyntaxNode): Modifiers {
@@ -447,6 +508,9 @@ function extractModifiers(node: SyntaxNode): Modifiers {
     isData: false,
     isSealed: false,
     isSuspend: false,
+    isInline: false,
+    isInfix: false,
+    isOperator: false,
   };
 
   const modifiersList = findChildByType(node, 'modifiers');
@@ -467,6 +531,9 @@ function extractModifiers(node: SyntaxNode): Modifiers {
         break;
       case 'function_modifier':
         if (child.text === 'suspend') result.isSuspend = true;
+        if (child.text === 'inline') result.isInline = true;
+        if (child.text === 'infix') result.isInfix = true;
+        if (child.text === 'operator') result.isOperator = true;
         break;
     }
   }
@@ -508,7 +575,7 @@ function extractAnnotations(node: SyntaxNode): ParsedAnnotation[] {
         const typeIdentifier = findChildByType(nameNode, 'type_identifier');
         annotations.push({
           name: typeIdentifier?.text ?? nameNode.text,
-          arguments: undefined, // TODO: extract annotation arguments
+          arguments: extractAnnotationArguments(child),
         });
       }
     }
@@ -552,4 +619,394 @@ function traverseNode(node: SyntaxNode, callback: (node: SyntaxNode) => void): v
   for (const child of node.children) {
     traverseNode(child, callback);
   }
+}
+
+// =============================================================================
+// Type Parameters (Generics)
+// =============================================================================
+
+function extractTypeParameters(node: SyntaxNode): ParsedTypeParameter[] {
+  const typeParams: ParsedTypeParameter[] = [];
+  const typeParamList = findChildByType(node, 'type_parameters');
+
+  if (!typeParamList) return typeParams;
+
+  for (const child of typeParamList.children) {
+    if (child.type === 'type_parameter') {
+      const typeParam = extractSingleTypeParameter(child);
+      if (typeParam) {
+        typeParams.push(typeParam);
+      }
+    }
+  }
+
+  return typeParams;
+}
+
+function extractSingleTypeParameter(node: SyntaxNode): ParsedTypeParameter | undefined {
+  // Structure: type_parameter > [modifiers] [type_identifier] [: type_constraint]
+  const nameNode = findChildByType(node, 'type_identifier');
+  if (!nameNode) return undefined;
+
+  const name = nameNode.text;
+
+  // Extract variance (in/out) from modifiers
+  let variance: 'in' | 'out' | undefined;
+  const modifiers = findChildByType(node, 'type_parameter_modifiers');
+  if (modifiers) {
+    for (const child of modifiers.children) {
+      if (child.type === 'variance_modifier') {
+        if (child.text === 'in') variance = 'in';
+        if (child.text === 'out') variance = 'out';
+      }
+    }
+  }
+
+  // Extract bounds (upper bounds after :)
+  const bounds: string[] = [];
+  const typeConstraint = findChildByType(node, 'type_constraint');
+  if (typeConstraint) {
+    // type_constraint contains the bound types
+    for (const child of typeConstraint.children) {
+      if (child.type === 'user_type' || child.type === 'nullable_type') {
+        bounds.push(child.text);
+      }
+    }
+  }
+
+  // Also check for direct bounds (T : Comparable<T>)
+  for (const child of node.children) {
+    if (child.type === 'user_type' || child.type === 'nullable_type') {
+      // Check if preceded by ':'
+      const prev = child.previousSibling;
+      if (prev?.type === ':') {
+        bounds.push(child.text);
+      }
+    }
+  }
+
+  return {
+    name,
+    bounds: bounds.length > 0 ? bounds : undefined,
+    variance,
+  };
+}
+
+// =============================================================================
+// Primary Constructor Properties
+// =============================================================================
+
+function extractPrimaryConstructorProperties(classNode: SyntaxNode): ParsedProperty[] {
+  const properties: ParsedProperty[] = [];
+
+  // Primary constructor is in primary_constructor node
+  const primaryConstructor = findChildByType(classNode, 'primary_constructor');
+  if (!primaryConstructor) return properties;
+
+  // class_parameter nodes are direct children of primary_constructor (not in class_parameters)
+  for (const child of primaryConstructor.children) {
+    if (child.type === 'class_parameter') {
+      // Check if it's a property (has val/var in binding_pattern_kind)
+      const bindingKind = findChildByType(child, 'binding_pattern_kind');
+      const hasVal = bindingKind?.children.some((c) => c.type === 'val') ?? false;
+      const hasVar = bindingKind?.children.some((c) => c.type === 'var') ?? false;
+
+      if (hasVal || hasVar) {
+        const nameNode = findChildByType(child, 'simple_identifier');
+        const typeNode =
+          findChildByType(child, 'nullable_type') ??
+          findChildByType(child, 'user_type') ??
+          findChildByType(child, 'type_identifier');
+
+        // Extract visibility from modifiers if present
+        const modifiers = extractModifiers(child);
+
+        properties.push({
+          name: nameNode?.text ?? '<unnamed>',
+          type: typeNode?.text,
+          visibility: modifiers.visibility,
+          isVal: hasVal,
+          initializer: undefined, // Primary constructor props don't have initializers in declaration
+          annotations: extractAnnotations(child),
+          location: nodeLocation(child),
+        });
+      }
+    }
+  }
+
+  return properties;
+}
+
+// =============================================================================
+// Companion Objects
+// =============================================================================
+
+function isCompanionObject(node: SyntaxNode): boolean {
+  // Check if the object declaration has 'companion' modifier
+  const modifiers = findChildByType(node, 'modifiers');
+  if (modifiers) {
+    for (const child of modifiers.children) {
+      if (child.type === 'class_modifier' && child.text === 'companion') {
+        return true;
+      }
+    }
+  }
+
+  // Also check for 'companion' keyword as direct child
+  return node.children.some((c) => c.type === 'companion');
+}
+
+function extractCompanionObject(node: SyntaxNode): ParsedClass {
+  // companion_object has similar structure to object_declaration
+  const nameNode = findChildByType(node, 'type_identifier') ?? findChildByType(node, 'simple_identifier');
+  const name = nameNode?.text ?? 'Companion';
+
+  const modifiers = extractModifiers(node);
+  const annotations = extractAnnotations(node);
+
+  const classBody = findChildByType(node, 'class_body');
+  const { properties, functions, nestedClasses } = extractClassBody(classBody);
+
+  return {
+    name,
+    kind: 'object',
+    visibility: modifiers.visibility,
+    isAbstract: false,
+    isData: false,
+    isSealed: false,
+    superClass: undefined,
+    interfaces: [],
+    annotations,
+    properties,
+    functions,
+    nestedClasses,
+    location: nodeLocation(node),
+  };
+}
+
+// =============================================================================
+// Secondary Constructors
+// =============================================================================
+
+function extractSecondaryConstructor(node: SyntaxNode): ParsedConstructor {
+  const modifiers = extractModifiers(node);
+  const annotations = extractAnnotations(node);
+
+  // Extract parameters
+  const params: ParsedParameter[] = [];
+  const paramList = findChildByType(node, 'function_value_parameters');
+
+  if (paramList) {
+    for (const child of paramList.children) {
+      if (child.type === 'parameter') {
+        const nameNode = findChildByType(child, 'simple_identifier');
+        const typeNode =
+          findChildByType(child, 'nullable_type') ??
+          findChildByType(child, 'user_type') ??
+          findChildByType(child, 'type');
+
+        params.push({
+          name: nameNode?.text ?? '<unnamed>',
+          type: typeNode?.text,
+          annotations: extractAnnotations(child),
+        });
+      }
+    }
+  }
+
+  // Check for delegation (this() or super())
+  let delegatesTo: 'this' | 'super' | undefined;
+  const constructorDelegationCall = findChildByType(node, 'constructor_delegation_call');
+  if (constructorDelegationCall) {
+    const delegationType = constructorDelegationCall.children.find(
+      (c) => c.type === 'this' || c.type === 'super'
+    );
+    if (delegationType?.type === 'this') delegatesTo = 'this';
+    if (delegationType?.type === 'super') delegatesTo = 'super';
+  }
+
+  return {
+    parameters: params,
+    visibility: modifiers.visibility,
+    delegatesTo,
+    annotations,
+    location: nodeLocation(node),
+  };
+}
+
+// =============================================================================
+// Type Aliases
+// =============================================================================
+
+function extractTypeAlias(node: SyntaxNode): ParsedTypeAlias {
+  const nameNode = findChildByType(node, 'type_identifier');
+  const name = nameNode?.text ?? '<unnamed>';
+
+  const modifiers = extractModifiers(node);
+
+  // Extract type parameters if present
+  const typeParameters = extractTypeParameters(node);
+
+  // Extract the aliased type (after '=')
+  let aliasedType = '';
+  for (const child of node.children) {
+    if (
+      child.type === 'user_type' ||
+      child.type === 'nullable_type' ||
+      child.type === 'function_type'
+    ) {
+      // Check if preceded by '='
+      const prev = child.previousSibling;
+      if (prev?.type === '=') {
+        aliasedType = child.text;
+        break;
+      }
+    }
+  }
+
+  return {
+    name,
+    aliasedType,
+    visibility: modifiers.visibility,
+    typeParameters: typeParameters.length > 0 ? typeParameters : undefined,
+    location: nodeLocation(node),
+  };
+}
+
+// =============================================================================
+// Destructuring Declarations
+// =============================================================================
+
+function extractDestructuringDeclaration(
+  node: SyntaxNode
+): ParsedDestructuringDeclaration | undefined {
+  // Check if this is a destructuring declaration
+  // Structure: property_declaration > multi_variable_declaration > variable_declaration+
+  const multiVarDecl = findChildByType(node, 'multi_variable_declaration');
+  if (!multiVarDecl) return undefined;
+
+  const componentNames: string[] = [];
+  const componentTypes: (string | undefined)[] = [];
+
+  for (const child of multiVarDecl.children) {
+    if (child.type === 'variable_declaration') {
+      const nameNode = findChildByType(child, 'simple_identifier');
+      const typeNode =
+        findChildByType(child, 'nullable_type') ??
+        findChildByType(child, 'user_type');
+
+      componentNames.push(nameNode?.text ?? '_');
+      componentTypes.push(typeNode?.text);
+    }
+  }
+
+  if (componentNames.length === 0) return undefined;
+
+  const modifiers = extractModifiers(node);
+  const bindingKind = findChildByType(node, 'binding_pattern_kind');
+  const isVal = bindingKind
+    ? bindingKind.children.some((c) => c.type === 'val')
+    : node.children.some((c) => c.type === 'val');
+
+  // Get initializer
+  const initializer = node.childForFieldName('initializer');
+
+  return {
+    componentNames,
+    componentTypes: componentTypes.some((t) => t !== undefined) ? componentTypes : undefined,
+    initializer: initializer?.text,
+    visibility: modifiers.visibility,
+    isVal,
+    location: nodeLocation(node),
+  };
+}
+
+// =============================================================================
+// Object Expressions
+// =============================================================================
+
+function extractAllObjectExpressions(root: SyntaxNode): ParsedObjectExpression[] {
+  const expressions: ParsedObjectExpression[] = [];
+
+  traverseNode(root, (node) => {
+    if (node.type === 'object_literal') {
+      const expr = extractObjectExpression(node);
+      if (expr) {
+        expressions.push(expr);
+      }
+    }
+  });
+
+  return expressions;
+}
+
+function extractObjectExpression(node: SyntaxNode): ParsedObjectExpression | undefined {
+  // object_literal: object [: delegation_specifiers] { class_body }
+  const superTypes: string[] = [];
+
+  // Extract implemented interfaces/extended classes
+  for (const child of node.children) {
+    if (child.type === 'delegation_specifier') {
+      const typeRef =
+        findChildByType(child, 'user_type') ?? findChildByType(child, 'constructor_invocation');
+      if (typeRef) {
+        const typeName = extractTypeName(typeRef);
+        if (typeName) {
+          superTypes.push(typeName);
+        }
+      }
+    }
+  }
+
+  const classBody = findChildByType(node, 'class_body');
+  const { properties, functions } = extractClassBody(classBody);
+
+  return {
+    superTypes,
+    properties,
+    functions,
+    location: nodeLocation(node),
+  };
+}
+
+// =============================================================================
+// Annotation Arguments (enhanced)
+// =============================================================================
+
+function extractAnnotationArguments(node: SyntaxNode): Record<string, string> | undefined {
+  // Look for value_arguments in constructor_invocation
+  const constructorInvocation = findChildByType(node, 'constructor_invocation');
+  if (!constructorInvocation) return undefined;
+
+  const valueArgs = findChildByType(constructorInvocation, 'value_arguments');
+  if (!valueArgs) return undefined;
+
+  const args: Record<string, string> = {};
+  let positionalIndex = 0;
+
+  for (const child of valueArgs.children) {
+    if (child.type === 'value_argument') {
+      const nameNode = findChildByType(child, 'simple_identifier');
+      // Get the expression (everything after '=' or the whole argument)
+      const expression = child.children.find(
+        (c) =>
+          c.type !== 'simple_identifier' &&
+          c.type !== '=' &&
+          c.type !== '(' &&
+          c.type !== ')' &&
+          c.type !== ','
+      );
+
+      if (nameNode) {
+        // Named argument: @Deprecated(message = "use X")
+        args[nameNode.text] = expression?.text ?? '';
+      } else if (expression) {
+        // Positional argument: @Deprecated("use X")
+        args[`_${positionalIndex}`] = expression.text;
+        positionalIndex++;
+      }
+    }
+  }
+
+  return Object.keys(args).length > 0 ? args : undefined;
 }

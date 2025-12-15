@@ -37,11 +37,39 @@ export interface ParsedAnnotation {
   arguments?: Record<string, string>;
 }
 
+export interface ParsedTypeParameter {
+  name: string;
+  bounds?: string[]; // Upper bounds: T : Comparable<T>
+  variance?: 'in' | 'out'; // Kotlin variance annotations
+}
+
+/**
+ * Represents a function type parameter like `(Int, String) -> Boolean`
+ * Used for lambda/higher-order function parameters.
+ */
+export interface ParsedFunctionType {
+  parameterTypes: string[];
+  returnType: string;
+  isSuspend: boolean;
+  /** Receiver type for extension function types: `Int.(String) -> Boolean` */
+  receiverType?: string;
+}
+
 export interface ParsedParameter {
   name: string;
   type?: string;
+  /** For lambda parameters, the parsed function type */
+  functionType?: ParsedFunctionType;
   defaultValue?: string;
   annotations: ParsedAnnotation[];
+}
+
+export interface ParsedConstructor {
+  parameters: ParsedParameter[];
+  visibility: Visibility;
+  delegatesTo?: 'this' | 'super';
+  annotations: ParsedAnnotation[];
+  location: SourceLocation;
 }
 
 export interface ParsedProperty {
@@ -63,6 +91,10 @@ export interface ParsedFunction {
   isSuspend: boolean;
   isExtension: boolean;
   receiverType?: string; // For extension functions: "String.capitalize()"
+  isInline?: boolean;
+  isInfix?: boolean;
+  isOperator?: boolean;
+  typeParameters?: ParsedTypeParameter[];
   annotations: ParsedAnnotation[];
   location: SourceLocation;
   /** Raw function calls found in the body (unresolved) */
@@ -88,10 +120,48 @@ export interface ParsedClass {
   isSealed: boolean;
   superClass?: string;
   interfaces: string[];
+  typeParameters?: ParsedTypeParameter[];
   annotations: ParsedAnnotation[];
   properties: ParsedProperty[];
   functions: ParsedFunction[];
   nestedClasses: ParsedClass[];
+  companionObject?: ParsedClass;
+  secondaryConstructors?: ParsedConstructor[];
+  location: SourceLocation;
+}
+
+export interface ParsedTypeAlias {
+  name: string;
+  aliasedType: string;
+  visibility: Visibility;
+  typeParameters?: ParsedTypeParameter[];
+  location: SourceLocation;
+}
+
+/**
+ * Destructuring declaration: `val (a, b) = pair`
+ * Each component is a separate property extraction.
+ */
+export interface ParsedDestructuringDeclaration {
+  /** Names of the destructured components (e.g., ["a", "b"]) */
+  componentNames: string[];
+  /** Types of components if explicitly declared */
+  componentTypes?: (string | undefined)[];
+  /** The source expression being destructured */
+  initializer?: string;
+  visibility: Visibility;
+  isVal: boolean;
+  location: SourceLocation;
+}
+
+/**
+ * Object expression (anonymous object): `object : Interface { ... }`
+ */
+export interface ParsedObjectExpression {
+  /** Interfaces/classes this object implements/extends */
+  superTypes: string[];
+  properties: ParsedProperty[];
+  functions: ParsedFunction[];
   location: SourceLocation;
 }
 
@@ -104,6 +174,12 @@ export interface ParsedFile {
   topLevelFunctions: ParsedFunction[];
   /** Top-level properties */
   topLevelProperties: ParsedProperty[];
+  /** Top-level type aliases (Kotlin-specific) */
+  typeAliases: ParsedTypeAlias[];
+  /** Destructuring declarations at top level */
+  destructuringDeclarations: ParsedDestructuringDeclaration[];
+  /** Object expressions used in assignments/returns (for dependency tracking) */
+  objectExpressions: ParsedObjectExpression[];
 }
 
 // =============================================================================
