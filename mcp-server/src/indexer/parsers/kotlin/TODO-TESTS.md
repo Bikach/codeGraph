@@ -1,27 +1,29 @@
 # Kotlin Parser - Remaining Test Coverage
 
 ## Current Status
-- **Tests**: 45 (from 26 initially)
-- **Coverage**: ~85%
+- **Tests**: 61 (from 26 initially)
+- **Coverage**: ~95%
 - **Bugs fixed**: 7
 
 ---
 
-## Priority 3 - Low Priority Tests (Supported but untested)
+## ~~Priority 3 - Low Priority Tests (Supported but untested)~~ ✅ DONE
 
-These features ARE implemented in the extractor but have no dedicated tests:
+All features below are now tested:
 
-| Feature | Example | Notes |
-|---------|---------|-------|
-| Delegated properties | `val name by lazy { "default" }` | `property_delegate` captured in extractor |
-| Property initializers | `val x = computeValue()` | Already extracted but not tested |
-| Function visibility | `private fun helper()` | Same as class visibility |
-| Nested interfaces | `class Outer { interface Inner }` | Should work with nested classes |
-| Multiple nested levels | `class A { class B { class C } }` | Deep nesting |
+| Feature | Status |
+|---------|--------|
+| Delegated properties (`by lazy`, `by Delegates.observable`, `by map`) | ✅ Tested |
+| Property initializers (simple, function calls, object instantiation) | ✅ Tested |
+| Function visibility (`private`, `internal`, `protected`, `public`) | ✅ Tested |
+| Nested interfaces | ✅ Tested |
+| Nested objects | ✅ Tested |
+| Multiple nested levels (deep nesting) | ✅ Tested |
+| Mixed nested types at same level | ✅ Tested |
 
 ---
 
-## Priority 4 - Extracteur Enhancements (NOT supported)
+## Priority 4 - Extractor Enhancements (NOT supported)
 
 These Kotlin features are NOT currently supported by the extractor and would require implementation:
 
@@ -53,12 +55,11 @@ These Kotlin features are NOT currently supported by the extractor and would req
 
 ---
 
-## How to Continue
+## Next Steps
 
-1. **Priority 3**: Add simple tests for existing functionality (quick wins)
-2. **Priority 4**: Implement companion objects first (most commonly used)
-3. Then generics (essential for type analysis)
-4. Then primary constructor properties (very common pattern)
+1. **Companion objects** - Most commonly used Kotlin feature, implement first
+2. **Primary constructor properties** - Very common pattern (`class User(val id: String)`)
+3. **Generics** - Essential for complete type analysis
 
 ---
 
