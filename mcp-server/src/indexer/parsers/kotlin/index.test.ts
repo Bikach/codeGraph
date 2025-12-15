@@ -498,5 +498,222 @@ class SecondClass`;
       expect(result.classes[0]!.nestedClasses[0]!.name).toBe('Inner');
       expect(result.classes[0]!.nestedClasses[0]!.functions).toHaveLength(1);
     });
+
+    it('should extract nested interfaces', async () => {
+      const source = `
+        class Container {
+          interface Callback {
+            fun onSuccess()
+            fun onError(message: String)
+          }
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Container.kt');
+      expect(result.classes[0]!.nestedClasses).toHaveLength(1);
+      expect(result.classes[0]!.nestedClasses[0]!.name).toBe('Callback');
+      expect(result.classes[0]!.nestedClasses[0]!.kind).toBe('interface');
+      expect(result.classes[0]!.nestedClasses[0]!.functions).toHaveLength(2);
+    });
+
+    it('should extract nested objects', async () => {
+      const source = `
+        class Config {
+          object Defaults {
+            val timeout: Int = 30
+          }
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Config.kt');
+      expect(result.classes[0]!.nestedClasses).toHaveLength(1);
+      expect(result.classes[0]!.nestedClasses[0]!.name).toBe('Defaults');
+      expect(result.classes[0]!.nestedClasses[0]!.kind).toBe('object');
+      expect(result.classes[0]!.nestedClasses[0]!.properties).toHaveLength(1);
+    });
+
+    it('should extract multiple nested levels (deep nesting)', async () => {
+      const source = `
+        class Level1 {
+          class Level2 {
+            class Level3 {
+              fun deepMethod(): String = "deep"
+            }
+          }
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Level1.kt');
+      expect(result.classes[0]!.name).toBe('Level1');
+      expect(result.classes[0]!.nestedClasses).toHaveLength(1);
+
+      const level2 = result.classes[0]!.nestedClasses[0]!;
+      expect(level2.name).toBe('Level2');
+      expect(level2.nestedClasses).toHaveLength(1);
+
+      const level3 = level2.nestedClasses[0]!;
+      expect(level3.name).toBe('Level3');
+      expect(level3.functions).toHaveLength(1);
+      expect(level3.functions[0]!.name).toBe('deepMethod');
+    });
+
+    it('should extract mixed nested types at same level', async () => {
+      const source = `
+        class Parent {
+          class NestedClass
+          interface NestedInterface
+          object NestedObject
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Parent.kt');
+      expect(result.classes[0]!.nestedClasses).toHaveLength(3);
+
+      const kinds = result.classes[0]!.nestedClasses.map(c => c.kind);
+      expect(kinds).toContain('class');
+      expect(kinds).toContain('interface');
+      expect(kinds).toContain('object');
+    });
+  });
+
+  describe('delegated properties', () => {
+    it('should extract lazy delegated property', async () => {
+      const source = `
+        class Service {
+          val heavyResource by lazy { computeHeavyResource() }
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      expect(result.classes[0]!.properties).toHaveLength(1);
+      expect(result.classes[0]!.properties[0]!.name).toBe('heavyResource');
+      expect(result.classes[0]!.properties[0]!.initializer).toContain('lazy');
+    });
+
+    it('should extract observable delegated property', async () => {
+      const source = `
+        class State {
+          var count: Int by Delegates.observable(0) { _, old, new -> println("Changed") }
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/State.kt');
+      expect(result.classes[0]!.properties).toHaveLength(1);
+      expect(result.classes[0]!.properties[0]!.name).toBe('count');
+      expect(result.classes[0]!.properties[0]!.initializer).toContain('Delegates.observable');
+    });
+
+    it('should extract map delegated property', async () => {
+      const source = `
+        class User(map: Map<String, Any>) {
+          val name: String by map
+          val age: Int by map
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/User.kt');
+      expect(result.classes[0]!.properties).toHaveLength(2);
+      expect(result.classes[0]!.properties[0]!.name).toBe('name');
+      expect(result.classes[0]!.properties[0]!.initializer).toBe('by map');
+      expect(result.classes[0]!.properties[1]!.name).toBe('age');
+    });
+  });
+
+  describe('property initializers', () => {
+    it('should extract simple property initializer', async () => {
+      const source = `
+        class Config {
+          val maxRetries: Int = 3
+          val timeout: Long = 5000L
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Config.kt');
+      expect(result.classes[0]!.properties).toHaveLength(2);
+      // Note: initializer captures the value expression
+      expect(result.classes[0]!.properties[0]!.name).toBe('maxRetries');
+      expect(result.classes[0]!.properties[1]!.name).toBe('timeout');
+    });
+
+    it('should extract function call initializer', async () => {
+      const source = `
+        class Service {
+          val client = createHttpClient()
+          val config = loadConfig("app.json")
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      expect(result.classes[0]!.properties).toHaveLength(2);
+      expect(result.classes[0]!.properties[0]!.name).toBe('client');
+      expect(result.classes[0]!.properties[1]!.name).toBe('config');
+    });
+
+    it('should extract object instantiation initializer', async () => {
+      const source = `
+        class Service {
+          val repository = UserRepository()
+          val cache = HashMap<String, User>()
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      expect(result.classes[0]!.properties).toHaveLength(2);
+      expect(result.classes[0]!.properties[0]!.name).toBe('repository');
+      expect(result.classes[0]!.properties[1]!.name).toBe('cache');
+    });
+  });
+
+  describe('function visibility', () => {
+    it('should extract private function', async () => {
+      const source = `
+        class Service {
+          private fun helper(): String = "help"
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      expect(result.classes[0]!.functions[0]!.visibility).toBe('private');
+    });
+
+    it('should extract internal function', async () => {
+      const source = `
+        class Service {
+          internal fun moduleOnly(): Unit {}
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      expect(result.classes[0]!.functions[0]!.visibility).toBe('internal');
+    });
+
+    it('should extract protected function', async () => {
+      const source = `
+        open class Base {
+          protected fun forSubclasses(): Unit {}
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Base.kt');
+      expect(result.classes[0]!.functions[0]!.visibility).toBe('protected');
+    });
+
+    it('should extract public function (explicit)', async () => {
+      const source = `
+        class Service {
+          public fun explicitPublic(): Unit {}
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      expect(result.classes[0]!.functions[0]!.visibility).toBe('public');
+    });
+
+    it('should default to public visibility', async () => {
+      const source = `
+        class Service {
+          fun implicitPublic(): Unit {}
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Service.kt');
+      expect(result.classes[0]!.functions[0]!.visibility).toBe('public');
+    });
+
+    it('should extract top-level function visibility', async () => {
+      const source = `
+        private fun utilityHelper(): String = "helper"
+        internal fun moduleUtil(): Int = 42
+      `;
+      const result = await kotlinParser.parse(source, '/test/utils.kt');
+      expect(result.topLevelFunctions).toHaveLength(2);
+      expect(result.topLevelFunctions[0]!.visibility).toBe('private');
+      expect(result.topLevelFunctions[1]!.visibility).toBe('internal');
+    });
   });
 });
