@@ -7,6 +7,13 @@ Créer un indexeur Kotlin avec tree-sitter, utilisable via :
 
 ## Architecture cible
 
+**Approche hybride** : Neo4j dans Docker, CLI exécuté en local.
+
+Pourquoi ce choix :
+- **Performance I/O** : Docker Desktop sur macOS utilise une VM, les volumes sont lents pour scanner des milliers de fichiers `.kt`
+- **Simplicité** : Pas de gestion de chemins/volumes complexes
+- **Claude Desktop** : Le MCP server doit tourner en local pour être appelé par Claude
+
 ```
 codegraph/
 ├── mcp-server/
@@ -21,13 +28,12 @@ codegraph/
 │       │   ├── types.ts          # Types TypeScript
 │       │   └── index.ts          # Exports
 │       └── tools/
-│           └── index-codebase/   # NEW: Outil MCP (appelle indexer/)
+│           └── index-codebase/   # NEW: Outil MCP générique (auto-détecte les langages)
 │               ├── definition.ts
 │               ├── handler.ts
 │               ├── types.ts
 │               └── index.ts
-├── Dockerfile                    # NEW: Image MCP server
-├── docker-compose.yml            # Neo4j + MCP server
+├── docker-compose.yml            # Neo4j uniquement
 ├── README.md                     # UPDATE: Instructions
 └── docs/
     ├── INDEXING.md               # NEW: Guide d'indexation
@@ -59,36 +65,35 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 ## Comment ça marche
 
 ```
-                    ┌─────────────────────────────────┐
-                    │         codegraph-indexer       │
-                    │         (commande bash)         │
-                    └───────────────┬─────────────────┘
-                                    │
-       ┌────────────────────────────┼────────────────────────────┐
-       │                            │                            │
-       ▼                            ▼                            ▼
-┌─────────────┐            ┌───────────────┐            ┌───────────────┐
-│  Terminal   │            │  Claude Code  │            │Claude Desktop │
-│  (direct)   │            │ /codegraph-   │            │  "Indexe..."  │
-│             │            │   indexer     │            │               │
-└──────┬──────┘            └───────┬───────┘            └───────┬───────┘
-       │                           │                            │
-       │                           │ (appelle bash)             │ (outil MCP)
-       │                           │                            │
-       └───────────────────────────┼────────────────────────────┘
-                                   │
-                                   ▼
-                    ┌─────────────────────────────────┐
-                    │      indexer/ (logique)         │
-                    │  parser → extractor → resolver  │
-                    │            → writer             │
-                    └───────────────┬─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                            Machine locale                               │
+│                                                                         │
+│    ┌─────────────┐       ┌───────────────┐       ┌───────────────┐     │
+│    │  Terminal   │       │  Claude Code  │       │Claude Desktop │     │
+│    │  (direct)   │       │ /codegraph-   │       │  "Indexe..."  │     │
+│    │             │       │   indexer     │       │               │     │
+│    └──────┬──────┘       └───────┬───────┘       └───────┬───────┘     │
+│           │                      │                       │              │
+│           │                      │ (appelle bash)        │ (outil MCP)  │
+│           │                      │                       │              │
+│           └──────────────────────┼───────────────────────┘              │
+│                                  │                                      │
+│                                  ▼                                      │
+│                   ┌─────────────────────────────────┐                   │
+│                   │      indexer/ (logique)         │                   │
+│                   │  parser → extractor → resolver  │                   │
+│                   │            → writer             │                   │
+│                   └───────────────┬─────────────────┘                   │
+│                                   │                                     │
+└───────────────────────────────────┼─────────────────────────────────────┘
                                     │
                                     ▼
-                           ┌───────────────┐
-                           │    Neo4j      │
-                           │   (7687)      │
-                           └───────────────┘
+                    ┌───────────────────────────────┐
+                    │      Docker (Neo4j only)      │
+                    │  ┌───────────────────────┐    │
+                    │  │    Neo4j (7687)       │    │
+                    │  └───────────────────────┘    │
+                    └───────────────────────────────┘
 ```
 
 ## Étapes d'implémentation
@@ -135,24 +140,18 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
   - Script : `"index": "tsx src/cli.ts"`
   - Bin : `"codegraph-indexer": "./dist/cli.js"`
 
-### Étape 6 : Outil MCP index_codebase
+### Étape 6 : Outil MCP index_codebase (générique)
 - [ ] Créer `mcp-server/src/tools/index-codebase/` :
-  - `definition.ts` : schema avec paramètre `project_path`
-  - `handler.ts` : appelle le module `indexer/`
+  - `definition.ts` : schema avec paramètres :
+    - `project_path` (requis)
+    - `languages` (optionnel, auto-détecte si absent)
+  - `handler.ts` :
+    - Auto-détection des langages (.kt, .java, etc.)
+    - Appelle le parser approprié pour chaque langage
   - `types.ts` : types de résultat
 - [ ] Enregistrer l'outil dans `index.ts`
 
-### Étape 7 : Dockerfile MCP Server
-- [ ] Créer `Dockerfile` pour le MCP server :
-  - Base Node.js 20 Alpine
-  - Build TypeScript
-  - Expose la commande `codegraph-indexer`
-- [ ] Mettre à jour `docker-compose.yml` :
-  - Service `neo4j` (existant)
-  - Service `mcp-server` (nouveau)
-  - Volumes pour accéder aux projets à indexer
-
-### Étape 8 : Documentation
+### Étape 7 : Documentation
 - [ ] Créer `docs/INDEXING.md` :
   - Guide complet d'indexation
   - Exemples de projets Kotlin
@@ -178,8 +177,6 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 | `mcp-server/src/indexer/index.ts` | Créer |
 | `mcp-server/src/tools/index-codebase/*` | Créer (4 fichiers) |
 | `mcp-server/src/index.ts` | Modifier (enregistrer tool) |
-| `Dockerfile` | Créer |
-| `docker-compose.yml` | Modifier (ajouter mcp-server) |
 | `docs/INDEXING.md` | Créer |
 | `docs/commands/codegraph-indexer.md` | Créer (slash command) |
 | `README.md` | Modifier (ajouter instructions)
