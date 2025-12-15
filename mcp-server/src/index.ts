@@ -14,14 +14,24 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
 import { Neo4jClient } from './neo4j/neo4j.js';
 import {
-  handleFindClass,
-  handleGetDependencies,
+  searchNodesDefinition,
+  handleSearchNodes,
+  getCallersDefinition,
+  handleGetCallers,
+  getCalleesDefinition,
+  handleGetCallees,
+  getNeighborsDefinition,
+  handleGetNeighbors,
+  getImplementationsDefinition,
   handleGetImplementations,
-  handleTraceCalls,
-  handleSearchCode,
+  getImpactDefinition,
+  handleGetImpact,
+  findPathDefinition,
+  handleFindPath,
+  getFileSymbolsDefinition,
+  handleGetFileSymbols,
 } from './tools/index.js';
 import { config } from './config/config.js';
 
@@ -64,55 +74,70 @@ class CodeGraphServer {
    * Register all MCP tools with modern registerTool API
    */
   private registerTools(): void {
-    // Tool: find_class
+    // Tool: search_nodes
     this.server.registerTool(
-      'find_class',
+      searchNodesDefinition.name,
       {
-        title: 'Find Class',
-        description:
-          'Search for a class or interface by name in the code graph. ' +
-          'Returns compact format: "type | Name | visibility | filePath:line"',
-        inputSchema: {
-          name: z.string().describe('Name of the class or interface to search for'),
-          exact_match: z
-            .boolean()
-            .optional()
-            .default(false)
-            .describe('If true, exact match. If false, partial match (CONTAINS)'),
-        },
+        title: searchNodesDefinition.title,
+        description: searchNodesDefinition.description,
+        inputSchema: searchNodesDefinition.inputSchema,
       },
-      async ({ name, exact_match }) => {
-        return await handleFindClass(this.neo4jClient, { name, exact_match: exact_match ?? false });
+      async ({ query, node_types, exact_match, limit }) => {
+        return await handleSearchNodes(this.neo4jClient, {
+          query,
+          node_types,
+          exact_match: exact_match ?? false,
+          limit: limit ?? 20,
+        });
       }
     );
 
-    // Tool: get_dependencies
+    // Tool: get_callers
     this.server.registerTool(
-      'get_dependencies',
+      getCallersDefinition.name,
       {
-        title: 'Get Dependencies',
-        description:
-          'List all direct and transitive dependencies of a class. ' +
-          'Returns compact format: "depth | Type | Name | filePath"',
-        inputSchema: {
-          class_name: z.string().describe('Name of the class to get dependencies for'),
-          depth: z
-            .number()
-            .min(1)
-            .max(5)
-            .optional()
-            .default(1)
-            .describe('Search depth (1 = direct only, 2+ = transitive)'),
-          include_external: z
-            .boolean()
-            .optional()
-            .default(false)
-            .describe('Include external dependencies (npm packages)'),
-        },
+        title: getCallersDefinition.title,
+        description: getCallersDefinition.description,
+        inputSchema: getCallersDefinition.inputSchema,
       },
-      async ({ class_name, depth, include_external }) => {
-        return await handleGetDependencies(this.neo4jClient, {
+      async ({ function_name, class_name, depth }) => {
+        return await handleGetCallers(this.neo4jClient, {
+          function_name,
           class_name,
+          depth: depth ?? 2,
+        });
+      }
+    );
+
+    // Tool: get_callees
+    this.server.registerTool(
+      getCalleesDefinition.name,
+      {
+        title: getCalleesDefinition.title,
+        description: getCalleesDefinition.description,
+        inputSchema: getCalleesDefinition.inputSchema,
+      },
+      async ({ function_name, class_name, depth }) => {
+        return await handleGetCallees(this.neo4jClient, {
+          function_name,
+          class_name,
+          depth: depth ?? 2,
+        });
+      }
+    );
+
+    // Tool: get_neighbors
+    this.server.registerTool(
+      getNeighborsDefinition.name,
+      {
+        title: getNeighborsDefinition.title,
+        description: getNeighborsDefinition.description,
+        inputSchema: getNeighborsDefinition.inputSchema,
+      },
+      async ({ node_name, direction, depth, include_external }) => {
+        return await handleGetNeighbors(this.neo4jClient, {
+          node_name,
+          direction: direction ?? 'both',
           depth: depth ?? 1,
           include_external: include_external ?? false,
         });
@@ -121,20 +146,11 @@ class CodeGraphServer {
 
     // Tool: get_implementations
     this.server.registerTool(
-      'get_implementations',
+      getImplementationsDefinition.name,
       {
-        title: 'Get Implementations',
-        description:
-          'Find all classes that implement a given interface. ' +
-          'Returns compact format: "direct/indirect | ClassName | filePath:line"',
-        inputSchema: {
-          interface_name: z.string().describe('Name of the interface or abstract class'),
-          include_indirect: z
-            .boolean()
-            .optional()
-            .default(false)
-            .describe('Include indirect implementations (via inheritance)'),
-        },
+        title: getImplementationsDefinition.title,
+        description: getImplementationsDefinition.description,
+        inputSchema: getImplementationsDefinition.inputSchema,
       },
       async ({ interface_name, include_indirect }) => {
         return await handleGetImplementations(this.neo4jClient, {
@@ -144,73 +160,53 @@ class CodeGraphServer {
       }
     );
 
-    // Tool: trace_calls
+    // Tool: get_impact
     this.server.registerTool(
-      'trace_calls',
+      getImpactDefinition.name,
       {
-        title: 'Trace Calls',
-        description:
-          'Trace function calls: who calls this function (callers) ' +
-          'or which functions it calls (callees). ' +
-          'Returns compact format: "direction:depth | Class.function() | filePath:line"',
-        inputSchema: {
-          function_name: z.string().describe('Name of the function to trace'),
-          class_name: z
-            .string()
-            .optional()
-            .describe('Name of the class containing the function (optional for disambiguation)'),
-          direction: z
-            .enum(['callers', 'callees', 'both'])
-            .optional()
-            .default('both')
-            .describe('Trace direction: who calls (callers), who is called (callees), or both'),
-          depth: z
-            .number()
-            .min(1)
-            .max(5)
-            .optional()
-            .default(2)
-            .describe('Trace depth'),
-        },
+        title: getImpactDefinition.title,
+        description: getImpactDefinition.description,
+        inputSchema: getImpactDefinition.inputSchema,
       },
-      async ({ function_name, class_name, direction, depth }) => {
-        return await handleTraceCalls(this.neo4jClient, {
-          function_name,
-          class_name,
-          direction: direction ?? 'both',
-          depth: depth ?? 2,
+      async ({ node_name, node_type, depth }) => {
+        return await handleGetImpact(this.neo4jClient, {
+          node_name,
+          node_type,
+          depth: depth ?? 3,
         });
       }
     );
 
-    // Tool: search_code
+    // Tool: find_path
     this.server.registerTool(
-      'search_code',
+      findPathDefinition.name,
       {
-        title: 'Search Code',
-        description:
-          'Full-text search in source code indexed in Neo4j. ' +
-          'Returns compact format: "type | name | filePath:line"',
-        inputSchema: {
-          query: z.string().describe('Search term'),
-          entity_types: z
-            .array(z.enum(['class', 'function', 'property', 'interface']))
-            .optional()
-            .describe('Entity types to search (all if not specified)'),
-          limit: z
-            .number()
-            .min(1)
-            .max(100)
-            .optional()
-            .default(20)
-            .describe('Maximum number of results'),
-        },
+        title: findPathDefinition.title,
+        description: findPathDefinition.description,
+        inputSchema: findPathDefinition.inputSchema,
       },
-      async ({ query, entity_types, limit }) => {
-        return await handleSearchCode(this.neo4jClient, {
-          query,
-          entity_types,
-          limit: limit ?? 20,
+      async ({ from_node, to_node, max_depth, relationship_types }) => {
+        return await handleFindPath(this.neo4jClient, {
+          from_node,
+          to_node,
+          max_depth: max_depth ?? 5,
+          relationship_types,
+        });
+      }
+    );
+
+    // Tool: get_file_symbols
+    this.server.registerTool(
+      getFileSymbolsDefinition.name,
+      {
+        title: getFileSymbolsDefinition.title,
+        description: getFileSymbolsDefinition.description,
+        inputSchema: getFileSymbolsDefinition.inputSchema,
+      },
+      async ({ file_path, include_private }) => {
+        return await handleGetFileSymbols(this.neo4jClient, {
+          file_path,
+          include_private: include_private ?? true,
         });
       }
     );
