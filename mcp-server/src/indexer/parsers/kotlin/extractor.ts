@@ -86,7 +86,10 @@ function extractImports(root: SyntaxNode): ParsedImport[] {
       const identifier = findChildByType(child, 'identifier');
       if (identifier) {
         const path = identifier.text;
-        const isWildcard = path.endsWith('*') || child.children.some((c) => c.type === 'STAR');
+        // Wildcard can be: path ends with *, STAR node, or wildcard_import node
+        const isWildcard =
+          path.endsWith('*') ||
+          child.children.some((c) => c.type === 'STAR' || c.type === 'wildcard_import');
         const aliasNode = findChildByType(child, 'import_alias');
 
         imports.push({
@@ -106,7 +109,7 @@ function extractImports(root: SyntaxNode): ParsedImport[] {
 // =============================================================================
 
 function extractClass(node: SyntaxNode): ParsedClass {
-  const kind = mapClassKind(node.type);
+  const kind = mapClassKind(node);
   const nameNode =
     node.childForFieldName('name') ??
     findChildByType(node, 'type_identifier') ??
@@ -141,16 +144,23 @@ function extractClass(node: SyntaxNode): ParsedClass {
   };
 }
 
-function mapClassKind(nodeType: string): ParsedClass['kind'] {
-  switch (nodeType) {
-    case 'interface_declaration':
-      return 'interface';
+function mapClassKind(node: SyntaxNode): ParsedClass['kind'] {
+  // Check for interface/object/enum keywords as children
+  const hasInterface = node.children.some((c) => c.type === 'interface');
+  const hasObject = node.children.some((c) => c.type === 'object');
+  const hasEnum = node.children.some((c) => c.type === 'enum');
+  const hasAnnotation = node.children.some((c) => c.type === 'annotation');
+
+  if (hasInterface) return 'interface';
+  if (hasObject) return 'object';
+  if (hasEnum) return 'enum';
+  if (hasAnnotation) return 'annotation';
+
+  switch (node.type) {
     case 'object_declaration':
       return 'object';
     case 'enum_class_declaration':
       return 'enum';
-    case 'annotation_declaration':
-      return 'annotation';
     default:
       return 'class';
   }
@@ -301,10 +311,14 @@ function extractReceiverType(node: SyntaxNode): string | undefined {
     return receiverType.text;
   }
 
-  // Alternative: check for receiver in function signature
-  const typeParams = findChildByType(node, 'type');
-  if (typeParams && typeParams.previousSibling?.type === '.') {
-    return typeParams.text;
+  // Extension function: user_type before the dot, e.g., "fun String.capitalize()"
+  // AST: [user_type] [.] [simple_identifier]
+  const userType = findChildByType(node, 'user_type');
+  if (userType) {
+    const nextSibling = userType.nextSibling;
+    if (nextSibling?.type === '.') {
+      return userType.text;
+    }
   }
 
   return undefined;
@@ -315,20 +329,25 @@ function extractReceiverType(node: SyntaxNode): string | undefined {
 // =============================================================================
 
 function extractProperty(node: SyntaxNode): ParsedProperty {
+  // Property name is in variable_declaration > simple_identifier
+  const varDecl = findChildByType(node, 'variable_declaration');
   const nameNode =
     node.childForFieldName('name') ??
-    findChildByType(node, 'variable_declaration')?.childForFieldName('name') ??
+    (varDecl ? findChildByType(varDecl, 'simple_identifier') : null) ??
     findChildByType(node, 'simple_identifier');
 
   const name = nameNode?.text ?? '<unnamed>';
   const modifiers = extractModifiers(node);
   const annotations = extractAnnotations(node);
 
-  // Check if val or var
-  const isVal = node.children.some((c) => c.type === 'val');
+  // Check if val or var (can be in binding_pattern_kind or directly)
+  const bindingKind = findChildByType(node, 'binding_pattern_kind');
+  const isVal = bindingKind
+    ? bindingKind.children.some((c) => c.type === 'val')
+    : node.children.some((c) => c.type === 'val');
 
-  // Extract type
-  const typeNode = findChildByType(node, 'type');
+  // Extract type from variable_declaration > user_type
+  const typeNode = varDecl ? findChildByType(varDecl, 'user_type') : findChildByType(node, 'type');
   const type = typeNode?.text;
 
   // Extract initializer
