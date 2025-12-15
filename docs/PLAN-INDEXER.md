@@ -111,30 +111,45 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 
 ## Étapes d'implémentation
 
-### Étape 1 : Setup structure et types communs
-- [ ] Créer `mcp-server/src/indexer/types.ts` avec les interfaces communes :
+### Étape 1 : Setup structure et types communs ✅ DONE
+- [x] Créer `mcp-server/src/indexer/types.ts` avec les interfaces communes :
   - `ParsedFile`, `ParsedClass`, `ParsedFunction`, `ParsedProperty`
   - `ParsedCall`, `ParsedImport`
   - `LanguageParser` (interface pour tous les parsers)
-- [ ] Créer `mcp-server/src/indexer/parsers/registry.ts` :
+  - **Ajouts** : `ParsedTypeParameter`, `ParsedConstructor`, `ParsedTypeAlias`, `ParsedDestructuringDeclaration`, `ParsedObjectExpression`, `ParsedFunctionType`
+- [x] Créer `mcp-server/src/indexer/parsers/registry.ts` :
   - Registre des parsers par extension (`.kt` → kotlin, `.java` → java)
   - Fonction `getParserForFile(filePath): LanguageParser`
 
-### Étape 2 : Parser Kotlin
-- [ ] Installer `tree-sitter` et `tree-sitter-kotlin`
-- [ ] Créer `mcp-server/src/indexer/parsers/kotlin/parser.ts` :
+### Étape 2 : Parser Kotlin ✅ DONE (112 tests, ~99% coverage)
+- [x] Installer `tree-sitter` et `tree-sitter-kotlin`
+- [x] Créer `mcp-server/src/indexer/parsers/kotlin/parser.ts` :
   - Initialisation tree-sitter-kotlin
   - Fonction `parse(source: string): Tree`
-- [ ] Créer `mcp-server/src/indexer/parsers/kotlin/extractor.ts` :
+- [x] Créer `mcp-server/src/indexer/parsers/kotlin/extractor.ts` :
   - Parcours de l'AST tree-sitter
-  - Extraction des classes, interfaces, objects
+  - Extraction des classes, interfaces, objects, enums, annotations
   - Extraction des fonctions et propriétés
   - Extraction des appels de fonction (syntaxiques)
   - Extraction des imports et extends/implements
-- [ ] Créer `mcp-server/src/indexer/parsers/kotlin/index.ts` :
+  - **Fonctionnalités avancées implémentées** :
+    - Companion objects
+    - Primary constructor properties (`class User(val id: String)`)
+    - Generics / Type parameters avec bounds et variance
+    - Secondary constructors
+    - Inline, infix, operator functions
+    - Type aliases
+    - Destructuring declarations
+    - Object expressions (anonymous objects)
+    - Annotation arguments
+    - Reified type parameters
+    - Crossinline/noinline modifiers
+    - Multiple type bounds (where clause)
+    - Lambda parameters (function types with receiver, suspend)
+- [x] Créer `mcp-server/src/indexer/parsers/kotlin/index.ts` :
   - Export du parser Kotlin implémentant `LanguageParser`
-- [ ] Enregistrer le parser Kotlin dans `registry.ts`
-- [ ] Tester le parsing d'un fichier .kt simple
+- [x] Enregistrer le parser Kotlin dans `registry.ts`
+- [x] Tester le parsing : **112 tests passants**
 
 ### Étape 3 : Résolveur de symboles
 - [ ] Créer `mcp-server/src/indexer/resolver.ts` :
@@ -187,30 +202,37 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 
 ## Fichiers à créer/modifier
 
-| Fichier | Action |
-|---------|--------|
-| `mcp-server/package.json` | Ajouter dépendances + bin |
-| `mcp-server/src/cli.ts` | Créer (CLI codegraph-indexer) |
-| `mcp-server/src/indexer/types.ts` | Créer (types communs) |
-| `mcp-server/src/indexer/parsers/registry.ts` | Créer (registre des parsers) |
-| `mcp-server/src/indexer/parsers/kotlin/parser.ts` | Créer |
-| `mcp-server/src/indexer/parsers/kotlin/extractor.ts` | Créer |
-| `mcp-server/src/indexer/parsers/kotlin/index.ts` | Créer |
-| `mcp-server/src/indexer/resolver.ts` | Créer (partagé) |
-| `mcp-server/src/indexer/writer.ts` | Créer (partagé) |
-| `mcp-server/src/indexer/index.ts` | Créer |
-| `mcp-server/src/tools/index-codebase/*` | Créer (4 fichiers) |
-| `mcp-server/src/index.ts` | Modifier (enregistrer tool) |
-| `docs/INDEXING.md` | Créer |
-| `docs/commands/codegraph-indexer.md` | Créer (slash command) |
-| `README.md` | Modifier (ajouter instructions)
+| Fichier | Action | Status |
+|---------|--------|--------|
+| `mcp-server/package.json` | Ajouter dépendances + bin | ✅ Dépendances ajoutées |
+| `mcp-server/src/cli.ts` | Créer (CLI codegraph-indexer) | ⏳ TODO |
+| `mcp-server/src/indexer/types.ts` | Créer (types communs) | ✅ DONE |
+| `mcp-server/src/indexer/parsers/registry.ts` | Créer (registre des parsers) | ✅ DONE |
+| `mcp-server/src/indexer/parsers/kotlin/parser.ts` | Créer | ✅ DONE |
+| `mcp-server/src/indexer/parsers/kotlin/extractor.ts` | Créer | ✅ DONE (~900 lignes) |
+| `mcp-server/src/indexer/parsers/kotlin/index.ts` | Créer | ✅ DONE |
+| `mcp-server/src/indexer/parsers/kotlin/index.test.ts` | Tests | ✅ DONE (112 tests) |
+| `mcp-server/src/indexer/resolver.ts` | Créer (partagé) | ⏳ TODO |
+| `mcp-server/src/indexer/writer.ts` | Créer (partagé) | ⏳ TODO |
+| `mcp-server/src/indexer/index.ts` | Créer | ✅ DONE |
+| `mcp-server/src/tools/index-codebase/*` | Créer (4 fichiers) | ⏳ TODO |
+| `mcp-server/src/index.ts` | Modifier (enregistrer tool) | ⏳ TODO |
+| `docs/INDEXING.md` | Créer | ⏳ TODO |
+| `docs/commands/codegraph-indexer.md` | Créer (slash command) | ⏳ TODO |
+| `README.md` | Modifier (ajouter instructions) | ⏳ TODO |
 
 ## Dépendances à ajouter
 
 ```json
 {
-  "tree-sitter": "^0.21.1",
-  "tree-sitter-kotlin": "^0.3.8",
+  "tree-sitter": "^0.22.4",
+  "tree-sitter-kotlin": "^0.3.9"
+}
+```
+
+**Dépendances à ajouter pour CLI (Étape 5)** :
+```json
+{
   "glob": "^10.3.10",
   "commander": "^12.1.0"
 }
@@ -219,6 +241,35 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 Notes:
 - `glob` : scanner récursivement les fichiers .kt
 - `commander` : parsing des arguments CLI
+
+## Résumé des progrès
+
+### Complété ✅
+
+| Composant | Description | Tests |
+|-----------|-------------|-------|
+| **Types communs** | 15 interfaces pour représenter le code Kotlin parsé | - |
+| **Parser registry** | Registre modulaire des parsers par extension | - |
+| **Parser Kotlin** | Parsing tree-sitter avec extraction complète | 112 |
+
+### Fonctionnalités Kotlin supportées
+
+| Catégorie | Fonctionnalités |
+|-----------|-----------------|
+| **Classes** | class, interface, object, enum, annotation, data, sealed, abstract |
+| **Membres** | functions, properties, companion objects, nested classes |
+| **Constructeurs** | primary (avec val/var properties), secondary |
+| **Generics** | type parameters, bounds, variance (in/out), reified, where clause |
+| **Fonctions** | extension, suspend, inline, infix, operator |
+| **Lambda** | function types, receiver types, crossinline, noinline |
+| **Autres** | imports, annotations avec arguments, type aliases, destructuring |
+
+### Prochaines étapes
+
+1. **Resolver** : Résolution des symboles et appels cross-fichiers
+2. **Writer** : Écriture batch vers Neo4j
+3. **CLI** : Commande `codegraph-indexer`
+4. **MCP Tool** : Outil `index_codebase` pour Claude
 
 ## Schema Neo4j (rappel)
 
