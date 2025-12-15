@@ -59,8 +59,13 @@ codegraph/
 │       │   ├── neo4j.ts        # Neo4j client wrapper (modern executeQuery API)
 │       │   └── neo4j.types.ts  # Neo4j type definitions
 │       └── tools/
-│           ├── index.ts        # Tool handlers (find_class, get_dependencies, etc.)
-│           └── formatters.ts   # Compact output formatters for token optimization
+│           ├── <tool-name>/    # One directory per tool (e.g., search-nodes/)
+│           │   ├── definition.ts  # Zod schema for input validation
+│           │   ├── handler.ts     # Handler function implementation
+│           │   ├── types.ts       # TypeScript type definitions
+│           │   └── index.ts       # Module re-exports
+│           ├── formatters.ts   # Compact output formatters for token optimization
+│           └── index.ts        # Re-exports all tools
 ├── docs/
 │   └── SCHEMA.md         # Neo4j schema for Kotlin code analysis
 └── docker-compose.yml    # Neo4j 5 Community container
@@ -68,30 +73,26 @@ codegraph/
 
 ### MCP Server Structure
 
-- **CodeGraphServer class** (`index.ts`): Main server using `@modelcontextprotocol/sdk`. Registers 5 tools with Zod schemas for input validation.
-- **Configuration** (`config/`):
-  - `config.ts`: Server configuration from environment variables
-  - `config.types.ts`: TypeScript interfaces (`Neo4jConfig`, `ServerConfig`, `Config`)
-- **Neo4jClient class** (`neo4j/neo4j.ts`): Wrapper around `neo4j-driver` with:
-  - `query()`: Read-only queries with automatic routing
-  - `write()`: Write queries
-  - `execute()`: Queries with explicit routing control
-  - `readTransaction()`/`writeTransaction()`: Multi-query transactions
-  - Automatic conversion of Neo4j types (Node, Relationship, Path, Integer) to JS objects
-- **Tool handlers** (`tools/index.ts`): Handler functions for each MCP tool
+- **CodeGraphServer class** (`index.ts`): Main server using `@modelcontextprotocol/sdk`. Registers tools with Zod schemas for input validation.
+- **Configuration** (`config/`): Server configuration from environment variables
+- **Neo4jClient class** (`neo4j/neo4j.ts`): Wrapper around `neo4j-driver` with read/write queries, transactions, and automatic type conversion
+- **Tool modules** (`tools/<tool-name>/`): Each tool is a self-contained module with definition, handler, and types
 - **Formatters** (`tools/formatters.ts`): Compact output formatters for token optimization
 
 ### MCP Tools
 
 | Tool | Purpose |
 |------|---------|
-| `find_class` | Search class/interface by name (exact or partial match) |
-| `get_dependencies` | List class dependencies with configurable depth (1-5) |
+| `search_nodes` | Search nodes (classes, interfaces, functions) by name or pattern |
+| `get_callers` | Find all functions that call a specified function |
+| `get_callees` | Find all functions called by a specified function |
+| `get_neighbors` | Get dependencies and dependents of a class/interface |
 | `get_implementations` | Find interface implementations (direct or indirect) |
-| `trace_calls` | Trace function callers/callees with configurable depth |
-| `search_code` | Full-text search across classes, functions, properties |
+| `get_impact` | Analyze impact of modifying a node |
+| `find_path` | Find shortest path between two nodes |
+| `get_file_symbols` | List all symbols defined in a file |
 
-Tool handlers in `tools/index.ts` return stub data - Cypher query implementations are TODO.
+Tool handlers return stub data - Cypher query implementations are TODO.
 
 ### Output Format Convention
 
@@ -103,23 +104,15 @@ field1 | field2 | field3
 field1 | field2 | field3
 ```
 
-| Tool | Format |
-|------|--------|
-| `find_class` | `type \| Name \| visibility \| filePath:line` |
-| `get_dependencies` | `depth \| Type \| Name \| filePath` |
-| `get_implementations` | `direct/indirect \| ClassName \| filePath:line` |
-| `trace_calls` | `direction:depth \| Class.function() \| filePath:line` |
-| `search_code` | `type \| name \| filePath:line` |
-
 Example output:
 ```
-CLASSES (3):
+NODES (3):
 class | UserService | public | /src/services/UserService.kt:10
 interface | Repository | public | /src/domain/Repository.kt:5
 class | UserRepositoryImpl | internal | /src/infra/UserRepositoryImpl.kt:15
 ```
 
-Formatters are defined in `tools/formatters.ts` (`formatters` object and `buildCompactOutput()` helper).
+Formatters are defined in `tools/formatters.ts` (`buildCompactOutput()` helper).
 
 ### Neo4j Schema (Kotlin-focused)
 

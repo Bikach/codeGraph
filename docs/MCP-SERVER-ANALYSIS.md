@@ -4,9 +4,7 @@ Ce document décrit le fonctionnement du serveur MCP méthode par méthode.
 
 ---
 
-## 1. Fichier `index.ts` - Serveur MCP Principal
-
-### Vue d'ensemble
+## 1. Architecture générale
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -16,23 +14,34 @@ Ce document décrit le fonctionnement du serveur MCP méthode par méthode.
 │  - neo4jClient: Neo4jClient ← Client base de données        │
 ├─────────────────────────────────────────────────────────────┤
 │  constructor()              ← Init + register tools         │
-│  registerTools()            ← Déclare les 5 outils          │
-│  handleFindClass()          ← Handler (TODO)                │
-│  handleGetDependencies()    ← Handler (TODO)                │
-│  handleGetImplementations() ← Handler (TODO)                │
-│  handleTraceCalls()         ← Handler (TODO)                │
-│  handleSearchCode()         ← Handler (TODO)                │
+│  registerTools()            ← Enregistre les 8 outils       │
 │  start()                    ← Démarre le serveur            │
 │  cleanup()                  ← Ferme les connexions          │
 └─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                    Tool Modules (tools/)                     │
+├─────────────────────────────────────────────────────────────┤
+│  search-nodes/     │ get-callers/      │ get-callees/       │
+│  get-neighbors/    │ get-implementations/ │ get-impact/     │
+│  find-path/        │ get-file-symbols/                      │
+├─────────────────────────────────────────────────────────────┤
+│  Chaque module contient:                                    │
+│  - definition.ts  → Schéma Zod (inputSchema)                │
+│  - handler.ts     → Logique métier                          │
+│  - types.ts       → Types TypeScript                        │
+│  - index.ts       → Re-exports                              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Points importants
+---
 
-#### 1. Configuration (lignes 22-33)
+## 2. Fichier `index.ts` - Serveur MCP Principal
+
+### Configuration (config/config.ts)
 
 ```typescript
-const config = {
+export const config: Config = {
   neo4j: {
     uri: process.env.NEO4J_URI || 'bolt://localhost:7687',
     user: process.env.NEO4J_USER || 'neo4j',
@@ -49,23 +58,7 @@ const config = {
 
 ---
 
-#### 2. Schémas Zod (lignes 38-76)
-
-5 schémas définissent la structure des réponses :
-
-| Schéma | Usage | Champs clés |
-|--------|-------|-------------|
-| `ClassInfoSchema` | Résultat de `find_class` | name, type, filePath, lineNumber, visibility |
-| `DependencySchema` | Résultat de `get_dependencies` | name, type, depth, filePath |
-| `ImplementationSchema` | Résultat de `get_implementations` | name, filePath, isDirect |
-| `CallTraceSchema` | Résultat de `trace_calls` | functionName, className, direction, depth |
-| `SearchResultSchema` | Résultat de `search_code` | name, type, filePath, snippet |
-
-**Point clé**: Zod valide automatiquement les entrées/sorties et génère la doc pour le LLM.
-
----
-
-#### 3. Constructor (lignes 85-111)
+### Constructor (index.ts)
 
 ```typescript
 constructor() {
@@ -96,69 +89,61 @@ constructor() {
 
 ---
 
-#### 4. registerTools() - Pattern d'enregistrement (lignes 116-286)
+### registerTools() - Pattern d'enregistrement
 
-Chaque outil suit ce pattern :
+Chaque outil est enregistré avec sa définition importée depuis le module:
 
 ```typescript
+import { searchNodesDefinition, handleSearchNodes } from './tools/index.js';
+
 this.server.registerTool(
-  'tool_name',                    // 1. Nom de l'outil
+  searchNodesDefinition.name,       // 'search_nodes'
   {
-    title: 'Human Title',         // 2. Titre lisible
-    description: '...',           // 3. Description pour le LLM
-    inputSchema: {                // 4. Schéma d'entrée Zod
-      param: z.string().describe('...'),
-      optional_param: z.boolean().optional().default(false),
-    },
-    outputSchema: {               // 5. Schéma de sortie Zod
-      results: z.array(...),
-      count: z.number(),
-    },
+    title: searchNodesDefinition.title,
+    description: searchNodesDefinition.description,
+    inputSchema: searchNodesDefinition.inputSchema,  // Zod schema
   },
-  async (args) => {               // 6. Handler async
-    return await this.handleXxx(args);
+  async ({ query, node_types, exact_match, limit }) => {
+    return await handleSearchNodes(this.neo4jClient, {
+      query,
+      node_types,
+      exact_match: exact_match ?? false,
+      limit: limit ?? 20,
+    });
   }
 );
 ```
 
 **Points clés**:
-- `inputSchema` utilise des objets Zod directement (pas de JSON Schema)
+- Les définitions (Zod schemas) sont dans `tools/<name>/definition.ts`
+- Les handlers sont dans `tools/<name>/handler.ts`
 - `.describe()` documente chaque paramètre pour le LLM
 - `.optional().default(value)` gère les valeurs par défaut
-- Les handlers retournent un format spécifique (voir ci-dessous)
 
 ---
 
-#### 5. Format de retour des handlers (lignes 291-407)
+### Format de retour des handlers
 
 ```typescript
-private async handleFindClass(_args: { name: string; exact_match: boolean }) {
-  const output = {
-    classes: [] as z.infer<typeof ClassInfoSchema>[],
-    count: 0,
-  };
+export async function handleSearchNodes(
+  _client: Neo4jClient,
+  params: SearchNodesParams
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const results: NodeResult[] = [];
+
+  const text = buildCompactOutput('NODES', results, formatNode);
 
   return {
-    content: [
-      {
-        type: 'text' as const,    // Contenu texte pour le LLM
-        text: JSON.stringify(output, null, 2),
-      },
-    ],
-    structuredContent: output,    // Données structurées validées par outputSchema
+    content: [{ type: 'text', text }],
   };
 }
 ```
 
-**Point clé**: Le retour contient :
-- `content`: Array de blocs (texte, images, etc.) pour le LLM
-- `structuredContent`: Données typées correspondant à `outputSchema`
-
-**État actuel**: Tous les handlers retournent des données vides - les requêtes Cypher sont TODO.
+**Point clé**: Le retour contient un array `content` avec des blocs texte. Le format compact optimise les tokens.
 
 ---
 
-#### 6. start() et cleanup() (lignes 412-429)
+### start() et cleanup()
 
 ```typescript
 async start(): Promise<void> {
@@ -179,25 +164,75 @@ async start(): Promise<void> {
 
 ---
 
-#### 7. Point d'entrée (lignes 435-443)
+## 3. Structure d'un module d'outil
 
+Exemple avec `search-nodes/`:
+
+### definition.ts
 ```typescript
-async function main() {
-  const server = new CodeGraphServer();
-  await server.start();
-}
+import { z } from 'zod';
 
-main().catch((error) => {
-  console.error('Fatal error:', error);
-  process.exit(1);
-});
+export const searchNodesDefinition = {
+  name: 'search_nodes',
+  title: 'Search Nodes',
+  description: 'Search for nodes by name or pattern...',
+  inputSchema: {
+    query: z.string().describe('Search query'),
+    node_types: z.array(z.enum([...])).optional(),
+    exact_match: z.boolean().optional().default(false),
+    limit: z.number().min(1).max(100).optional().default(20),
+  },
+};
 ```
 
-**Point clé**: Gestion globale des erreurs avec exit code 1.
+### types.ts
+```typescript
+export type SearchNodesParams = {
+  query: string;
+  node_types?: Array<'class' | 'interface' | 'function' | 'property' | 'object'>;
+  exact_match?: boolean;
+  limit?: number;
+};
+
+export type NodeResult = {
+  name: string;
+  type: string;
+  visibility: string;
+  filePath: string;
+  lineNumber: number;
+};
+```
+
+### handler.ts
+```typescript
+import { Neo4jClient } from '../../neo4j/neo4j.js';
+import { buildCompactOutput } from '../formatters.js';
+import type { SearchNodesParams, NodeResult } from './types.js';
+
+const formatNode = (n: NodeResult) =>
+  `${n.type} | ${n.name} | ${n.visibility} | ${n.filePath}:${n.lineNumber}`;
+
+export async function handleSearchNodes(
+  _client: Neo4jClient,
+  params: SearchNodesParams
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  // TODO: Implement Neo4j query
+  const results: NodeResult[] = [];
+  const text = buildCompactOutput('NODES', results, formatNode);
+  return { content: [{ type: 'text', text }] };
+}
+```
+
+### index.ts
+```typescript
+export { searchNodesDefinition } from './definition.js';
+export { handleSearchNodes } from './handler.js';
+export type { SearchNodesParams, NodeResult } from './types.js';
+```
 
 ---
 
-## 2. Fichier `neo4j.ts` - Client Neo4j
+## 4. Fichier `neo4j.ts` - Client Neo4j
 
 ### Vue d'ensemble
 
@@ -217,16 +252,14 @@ main().catch((error) => {
 │  writeTransaction<T>()     ← Transaction WRITE multi-query  │
 │  recordToObject<T>()       ← Conversion Record → Object     │
 │  convertValue()            ← Conversion types Neo4j → JS    │
-│  isConnected()             ← Check état connexion           │
-│  static routing            ← Expose neo4j.routing           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### Méthodes détaillées
+### Méthodes principales
 
-#### 1. connect() (lignes 57-73)
+#### connect()
 
 ```typescript
 async connect(): Promise<void> {
@@ -234,106 +267,39 @@ async connect(): Promise<void> {
     this.uri,
     neo4j.auth.basic(this.user, this.password),
     {
-      maxConnectionPoolSize: 50,           // Pool de 50 connexions
-      connectionAcquisitionTimeout: 30000, // 30s pour obtenir une connexion
-      disableLosslessIntegers: true,       // IMPORTANT: Integer → number JS
-      maxTransactionRetryTime: 30000,      // 30s de retry sur erreur
-      connectionTimeout: 30000,            // 30s timeout connexion
+      maxConnectionPoolSize: 50,
+      connectionAcquisitionTimeout: 30000,
+      disableLosslessIntegers: true,  // Integer → number JS
+      maxTransactionRetryTime: 30000,
+      connectionTimeout: 30000,
     }
   );
-  await this.driver.verifyConnectivity();  // Test la connexion
+  await this.driver.verifyConnectivity();
 }
 ```
 
-**Points clés**:
-- `disableLosslessIntegers: true` → Les Integer Neo4j deviennent des `number` JS (sinon c'est un objet complexe)
-- `verifyConnectivity()` échoue si Neo4j est inaccessible
+**Point clé**: `disableLosslessIntegers: true` convertit les Integer Neo4j en `number` JS.
 
----
-
-#### 2. query() vs write() (lignes 99-159)
+#### query() vs write()
 
 | Méthode | Routing | Usage |
 |---------|---------|-------|
-| `query<T>()` | `neo4j.routing.READ` | SELECT, MATCH (lecture) |
-| `write<T>()` | `neo4j.routing.WRITE` | CREATE, UPDATE, DELETE |
+| `query<T>()` | READ | SELECT, MATCH (lecture) |
+| `write<T>()` | WRITE | CREATE, UPDATE, DELETE |
 
-```typescript
-// Exemple query
-const results = await client.query<{ c: ClassNode }>(
-  'MATCH (c:Class {name: $name}) RETURN c',
-  { name: 'MyClass' }
-);
-
-// Exemple write
-await client.write(
-  'CREATE (c:Class {name: $name})',
-  { name: 'NewClass' }
-);
-```
-
-**Point clé**: Le routing est important pour les clusters Neo4j (lecture sur replicas, écriture sur leader).
-
----
-
-#### 3. execute() (lignes 177-206)
-
-```typescript
-async execute<T>(
-  cypher: string,
-  parameters: {},
-  routing: RoutingControl,     // READ ou WRITE
-  options: QueryOptions
-): Promise<{ records: T[]; summary: {...} }>
-```
-
-**Différence avec query/write**: Retourne aussi un `summary` avec :
-- `counters`: Nombre de nodes/relations créés/supprimés
-- `queryType`: Type de requête ("r", "w", "rw", etc.)
-
----
-
-#### 4. Transactions (lignes 223-276)
-
-```typescript
-// Transaction READ - plusieurs requêtes atomiques en lecture
-const result = await client.readTransaction(async (tx) => {
-  const classes = await tx.run('MATCH (c:Class) RETURN c');
-  const interfaces = await tx.run('MATCH (i:Interface) RETURN i');
-  return { classes, interfaces };  // Tout ou rien
-});
-
-// Transaction WRITE - plusieurs requêtes atomiques en écriture
-await client.writeTransaction(async (tx) => {
-  await tx.run('CREATE (a:Class {name: "A"})');
-  await tx.run('CREATE (b:Class {name: "B"})');
-  await tx.run('MATCH (a:Class {name: "A"}), (b:Class {name: "B"}) CREATE (a)-[:DEPENDS_ON]->(b)');
-});  // Rollback automatique si erreur
-```
-
-**Point clé**: Utilisez les transactions quand vous avez plusieurs requêtes qui doivent réussir ensemble.
-
----
-
-#### 5. convertValue() - Conversion des types Neo4j (lignes 301-366)
-
-Cette méthode est **cruciale** car Neo4j retourne des types spéciaux :
+#### convertValue() - Conversion des types Neo4j
 
 | Type Neo4j | Conversion JS |
 |------------|---------------|
 | `Node` | `{ elementId, labels, properties }` |
 | `Relationship` | `{ elementId, type, startNodeElementId, endNodeElementId, properties }` |
 | `Path` | `{ start, end, segments: [...] }` |
-| `Integer` | `number` (via `toNumber()`) |
+| `Integer` | `number` |
 | `DateTime/Date/Time` | `string` ISO |
-| `Array` | Conversion récursive |
-| `Object` | Conversion récursive |
-
-**Point clé**: Sans cette conversion, les types Neo4j ne sont pas sérialisables en JSON.
 
 ---
 
-## 3. Flux d'exécution complet
+## 5. Flux d'exécution complet
 
 ```
 ┌─────────────┐     stdin      ┌─────────────┐    Cypher    ┌─────────┐
@@ -341,39 +307,39 @@ Cette méthode est **cruciale** car Neo4j retourne des types spéciaux :
 │    Code     │                │  (index.ts) │              │         │
 │             │◀────────────── │             │◀──────────── │         │
 └─────────────┘     stdout     └─────────────┘   Results    └─────────┘
-        │                             │
-        │  JSON-RPC via stdio         │
-        │  (MCP Protocol)             │
-        ▼                             ▼
-   Requête:                     Traitement:
-   {                            1. Valide avec Zod
-     "method": "tools/call",    2. Exécute handler
-     "params": {                3. Query Neo4j
-       "name": "find_class",    4. Convertit résultats
-       "arguments": {           5. Retourne JSON
-         "name": "User"
-       }
-     }
-   }
+
+Requête MCP:                   Traitement:
+{                              1. Valide inputSchema (Zod)
+  "method": "tools/call",      2. Appelle handler
+  "params": {                  3. Query Neo4j (TODO)
+    "name": "search_nodes",    4. Format compact output
+    "arguments": {             5. Retourne content[]
+      "query": "User"
+    }
+  }
+}
 ```
 
 ---
 
-## 4. Ce qui reste à implémenter (TODO)
+## 6. Liste des outils MCP
 
-Les 5 handlers dans `index.ts` retournent des données vides. Il faut :
+| Outil | Description |
+|-------|-------------|
+| `search_nodes` | Recherche de nœuds par nom/pattern |
+| `get_callers` | Fonctions qui appellent une fonction |
+| `get_callees` | Fonctions appelées par une fonction |
+| `get_neighbors` | Dépendances et dépendants d'une classe |
+| `get_implementations` | Implémentations d'une interface |
+| `get_impact` | Analyse d'impact d'une modification |
+| `find_path` | Chemin le plus court entre deux nœuds |
+| `get_file_symbols` | Symboles définis dans un fichier |
 
-1. **handleFindClass**: Requête Cypher pour chercher Class/Interface par nom
-2. **handleGetDependencies**: Requête avec `*1..depth` pour parcourir les relations USES/DEPENDS
-3. **handleGetImplementations**: Requête `[:IMPLEMENTS]` avec optionnel `[:EXTENDS*]`
-4. **handleTraceCalls**: Requête `[:CALLS*1..depth]` bidirectionnelle
-5. **handleSearchCode**: Requête avec `CONTAINS` ou full-text index
-
-Le schéma Cypher est documenté dans `docs/SCHEMA.md` avec des exemples de requêtes.
+**État actuel**: Tous les handlers retournent des données vides - les requêtes Cypher sont TODO.
 
 ---
 
-## 5. Résumé des imports clés
+## 7. Résumé des imports clés
 
 ```typescript
 // MCP SDK
@@ -384,11 +350,12 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 // Neo4j
-import neo4j, {
-  Driver,
-  ManagedTransaction,
-  Record as Neo4jRecord,
-  Neo4jError,
-  RoutingControl,
-} from 'neo4j-driver';
+import neo4j, { Driver, ManagedTransaction } from 'neo4j-driver';
+
+// Tools
+import {
+  searchNodesDefinition, handleSearchNodes,
+  getCallersDefinition, handleGetCallers,
+  // ... autres outils
+} from './tools/index.js';
 ```
