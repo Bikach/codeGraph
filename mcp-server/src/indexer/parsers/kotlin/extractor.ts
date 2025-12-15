@@ -119,9 +119,8 @@ function extractClass(node: SyntaxNode): ParsedClass {
   const modifiers = extractModifiers(node);
   const annotations = extractAnnotations(node);
 
-  // Extract super types
-  const delegationSpecifiers = findChildByType(node, 'delegation_specifiers');
-  const { superClass, interfaces } = extractSuperTypes(delegationSpecifiers, kind);
+  // Extract super types (delegation_specifier nodes are direct children of class_declaration)
+  const { superClass, interfaces } = extractSuperTypes(node, kind);
 
   // Extract body members
   const classBody = findChildByType(node, 'class_body') ?? findChildByType(node, 'enum_class_body');
@@ -167,39 +166,27 @@ function mapClassKind(node: SyntaxNode): ParsedClass['kind'] {
 }
 
 function extractSuperTypes(
-  delegationSpecifiers: SyntaxNode | undefined,
+  classNode: SyntaxNode,
   kind: ParsedClass['kind']
 ): { superClass?: string; interfaces: string[] } {
-  if (!delegationSpecifiers) {
-    return { superClass: undefined, interfaces: [] };
-  }
-
-  const superClass: string | undefined = undefined;
   const interfaces: string[] = [];
 
-  for (const child of delegationSpecifiers.children) {
+  // delegation_specifier nodes are direct children of class_declaration
+  for (const child of classNode.children) {
     if (child.type === 'delegation_specifier') {
       const typeRef = findChildByType(child, 'user_type') ?? findChildByType(child, 'constructor_invocation');
       if (typeRef) {
         const typeName = extractTypeName(typeRef);
         if (typeName) {
-          // In Kotlin, the first type is the superclass (if class), rest are interfaces
-          // For interfaces, all are super-interfaces
-          if (kind === 'interface') {
-            interfaces.push(typeName);
-          } else if (interfaces.length === 0) {
-            // First one could be class or interface - we can't know without type resolution
-            // For now, treat first as superClass, rest as interfaces
-            interfaces.push(typeName);
-          } else {
-            interfaces.push(typeName);
-          }
+          interfaces.push(typeName);
         }
       }
     }
   }
 
-  return { superClass, interfaces };
+  // Note: Without type resolution, we cannot distinguish between superclass and interfaces
+  // All delegation specifiers are stored in interfaces array
+  return { superClass: undefined, interfaces };
 }
 
 function extractClassBody(classBody: SyntaxNode | undefined): {
@@ -281,7 +268,11 @@ function extractParameters(node: SyntaxNode): ParsedParameter[] {
   for (const child of paramList.children) {
     if (child.type === 'parameter') {
       const nameNode = findChildByType(child, 'simple_identifier');
-      const typeNode = findChildByType(child, 'type');
+      // Type can be: user_type (String), nullable_type (User?), or other type nodes
+      const typeNode =
+        findChildByType(child, 'nullable_type') ??
+        findChildByType(child, 'user_type') ??
+        findChildByType(child, 'type');
       const defaultValue = findChildByType(child, 'default_value');
 
       params.push({
@@ -297,10 +288,21 @@ function extractParameters(node: SyntaxNode): ParsedParameter[] {
 }
 
 function extractReturnType(node: SyntaxNode): string | undefined {
-  const typeNode = node.childForFieldName('type') ?? findChildByType(node, 'type');
-  // Skip if type is a parameter type
-  if (typeNode && typeNode.parent?.type === 'function_declaration') {
-    return typeNode.text;
+  // Return type can be: nullable_type (User?), user_type (User), or other type nodes
+  // They appear after ':' and before function_body in function_declaration
+  for (const child of node.children) {
+    // Skip parameter types (they are inside function_value_parameters)
+    if (
+      child.type === 'nullable_type' ||
+      child.type === 'user_type' ||
+      child.type === 'type_identifier'
+    ) {
+      // Make sure it's not the receiver type (comes before the function name)
+      const prevSibling = child.previousSibling;
+      if (prevSibling?.type === ':') {
+        return child.text;
+      }
+    }
   }
   return undefined;
 }
@@ -346,8 +348,10 @@ function extractProperty(node: SyntaxNode): ParsedProperty {
     ? bindingKind.children.some((c) => c.type === 'val')
     : node.children.some((c) => c.type === 'val');
 
-  // Extract type from variable_declaration > user_type
-  const typeNode = varDecl ? findChildByType(varDecl, 'user_type') : findChildByType(node, 'type');
+  // Extract type from variable_declaration (can be user_type or nullable_type)
+  const typeNode = varDecl
+    ? findChildByType(varDecl, 'nullable_type') ?? findChildByType(varDecl, 'user_type')
+    : findChildByType(node, 'nullable_type') ?? findChildByType(node, 'user_type') ?? findChildByType(node, 'type');
   const type = typeNode?.text;
 
   // Extract initializer
