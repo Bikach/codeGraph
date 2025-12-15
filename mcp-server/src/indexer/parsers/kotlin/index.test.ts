@@ -1066,4 +1066,217 @@ class SecondClass`;
       expect(result.destructuringDeclarations[0]!.isVal).toBe(false);
     });
   });
+
+  // =============================================================================
+  // Priority 5 Features
+  // =============================================================================
+
+  describe('reified type parameters', () => {
+    it('should extract reified modifier on inline function type parameter', async () => {
+      const source = `
+        inline fun <reified T> isInstance(value: Any): Boolean = value is T
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.topLevelFunctions).toHaveLength(1);
+      expect(result.topLevelFunctions[0]!.typeParameters).toHaveLength(1);
+      expect(result.topLevelFunctions[0]!.typeParameters![0]!.name).toBe('T');
+      expect(result.topLevelFunctions[0]!.typeParameters![0]!.isReified).toBe(true);
+    });
+
+    it('should extract reified with bounds', async () => {
+      const source = `
+        inline fun <reified T : Comparable<T>> sort(list: List<T>) {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      const typeParam = result.topLevelFunctions[0]!.typeParameters![0]!;
+      expect(typeParam.name).toBe('T');
+      expect(typeParam.isReified).toBe(true);
+      expect(typeParam.bounds).toContain('Comparable<T>');
+    });
+
+    it('should not mark non-reified type parameters as reified', async () => {
+      const source = `
+        fun <T> identity(value: T): T = value
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.topLevelFunctions[0]!.typeParameters![0]!.isReified).toBeUndefined();
+    });
+  });
+
+  describe('crossinline and noinline modifiers', () => {
+    it('should extract crossinline modifier on lambda parameter', async () => {
+      const source = `
+        inline fun execute(crossinline block: () -> Unit) {
+          block()
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.topLevelFunctions).toHaveLength(1);
+      expect(result.topLevelFunctions[0]!.parameters).toHaveLength(1);
+      expect(result.topLevelFunctions[0]!.parameters[0]!.name).toBe('block');
+      expect(result.topLevelFunctions[0]!.parameters[0]!.isCrossinline).toBe(true);
+      expect(result.topLevelFunctions[0]!.parameters[0]!.isNoinline).toBeUndefined();
+    });
+
+    it('should extract noinline modifier on lambda parameter', async () => {
+      const source = `
+        inline fun execute(noinline block: () -> String): () -> String = block
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.topLevelFunctions[0]!.parameters[0]!.isNoinline).toBe(true);
+      expect(result.topLevelFunctions[0]!.parameters[0]!.isCrossinline).toBeUndefined();
+    });
+
+    it('should handle both crossinline and noinline in same function', async () => {
+      const source = `
+        inline fun process(crossinline a: () -> Unit, noinline b: () -> String) {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.topLevelFunctions[0]!.parameters[0]!.name).toBe('a');
+      expect(result.topLevelFunctions[0]!.parameters[0]!.isCrossinline).toBe(true);
+      expect(result.topLevelFunctions[0]!.parameters[1]!.name).toBe('b');
+      expect(result.topLevelFunctions[0]!.parameters[1]!.isNoinline).toBe(true);
+    });
+
+    it('should not mark regular parameters with these modifiers', async () => {
+      const source = `
+        fun regular(value: String) {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.topLevelFunctions[0]!.parameters[0]!.isCrossinline).toBeUndefined();
+      expect(result.topLevelFunctions[0]!.parameters[0]!.isNoinline).toBeUndefined();
+    });
+  });
+
+  describe('multiple type bounds (where clause)', () => {
+    it('should extract where clause bounds on function', async () => {
+      const source = `
+        fun <T> copy(source: T, dest: T) where T : CharSequence, T : Comparable<T> {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.topLevelFunctions).toHaveLength(1);
+      const typeParam = result.topLevelFunctions[0]!.typeParameters![0]!;
+      expect(typeParam.name).toBe('T');
+      expect(typeParam.bounds).toContain('CharSequence');
+      expect(typeParam.bounds).toContain('Comparable<T>');
+    });
+
+    it('should extract where clause bounds on class', async () => {
+      const source = `
+        class Repository<T> where T : Entity, T : Serializable {
+          fun save(entity: T) {}
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.classes).toHaveLength(1);
+      const typeParam = result.classes[0]!.typeParameters![0]!;
+      expect(typeParam.name).toBe('T');
+      expect(typeParam.bounds).toContain('Entity');
+      expect(typeParam.bounds).toContain('Serializable');
+    });
+
+    it('should merge inline bound with where clause bounds', async () => {
+      const source = `
+        fun <T : Base> process(item: T) where T : Comparable<T> {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      const typeParam = result.topLevelFunctions[0]!.typeParameters![0]!;
+      expect(typeParam.bounds).toContain('Base');
+      expect(typeParam.bounds).toContain('Comparable<T>');
+      expect(typeParam.bounds).toHaveLength(2);
+    });
+
+    it('should handle multiple type parameters with where clause', async () => {
+      const source = `
+        fun <K, V> mapOf() where K : Comparable<K>, V : Any {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      const typeParams = result.topLevelFunctions[0]!.typeParameters!;
+      expect(typeParams).toHaveLength(2);
+      expect(typeParams[0]!.name).toBe('K');
+      expect(typeParams[0]!.bounds).toContain('Comparable<K>');
+      expect(typeParams[1]!.name).toBe('V');
+      expect(typeParams[1]!.bounds).toContain('Any');
+    });
+  });
+
+  describe('lambda parameters (function types)', () => {
+    it('should extract simple function type parameter', async () => {
+      const source = `
+        fun process(callback: (Int, String) -> Boolean) {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      const param = result.topLevelFunctions[0]!.parameters[0]!;
+      expect(param.name).toBe('callback');
+      expect(param.type).toBe('(Int, String) -> Boolean');
+      expect(param.functionType).toBeDefined();
+      expect(param.functionType!.parameterTypes).toEqual(['Int', 'String']);
+      expect(param.functionType!.returnType).toBe('Boolean');
+      expect(param.functionType!.isSuspend).toBe(false);
+      expect(param.functionType!.receiverType).toBeUndefined();
+    });
+
+    it('should extract function type with no parameters', async () => {
+      const source = `
+        fun execute(action: () -> Unit) {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      const param = result.topLevelFunctions[0]!.parameters[0]!;
+      expect(param.functionType).toBeDefined();
+      expect(param.functionType!.parameterTypes).toEqual([]);
+      expect(param.functionType!.returnType).toBe('Unit');
+    });
+
+    it('should extract function type with receiver', async () => {
+      const source = `
+        fun withReceiver(block: Int.(String) -> Boolean) {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      const param = result.topLevelFunctions[0]!.parameters[0]!;
+      expect(param.functionType).toBeDefined();
+      expect(param.functionType!.receiverType).toBe('Int');
+      expect(param.functionType!.parameterTypes).toEqual(['String']);
+      expect(param.functionType!.returnType).toBe('Boolean');
+    });
+
+    it('should extract suspend function type', async () => {
+      const source = `
+        suspend fun async(block: suspend () -> Unit) {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      const param = result.topLevelFunctions[0]!.parameters[0]!;
+      expect(param.functionType).toBeDefined();
+      expect(param.functionType!.isSuspend).toBe(true);
+      expect(param.functionType!.returnType).toBe('Unit');
+    });
+
+    it('should not extract functionType for non-function parameters', async () => {
+      const source = `
+        fun regular(value: String, count: Int) {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      expect(result.topLevelFunctions[0]!.parameters[0]!.functionType).toBeUndefined();
+      expect(result.topLevelFunctions[0]!.parameters[1]!.functionType).toBeUndefined();
+    });
+
+    it('should handle function type with nullable return', async () => {
+      const source = `
+        fun find(predicate: (String) -> Int?) {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      const param = result.topLevelFunctions[0]!.parameters[0]!;
+      expect(param.functionType!.returnType).toBe('Int?');
+    });
+
+    it('should combine crossinline with function type', async () => {
+      const source = `
+        inline fun execute(crossinline block: () -> Unit) {}
+      `;
+      const result = await kotlinParser.parse(source, '/test/test.kt');
+      const param = result.topLevelFunctions[0]!.parameters[0]!;
+      expect(param.isCrossinline).toBe(true);
+      expect(param.functionType).toBeDefined();
+      expect(param.functionType!.parameterTypes).toEqual([]);
+    });
+  });
 });

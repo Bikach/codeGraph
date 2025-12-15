@@ -39,8 +39,9 @@ export interface ParsedAnnotation {
 
 export interface ParsedTypeParameter {
   name: string;
-  bounds?: string[]; // Upper bounds: T : Comparable<T>
+  bounds?: string[]; // Upper bounds: T : Comparable<T> (includes where clause bounds)
   variance?: 'in' | 'out'; // Kotlin variance annotations
+  isReified?: boolean; // Kotlin reified type parameter
 }
 
 /**
@@ -62,6 +63,10 @@ export interface ParsedParameter {
   functionType?: ParsedFunctionType;
   defaultValue?: string;
   annotations: ParsedAnnotation[];
+  /** Kotlin crossinline modifier for inline function lambda parameters */
+  isCrossinline?: boolean;
+  /** Kotlin noinline modifier for inline function lambda parameters */
+  isNoinline?: boolean;
 }
 
 export interface ParsedConstructor {

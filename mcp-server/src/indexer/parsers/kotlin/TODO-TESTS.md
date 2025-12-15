@@ -1,9 +1,9 @@
 # Kotlin Parser - Test Coverage Status
 
 ## Current Status
-- **Tests**: 94 (from 61 previously)
-- **Coverage**: ~98%
-- **Features implemented in this session**: 10
+- **Tests**: 112 (from 94 previously)
+- **Coverage**: ~99%
+- **Features implemented in Priority 5**: 4
 
 ---
 
@@ -13,7 +13,7 @@ All features tested (delegated properties, initializers, function visibility, ne
 
 ---
 
-## ~~Priority 4 - Extractor Enhancements~~ ✅ MOSTLY DONE
+## ~~Priority 4 - Extractor Enhancements~~ ✅ DONE
 
 ### High Value - ✅ IMPLEMENTED
 
@@ -32,7 +32,6 @@ All features tested (delegated properties, initializers, function visibility, ne
 | Inline functions | `inline fun <T> run(block: () -> T)` | ✅ Implemented & Tested |
 | Infix functions | `infix fun Int.add(x: Int)` | ✅ Implemented & Tested |
 | Operator functions | `operator fun plus(other: X)` | ✅ Implemented & Tested |
-| Lambda parameters | `fun process(cb: (Int) -> String)` | ❌ Not implemented (high complexity) |
 | Default parameter values | `fun greet(name: String = "World")` | Partial (existing) |
 
 ### Low Value - ✅ IMPLEMENTED
@@ -46,17 +45,37 @@ All features tested (delegated properties, initializers, function visibility, ne
 
 ---
 
-## Priority 5 - Not Yet Implemented
+## ~~Priority 5 - Advanced Type Features~~ ✅ DONE
+
+### ✅ IMPLEMENTED
+
+| Feature | Example | Complexity | Status |
+|---------|---------|------------|--------|
+| Lambda parameters (function types) | `fun process(cb: (Int) -> String)` | High | ✅ Implemented & Tested |
+| Multiple type bounds (where clause) | `<T> where T : A, T : B` | Medium | ✅ Implemented & Tested |
+| Reified type parameters | `inline fun <reified T> check()` | Low | ✅ Implemented & Tested |
+| Crossinline/noinline | `crossinline block: () -> Unit` | Low | ✅ Implemented & Tested |
+
+### Features Added in This Session
+
+- **`isReified`** on `ParsedTypeParameter`: Marks reified type parameters
+- **`isCrossinline`** on `ParsedParameter`: Marks crossinline lambda parameters
+- **`isNoinline`** on `ParsedParameter`: Marks noinline lambda parameters
+- **`functionType`** on `ParsedParameter`: Parsed function type with parameter types, return type, receiver type, and suspend flag
+- **Where clause support**: Multiple type bounds are now merged into `bounds` array
+
+---
+
+## Priority 6 - Not Yet Implemented
 
 These Kotlin features are NOT currently supported and would require additional implementation:
 
 | Feature | Example | Complexity | Notes |
 |---------|---------|------------|-------|
-| Lambda parameters (function types) | `fun process(cb: (Int) -> String)` | High | Requires parsing function type AST |
-| Multiple type bounds | `<T> where T : A, T : B` | Medium | where clause parsing |
-| Reified type parameters | `inline fun <reified T> check()` | Low | Just a modifier |
-| Crossinline/noinline | `crossinline block: () -> Unit` | Low | Parameter modifiers |
 | Context receivers | `context(LoggingContext)` | High | Kotlin 1.6+ feature |
+| Value classes | `@JvmInline value class Password(val s: String)` | Medium | Special class type |
+| Contracts | `contract { returns() implies (x != null) }` | High | Kotlin contracts DSL |
+| Sealed interfaces | `sealed interface Result` | Low | Similar to sealed class |
 
 ---
 
@@ -89,12 +108,12 @@ const tree = parser.parse('YOUR_KOTLIN_CODE');
 
 The following types were added to support the new features:
 
-- `ParsedTypeParameter` - Generics with bounds and variance
+- `ParsedTypeParameter` - Generics with bounds, variance, and reified flag
 - `ParsedConstructor` - Secondary constructors
 - `ParsedTypeAlias` - Type aliases
 - `ParsedDestructuringDeclaration` - Destructuring declarations
 - `ParsedObjectExpression` - Anonymous object expressions
-- `ParsedFunctionType` - Function type parameters (for future use)
+- `ParsedFunctionType` - Function type parameters (parameter types, return type, receiver, suspend)
 
 ## Properties Added
 
@@ -102,3 +121,5 @@ The following types were added to support the new features:
 - `ParsedClass`: `typeParameters`, `companionObject`, `secondaryConstructors`
 - `ParsedFile`: `typeAliases`, `destructuringDeclarations`, `objectExpressions`
 - `ParsedAnnotation`: `arguments` now populated
+- `ParsedTypeParameter`: `isReified` for reified type parameters
+- `ParsedParameter`: `isCrossinline`, `isNoinline`, `functionType` for lambda parameters

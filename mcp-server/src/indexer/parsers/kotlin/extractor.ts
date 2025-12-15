@@ -20,6 +20,7 @@ import type {
   ParsedConstructor,
   ParsedDestructuringDeclaration,
   ParsedObjectExpression,
+  ParsedFunctionType,
   SourceLocation,
   Visibility,
 } from '../../types.js';
@@ -238,7 +239,7 @@ function extractClassBody(classBody: SyntaxNode | undefined): {
   const functions: ParsedFunction[] = [];
   const nestedClasses: ParsedClass[] = [];
   const secondaryConstructors: ParsedConstructor[] = [];
-  let companionObject: ParsedClass | undefined;
+  let companionObject: ParsedClass | undefined = undefined;
 
   if (!classBody) {
     return { properties, functions, nestedClasses, companionObject, secondaryConstructors };
@@ -330,21 +331,53 @@ function extractParameters(node: SyntaxNode): ParsedParameter[] {
 
   if (!paramList) return params;
 
+  // Track pending modifiers (they appear as siblings before each parameter)
+  let pendingModifiers: SyntaxNode | null = null;
+
   for (const child of paramList.children) {
+    if (child.type === 'parameter_modifiers') {
+      pendingModifiers = child;
+      continue;
+    }
+
     if (child.type === 'parameter') {
       const nameNode = findChildByType(child, 'simple_identifier');
-      // Type can be: user_type (String), nullable_type (User?), or other type nodes
+      // Type can be: user_type (String), nullable_type (User?), function_type, or other type nodes
+      const functionTypeNode = findChildByType(child, 'function_type');
       const typeNode =
+        functionTypeNode ??
         findChildByType(child, 'nullable_type') ??
         findChildByType(child, 'user_type') ??
         findChildByType(child, 'type');
       const defaultValue = findChildByType(child, 'default_value');
 
+      // Extract function type for lambda parameters
+      let functionType: ParsedFunctionType | undefined;
+      if (functionTypeNode) {
+        functionType = extractFunctionType(functionTypeNode, child);
+      }
+
+      // Check for crossinline/noinline modifiers
+      let isCrossinline = false;
+      let isNoinline = false;
+      if (pendingModifiers) {
+        for (const mod of pendingModifiers.children) {
+          if (mod.type === 'parameter_modifier') {
+            if (mod.text === 'crossinline') isCrossinline = true;
+            if (mod.text === 'noinline') isNoinline = true;
+          }
+        }
+        pendingModifiers = null; // Reset after processing
+      }
+
       params.push({
         name: nameNode?.text ?? '<unnamed>',
         type: typeNode?.text,
+        functionType,
         defaultValue: defaultValue?.text,
         annotations: extractAnnotations(child),
+        isCrossinline: isCrossinline || undefined,
+        isNoinline: isNoinline || undefined,
       });
     }
   }
@@ -389,6 +422,79 @@ function extractReceiverType(node: SyntaxNode): string | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * Extracts a function type from a function_type AST node.
+ * Handles: (Int, String) -> Boolean, Int.(String) -> Boolean, suspend () -> Unit
+ */
+function extractFunctionType(
+  node: SyntaxNode,
+  parentNode?: SyntaxNode
+): ParsedFunctionType | undefined {
+  if (node.type !== 'function_type') return undefined;
+
+  const parameterTypes: string[] = [];
+  let returnType = 'Unit';
+  let receiverType: string | undefined;
+
+  // Check for suspend modifier in preceding type_modifiers sibling
+  let isSuspend = false;
+  if (parentNode) {
+    for (const child of parentNode.children) {
+      if (child.type === 'type_modifiers') {
+        for (const mod of child.children) {
+          if (mod.text === 'suspend') {
+            isSuspend = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Process function_type children
+  // Pattern 1: function_type_parameters -> -> return_type
+  // Pattern 2: receiver_type . function_type_parameters -> -> return_type
+  let foundArrow = false;
+
+  for (const child of node.children) {
+    if (child.type === 'type_identifier' && !foundArrow) {
+      // This could be the receiver type (before the dot)
+      const nextSibling = child.nextSibling;
+      if (nextSibling?.type === '.') {
+        receiverType = child.text;
+      }
+    } else if (child.type === 'function_type_parameters') {
+      // Extract parameter types from function_type_parameters
+      for (const paramChild of child.children) {
+        if (
+          paramChild.type === 'user_type' ||
+          paramChild.type === 'nullable_type' ||
+          paramChild.type === 'function_type'
+        ) {
+          parameterTypes.push(paramChild.text);
+        }
+      }
+    } else if (child.type === '->') {
+      foundArrow = true;
+    } else if (
+      foundArrow &&
+      (child.type === 'user_type' ||
+        child.type === 'nullable_type' ||
+        child.type === 'type_identifier')
+    ) {
+      // Return type comes after ->
+      returnType = child.text;
+    }
+  }
+
+  return {
+    parameterTypes,
+    returnType,
+    isSuspend,
+    receiverType,
+  };
 }
 
 // =============================================================================
@@ -640,6 +746,32 @@ function extractTypeParameters(node: SyntaxNode): ParsedTypeParameter[] {
     }
   }
 
+  // Handle where clause (multiple type bounds)
+  // AST: type_constraints > where, type_constraint, [,], type_constraint, ...
+  const typeConstraints = findChildByType(node, 'type_constraints');
+  if (typeConstraints) {
+    for (const constraintNode of typeConstraints.children) {
+      if (constraintNode.type === 'type_constraint') {
+        // type_constraint > type_identifier, :, user_type
+        const typeId = findChildByType(constraintNode, 'type_identifier');
+        const boundType =
+          findChildByType(constraintNode, 'user_type') ??
+          findChildByType(constraintNode, 'nullable_type');
+
+        if (typeId && boundType) {
+          // Find the matching type parameter and add this bound
+          const matchingParam = typeParams.find((tp) => tp.name === typeId.text);
+          if (matchingParam) {
+            if (!matchingParam.bounds) {
+              matchingParam.bounds = [];
+            }
+            matchingParam.bounds.push(boundType.text);
+          }
+        }
+      }
+    }
+  }
+
   return typeParams;
 }
 
@@ -650,14 +782,18 @@ function extractSingleTypeParameter(node: SyntaxNode): ParsedTypeParameter | und
 
   const name = nameNode.text;
 
-  // Extract variance (in/out) from modifiers
+  // Extract variance (in/out) and reified from modifiers
   let variance: 'in' | 'out' | undefined;
+  let isReified = false;
   const modifiers = findChildByType(node, 'type_parameter_modifiers');
   if (modifiers) {
     for (const child of modifiers.children) {
       if (child.type === 'variance_modifier') {
         if (child.text === 'in') variance = 'in';
         if (child.text === 'out') variance = 'out';
+      }
+      if (child.type === 'reification_modifier' && child.text === 'reified') {
+        isReified = true;
       }
     }
   }
@@ -689,6 +825,7 @@ function extractSingleTypeParameter(node: SyntaxNode): ParsedTypeParameter | und
     name,
     bounds: bounds.length > 0 ? bounds : undefined,
     variance,
+    isReified: isReified || undefined,
   };
 }
 
