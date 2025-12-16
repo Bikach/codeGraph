@@ -29,7 +29,10 @@ codegraph/
 │       │   │   ├── java/             # (future)
 │       │   │   ├── php/              # (future)
 │       │   │   └── registry.ts   # Registre des parsers disponibles
-│       │   ├── resolver.ts       # Résolution des appels (partagé)
+│       │   ├── resolver/         # Résolution des symboles (modulaire) ✅
+│       │   │   ├── types.ts      # Types du resolver
+│       │   │   ├── resolver.ts   # Logique de résolution
+│       │   │   └── index.ts      # Exports
 │       │   ├── writer.ts         # Écriture batch Neo4j (partagé)
 │       │   ├── types.ts          # Types communs
 │       │   └── index.ts          # Exports
@@ -151,14 +154,23 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 - [x] Enregistrer le parser Kotlin dans `registry.ts`
 - [x] Tester le parsing : **112 tests passants**
 
-### Étape 3 : Résolveur de symboles
-- [ ] Créer `mcp-server/src/indexer/resolver.ts` :
-  - Construction d'une table des symboles globale
-  - Résolution des types de propriétés
-  - Résolution des appels via heuristiques :
-    - Type explicite du receiver
-    - Imports
-    - Même fichier/package
+### Étape 3 : Résolveur de symboles ✅ DONE (41 tests)
+- [x] Créer `mcp-server/src/indexer/resolver/` (module modulaire) :
+  - `types.ts` : Types du resolver (Symbol, FunctionSymbol, SymbolTable, ResolutionContext)
+  - `resolver.ts` : Logique de résolution des symboles
+  - `index.ts` : Exports publics
+  - `index.test.ts` : Tests unitaires (41 tests)
+- [x] Construction d'une table des symboles globale (buildSymbolTable)
+- [x] Résolution des types de propriétés
+- [x] Résolution des appels via heuristiques :
+  - Type explicite du receiver
+  - Variables locales et paramètres
+  - Imports explicites et wildcards
+  - Même fichier/package
+  - Hiérarchie de types (superclass, interfaces)
+  - Companion objects
+  - Extension functions
+- [x] Utilitaires : lookupSymbol, findSymbols, getResolutionStats
 
 ### Étape 4 : Writer Neo4j
 - [ ] Créer `mcp-server/src/indexer/writer.ts` :
@@ -212,7 +224,7 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 | `mcp-server/src/indexer/parsers/kotlin/extractor.ts` | Créer | ✅ DONE (~900 lignes) |
 | `mcp-server/src/indexer/parsers/kotlin/index.ts` | Créer | ✅ DONE |
 | `mcp-server/src/indexer/parsers/kotlin/index.test.ts` | Tests | ✅ DONE (112 tests) |
-| `mcp-server/src/indexer/resolver.ts` | Créer (partagé) | ⏳ TODO |
+| `mcp-server/src/indexer/resolver/` | Créer (module modulaire) | ✅ DONE |
 | `mcp-server/src/indexer/writer.ts` | Créer (partagé) | ⏳ TODO |
 | `mcp-server/src/indexer/index.ts` | Créer | ✅ DONE |
 | `mcp-server/src/tools/index-codebase/*` | Créer (4 fichiers) | ⏳ TODO |
@@ -248,9 +260,10 @@ Notes:
 
 | Composant | Description | Tests |
 |-----------|-------------|-------|
-| **Types communs** | 15 interfaces pour représenter le code Kotlin parsé | - |
+| **Types communs** | 15+ interfaces pour représenter le code Kotlin parsé | - |
 | **Parser registry** | Registre modulaire des parsers par extension | - |
 | **Parser Kotlin** | Parsing tree-sitter avec extraction complète | 112 |
+| **Resolver** | Résolution des symboles et appels cross-fichiers | 41 |
 
 ### Fonctionnalités Kotlin supportées
 
@@ -266,7 +279,7 @@ Notes:
 
 ### Prochaines étapes
 
-1. **Resolver** : Résolution des symboles et appels cross-fichiers
+1. ~~**Resolver** : Résolution des symboles et appels cross-fichiers~~ ✅ DONE
 2. **Writer** : Écriture batch vers Neo4j
 3. **CLI** : Commande `codegraph-indexer`
 4. **MCP Tool** : Outil `index_codebase` pour Claude

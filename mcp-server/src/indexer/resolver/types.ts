@@ -1,0 +1,100 @@
+/**
+ * Symbol Resolver Types
+ *
+ * Type definitions for the symbol resolution system.
+ */
+
+import type { SourceLocation, ParsedFile, ParsedClass, ParsedFunction } from '../types.js';
+
+// =============================================================================
+// Symbol Table Types
+// =============================================================================
+
+/**
+ * Represents a symbol (class, interface, function, property) in the symbol table.
+ */
+export interface Symbol {
+  /** Simple name (e.g., "UserService") */
+  name: string;
+  /** Fully qualified name (e.g., "com.example.service.UserService") */
+  fqn: string;
+  /** Symbol kind */
+  kind: 'class' | 'interface' | 'object' | 'enum' | 'annotation' | 'function' | 'property';
+  /** File where the symbol is defined */
+  filePath: string;
+  /** Location in the source file */
+  location: SourceLocation;
+  /** Parent symbol FQN (for nested classes, methods, etc.) */
+  parentFqn?: string;
+  /** For functions: the class/interface that declares this function */
+  declaringTypeFqn?: string;
+  /** For extension functions: the receiver type */
+  receiverType?: string;
+  /** Package name */
+  packageName?: string;
+}
+
+/**
+ * Represents a function symbol with additional function-specific metadata.
+ */
+export interface FunctionSymbol extends Symbol {
+  kind: 'function';
+  /** Parameter types (for overload resolution) */
+  parameterTypes: string[];
+  /** Return type */
+  returnType?: string;
+  /** Is this an extension function? */
+  isExtension: boolean;
+  /** Is this an operator function? */
+  isOperator?: boolean;
+  /** Is this an infix function? */
+  isInfix?: boolean;
+}
+
+/**
+ * Global symbol table built from all parsed files.
+ */
+export interface SymbolTable {
+  /** All symbols indexed by FQN */
+  byFqn: Map<string, Symbol>;
+  /** Symbols indexed by simple name (for fast lookup) */
+  byName: Map<string, Symbol[]>;
+  /** Function symbols indexed by name (supports overloading) */
+  functionsByName: Map<string, FunctionSymbol[]>;
+  /** Symbols indexed by package */
+  byPackage: Map<string, Symbol[]>;
+  /** Type hierarchy: class/interface FQN -> parent FQN */
+  typeHierarchy: Map<string, string[]>;
+}
+
+/**
+ * Context for resolving symbols within a specific file/scope.
+ */
+export interface ResolutionContext {
+  /** Current file being resolved */
+  currentFile: ParsedFile;
+  /** Imports available in the current file */
+  imports: Map<string, string>; // simpleName -> FQN
+  /** Wildcard imports (packages to search) */
+  wildcardImports: string[];
+  /** Current class context (for resolving this.method()) */
+  currentClass?: ParsedClass;
+  /** Current function context */
+  currentFunction?: ParsedFunction;
+  /** Local variables and their types */
+  localVariables: Map<string, string>; // varName -> typeFQN
+}
+
+/**
+ * Statistics about symbol resolution results.
+ */
+export interface ResolutionStats {
+  /** Total number of calls in all files */
+  totalCalls: number;
+  /** Number of successfully resolved calls */
+  resolvedCalls: number;
+  /** Number of unresolved calls */
+  unresolvedCalls: number;
+  /** Resolution success rate (0-1) */
+  resolutionRate: number;
+}

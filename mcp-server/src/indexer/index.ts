@@ -38,8 +38,19 @@ export {
   isFileSupported,
 } from './parsers/registry.js';
 
-// Resolver (TODO: Étape 3)
-// export { resolveSymbols } from './resolver.js';
+// Resolver
+export {
+  buildSymbolTable,
+  resolveSymbols,
+  lookupSymbol,
+  findSymbols,
+  getResolutionStats,
+  type Symbol,
+  type FunctionSymbol,
+  type SymbolTable,
+  type ResolutionContext,
+  type ResolutionStats,
+} from './resolver/index.js';
 
 // Writer (TODO: Étape 4)
 // export { writeToNeo4j } from './writer.js';
