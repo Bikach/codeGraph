@@ -4,8 +4,8 @@
  * Writes resolved Kotlin code structures to Neo4j graph database.
  * Uses batch processing for performance and transactions for consistency.
  *
- * Node types: Package, Class, Interface, Object, Function, Property, Parameter, Annotation, TypeAlias
- * Relationship types: CONTAINS, DECLARES, EXTENDS, IMPLEMENTS, CALLS, USES, HAS_PARAMETER, ANNOTATED_WITH, RETURNS
+ * Node types: Package, Class, Interface, Object, Function, Property, Parameter, Annotation, TypeAlias, Constructor
+ * Relationship types: CONTAINS, DECLARES, EXTENDS, IMPLEMENTS, CALLS, USES, RETURNS, HAS_PARAMETER, ANNOTATED_WITH
  */
 
 import neo4j from 'neo4j-driver';
@@ -19,6 +19,8 @@ import type {
   ParsedAnnotation,
   ParsedTypeParameter,
   ParsedTypeAlias,
+  ParsedConstructor,
+  ParsedDestructuringDeclaration,
 } from '../types.js';
 import type { WriteResult, WriterOptions, ClearResult, NodeRelResult } from './types.js';
 
@@ -32,6 +34,65 @@ import type { WriteResult, WriterOptions, ClearResult, NodeRelResult } from './t
 export function buildFqn(packageName: string | undefined, ...parts: string[]): string {
   const allParts = packageName ? [packageName, ...parts] : parts;
   return allParts.filter(Boolean).join('.');
+}
+
+/**
+ * Extract simple type names from a type string.
+ * Handles generics, nullability, and nested types.
+ * e.g., "List<User>" -> ["List", "User"], "Map<String, User?>" -> ["Map", "String", "User"]
+ */
+export function extractTypeNames(typeStr: string | undefined): string[] {
+  if (!typeStr) return [];
+
+  const types: string[] = [];
+  // Remove nullable markers and extract type names
+  const cleaned = typeStr.replace(/\?/g, '');
+
+  // Match type identifiers (capitalized words that are likely type names)
+  // This regex matches PascalCase identifiers
+  const typePattern = /\b([A-Z][a-zA-Z0-9]*)\b/g;
+  let match;
+  while ((match = typePattern.exec(cleaned)) !== null) {
+    const typeName = match[1]!;
+    // Skip common primitive/built-in types that don't need USES relationships
+    const builtinTypes = [
+      'Unit',
+      'Nothing',
+      'Any',
+      'Boolean',
+      'Byte',
+      'Short',
+      'Int',
+      'Long',
+      'Float',
+      'Double',
+      'Char',
+      'String',
+      'Array',
+      'List',
+      'Set',
+      'Map',
+      'Collection',
+      'Iterable',
+      'Sequence',
+      'Pair',
+      'Triple',
+      'Result',
+      'Comparable',
+      'Number',
+      'Enum',
+      'Object',
+      'Throwable',
+      'Exception',
+      'Error',
+      'RuntimeException',
+    ];
+    if (!builtinTypes.includes(typeName)) {
+      types.push(typeName);
+    }
+  }
+
+  return [...new Set(types)]; // Remove duplicates
 }
 
 /**
@@ -77,6 +138,7 @@ export class Neo4jWriter {
       'CREATE CONSTRAINT property_fqn_unique IF NOT EXISTS FOR (p:Property) REQUIRE p.fqn IS UNIQUE',
       'CREATE CONSTRAINT package_name_unique IF NOT EXISTS FOR (p:Package) REQUIRE p.name IS UNIQUE',
       'CREATE CONSTRAINT typealias_fqn_unique IF NOT EXISTS FOR (t:TypeAlias) REQUIRE t.fqn IS UNIQUE',
+      'CREATE CONSTRAINT constructor_fqn_unique IF NOT EXISTS FOR (c:Constructor) REQUIRE c.fqn IS UNIQUE',
       // Annotation uniqueness by name (annotations are shared across elements)
       'CREATE CONSTRAINT annotation_name_unique IF NOT EXISTS FOR (a:Annotation) REQUIRE a.name IS UNIQUE',
     ];
@@ -88,6 +150,7 @@ export class Neo4jWriter {
       'CREATE INDEX object_name_index IF NOT EXISTS FOR (o:Object) ON (o.name)',
       'CREATE INDEX function_name_index IF NOT EXISTS FOR (f:Function) ON (f.name)',
       'CREATE INDEX property_name_index IF NOT EXISTS FOR (p:Property) ON (p.name)',
+      'CREATE INDEX constructor_declaring_index IF NOT EXISTS FOR (c:Constructor) ON (c.declaringClass)',
       // File path indexes for file-based queries
       'CREATE INDEX class_file_index IF NOT EXISTS FOR (c:Class) ON (c.filePath)',
       'CREATE INDEX interface_file_index IF NOT EXISTS FOR (i:Interface) ON (i.filePath)',
@@ -117,6 +180,7 @@ export class Neo4jWriter {
       MATCH (n)
       WHERE n:Package OR n:Class OR n:Interface OR n:Object
          OR n:Function OR n:Property OR n:Parameter OR n:Annotation OR n:TypeAlias
+         OR n:Constructor
       DETACH DELETE n
     `;
 
@@ -179,6 +243,14 @@ export class Neo4jWriter {
     const callsResult = await this.writeResolvedCalls(files);
     result.relationshipsCreated += callsResult;
 
+    // Write USES relationships (Function -> types used in parameters)
+    const usesResult = await this.writeUsesRelationships(files);
+    result.relationshipsCreated += usesResult;
+
+    // Write RETURNS relationships (Function -> return type)
+    const returnsResult = await this.writeReturnsRelationships(files);
+    result.relationshipsCreated += returnsResult;
+
     return result;
   }
 
@@ -215,6 +287,17 @@ export class Neo4jWriter {
       const aliasResult = await this.writeTypeAlias(typeAlias, file.packageName, file.filePath);
       nodesCreated += aliasResult.nodesCreated;
       relationshipsCreated += aliasResult.relationshipsCreated;
+    }
+
+    // Write destructuring declarations as properties
+    for (const destructuring of file.destructuringDeclarations) {
+      const destructResult = await this.writeDestructuringDeclaration(
+        destructuring,
+        file.packageName,
+        file.filePath
+      );
+      nodesCreated += destructResult.nodesCreated;
+      relationshipsCreated += destructResult.relationshipsCreated;
     }
 
     return { nodesCreated, relationshipsCreated };
@@ -347,6 +430,16 @@ export class Neo4jWriter {
       const companionResult = await this.writeCompanionObject(cls.companionObject, fqn, filePath);
       nodesCreated += companionResult.nodesCreated;
       relationshipsCreated += companionResult.relationshipsCreated;
+    }
+
+    // Write secondary constructors
+    if (cls.secondaryConstructors && cls.secondaryConstructors.length > 0) {
+      for (let i = 0; i < cls.secondaryConstructors.length; i++) {
+        const ctor = cls.secondaryConstructors[i]!;
+        const ctorResult = await this.writeSecondaryConstructor(ctor, fqn, filePath, i);
+        nodesCreated += ctorResult.nodesCreated;
+        relationshipsCreated += ctorResult.relationshipsCreated;
+      }
     }
 
     return { nodesCreated, relationshipsCreated };
@@ -889,6 +982,372 @@ export class Neo4jWriter {
     }
 
     return totalCreated;
+  }
+
+  /**
+   * Write USES relationships for functions to types they use in parameters.
+   * Collects all parameter types from functions and creates USES relationships.
+   */
+  private async writeUsesRelationships(files: ResolvedFile[]): Promise<number> {
+    const usesData: { functionFqn: string; typeName: string; context: string }[] = [];
+
+    // Helper to collect uses from a function
+    const collectFunctionUses = (func: ParsedFunction, functionFqn: string) => {
+      // Collect from parameter types
+      for (const param of func.parameters) {
+        const types = extractTypeNames(param.type);
+        for (const typeName of types) {
+          usesData.push({ functionFqn, typeName, context: 'parameter' });
+        }
+        // Also check function types (lambdas)
+        if (param.functionType) {
+          for (const paramType of param.functionType.parameterTypes) {
+            const types = extractTypeNames(paramType);
+            for (const typeName of types) {
+              usesData.push({ functionFqn, typeName, context: 'parameter' });
+            }
+          }
+          const returnTypes = extractTypeNames(param.functionType.returnType);
+          for (const typeName of returnTypes) {
+            usesData.push({ functionFqn, typeName, context: 'parameter' });
+          }
+          if (param.functionType.receiverType) {
+            const receiverTypes = extractTypeNames(param.functionType.receiverType);
+            for (const typeName of receiverTypes) {
+              usesData.push({ functionFqn, typeName, context: 'parameter' });
+            }
+          }
+        }
+      }
+
+      // Collect from receiver type (extension functions)
+      if (func.receiverType) {
+        const types = extractTypeNames(func.receiverType);
+        for (const typeName of types) {
+          usesData.push({ functionFqn, typeName, context: 'receiver' });
+        }
+      }
+    };
+
+    // Helper to process class functions
+    const processClass = (cls: ParsedClass, packageName: string | undefined, parentFqn?: string) => {
+      const classFqn = parentFqn ? `${parentFqn}.${cls.name}` : buildFqn(packageName, cls.name);
+
+      for (const func of cls.functions) {
+        const functionFqn = `${classFqn}.${func.name}`;
+        collectFunctionUses(func, functionFqn);
+      }
+
+      // Process nested classes
+      for (const nested of cls.nestedClasses) {
+        processClass(nested, packageName, classFqn);
+      }
+
+      // Process companion object
+      if (cls.companionObject) {
+        const companionFqn = `${classFqn}.${cls.companionObject.name || 'Companion'}`;
+        for (const func of cls.companionObject.functions) {
+          const functionFqn = `${companionFqn}.${func.name}`;
+          collectFunctionUses(func, functionFqn);
+        }
+      }
+    };
+
+    // Collect all USES data from files
+    for (const file of files) {
+      // Process classes
+      for (const cls of file.classes) {
+        processClass(cls, file.packageName);
+      }
+
+      // Process top-level functions
+      for (const func of file.topLevelFunctions) {
+        const functionFqn = buildFqn(file.packageName, func.name);
+        collectFunctionUses(func, functionFqn);
+      }
+    }
+
+    if (usesData.length === 0) return 0;
+
+    // Deduplicate
+    const uniqueUses = new Map<string, { functionFqn: string; typeName: string; context: string }>();
+    for (const use of usesData) {
+      const key = `${use.functionFqn}:${use.typeName}`;
+      if (!uniqueUses.has(key)) {
+        uniqueUses.set(key, use);
+      }
+    }
+
+    // Process in batches
+    let totalCreated = 0;
+    const uniqueUsesArray = Array.from(uniqueUses.values());
+
+    for (let i = 0; i < uniqueUsesArray.length; i += this.batchSize) {
+      const batch = uniqueUsesArray.slice(i, i + this.batchSize);
+
+      const usesQuery = `
+        UNWIND $uses AS use
+        MATCH (f:Function {fqn: use.functionFqn})
+        OPTIONAL MATCH (cByName:Class {name: use.typeName})
+        OPTIONAL MATCH (iByName:Interface {name: use.typeName})
+        WITH f, use, COALESCE(cByName, iByName) AS target
+        WHERE target IS NOT NULL
+        MERGE (f)-[r:USES]->(target)
+        ON CREATE SET r.context = use.context
+        RETURN count(r) AS created
+      `;
+
+      const result = await this.client.write<{ created: number }>(usesQuery, { uses: batch });
+      const firstResult = result[0];
+      if (firstResult?.created) {
+        totalCreated += firstResult.created;
+      }
+    }
+
+    return totalCreated;
+  }
+
+  /**
+   * Write RETURNS relationships for functions to their return types.
+   */
+  private async writeReturnsRelationships(files: ResolvedFile[]): Promise<number> {
+    const returnsData: { functionFqn: string; typeName: string }[] = [];
+
+    // Helper to collect return type from a function
+    const collectFunctionReturns = (func: ParsedFunction, functionFqn: string) => {
+      if (func.returnType) {
+        const types = extractTypeNames(func.returnType);
+        for (const typeName of types) {
+          returnsData.push({ functionFqn, typeName });
+        }
+      }
+    };
+
+    // Helper to process class functions
+    const processClass = (cls: ParsedClass, packageName: string | undefined, parentFqn?: string) => {
+      const classFqn = parentFqn ? `${parentFqn}.${cls.name}` : buildFqn(packageName, cls.name);
+
+      for (const func of cls.functions) {
+        const functionFqn = `${classFqn}.${func.name}`;
+        collectFunctionReturns(func, functionFqn);
+      }
+
+      // Process nested classes
+      for (const nested of cls.nestedClasses) {
+        processClass(nested, packageName, classFqn);
+      }
+
+      // Process companion object
+      if (cls.companionObject) {
+        const companionFqn = `${classFqn}.${cls.companionObject.name || 'Companion'}`;
+        for (const func of cls.companionObject.functions) {
+          const functionFqn = `${companionFqn}.${func.name}`;
+          collectFunctionReturns(func, functionFqn);
+        }
+      }
+    };
+
+    // Collect all RETURNS data from files
+    for (const file of files) {
+      // Process classes
+      for (const cls of file.classes) {
+        processClass(cls, file.packageName);
+      }
+
+      // Process top-level functions
+      for (const func of file.topLevelFunctions) {
+        const functionFqn = buildFqn(file.packageName, func.name);
+        collectFunctionReturns(func, functionFqn);
+      }
+    }
+
+    if (returnsData.length === 0) return 0;
+
+    // Deduplicate
+    const uniqueReturns = new Map<string, { functionFqn: string; typeName: string }>();
+    for (const ret of returnsData) {
+      const key = `${ret.functionFqn}:${ret.typeName}`;
+      if (!uniqueReturns.has(key)) {
+        uniqueReturns.set(key, ret);
+      }
+    }
+
+    // Process in batches
+    let totalCreated = 0;
+    const uniqueReturnsArray = Array.from(uniqueReturns.values());
+
+    for (let i = 0; i < uniqueReturnsArray.length; i += this.batchSize) {
+      const batch = uniqueReturnsArray.slice(i, i + this.batchSize);
+
+      const returnsQuery = `
+        UNWIND $returns AS ret
+        MATCH (f:Function {fqn: ret.functionFqn})
+        OPTIONAL MATCH (cByName:Class {name: ret.typeName})
+        OPTIONAL MATCH (iByName:Interface {name: ret.typeName})
+        WITH f, COALESCE(cByName, iByName) AS target
+        WHERE target IS NOT NULL
+        MERGE (f)-[:RETURNS]->(target)
+        RETURN count(*) AS created
+      `;
+
+      const result = await this.client.write<{ created: number }>(returnsQuery, { returns: batch });
+      const firstResult = result[0];
+      if (firstResult?.created) {
+        totalCreated += firstResult.created;
+      }
+    }
+
+    return totalCreated;
+  }
+
+  /**
+   * Write a secondary constructor to Neo4j.
+   */
+  private async writeSecondaryConstructor(
+    ctor: ParsedConstructor,
+    declaringClassFqn: string,
+    filePath: string,
+    index: number
+  ): Promise<NodeRelResult> {
+    let nodesCreated = 0;
+    let relationshipsCreated = 0;
+
+    // Create a unique FQN for the constructor using index
+    const fqn = `${declaringClassFqn}.<init>${index > 0 ? index : ''}`;
+
+    const props: Record<string, unknown> = {
+      fqn,
+      visibility: ctor.visibility,
+      declaringClass: declaringClassFqn,
+      filePath,
+      lineNumber: ctor.location.startLine,
+      parameterCount: ctor.parameters.length,
+    };
+
+    if (ctor.delegatesTo) {
+      props.delegatesTo = ctor.delegatesTo;
+    }
+
+    // Create constructor node
+    const createQuery = `
+      MERGE (c:Constructor {fqn: $fqn})
+      SET c += $props
+      RETURN c
+    `;
+    await this.client.write(createQuery, { fqn, props });
+    nodesCreated++;
+
+    // Create DECLARES relationship from class
+    const declaresQuery = `
+      MATCH (cls {fqn: $declaringClassFqn})
+      MATCH (c:Constructor {fqn: $fqn})
+      MERGE (cls)-[:DECLARES]->(c)
+    `;
+    await this.client.write(declaresQuery, { declaringClassFqn, fqn });
+    relationshipsCreated++;
+
+    // Write annotations
+    const annotationResult = await this.writeAnnotations(ctor.annotations, fqn, 'Constructor');
+    nodesCreated += annotationResult.nodesCreated;
+    relationshipsCreated += annotationResult.relationshipsCreated;
+
+    // Write parameters
+    for (const [i, param] of ctor.parameters.entries()) {
+      const paramResult = await this.writeConstructorParameter(param, fqn, i);
+      nodesCreated += paramResult.nodesCreated;
+      relationshipsCreated += paramResult.relationshipsCreated;
+    }
+
+    return { nodesCreated, relationshipsCreated };
+  }
+
+  /**
+   * Write a constructor parameter to Neo4j.
+   */
+  private async writeConstructorParameter(
+    param: ParsedParameter,
+    constructorFqn: string,
+    position: number
+  ): Promise<NodeRelResult> {
+    let nodesCreated = 0;
+    let relationshipsCreated = 0;
+
+    const props: Record<string, unknown> = {
+      name: param.name,
+      hasDefault: !!param.defaultValue,
+    };
+
+    if (param.type) props.type = param.type;
+
+    // Create parameter node with unique identity based on constructor + position
+    const createQuery = `
+      MATCH (c:Constructor {fqn: $constructorFqn})
+      MERGE (c)-[rel:HAS_PARAMETER {position: $position}]->(p:Parameter {name: $name})
+      SET p += $props
+      RETURN p
+    `;
+    await this.client.write(createQuery, { constructorFqn, position, name: param.name, props });
+    nodesCreated++;
+    relationshipsCreated++;
+
+    return { nodesCreated, relationshipsCreated };
+  }
+
+  /**
+   * Write a destructuring declaration as multiple properties.
+   */
+  private async writeDestructuringDeclaration(
+    destructuring: ParsedDestructuringDeclaration,
+    packageName: string | undefined,
+    filePath: string
+  ): Promise<NodeRelResult> {
+    let nodesCreated = 0;
+    let relationshipsCreated = 0;
+
+    // Create a Property node for each component
+    for (let i = 0; i < destructuring.componentNames.length; i++) {
+      const componentName = destructuring.componentNames[i]!;
+      const componentType = destructuring.componentTypes?.[i];
+
+      const fqn = buildFqn(packageName, componentName);
+
+      const props: Record<string, unknown> = {
+        fqn,
+        name: componentName,
+        visibility: destructuring.visibility,
+        isMutable: !destructuring.isVal,
+        isTopLevel: true,
+        isDestructured: true,
+        destructuringIndex: i,
+        filePath,
+        lineNumber: destructuring.location.startLine,
+      };
+
+      if (componentType) props.type = componentType;
+      if (destructuring.initializer) props.initializer = destructuring.initializer;
+
+      // Create property node
+      const createQuery = `
+        MERGE (p:Property {fqn: $fqn})
+        SET p += $props
+        RETURN p
+      `;
+      await this.client.write(createQuery, { fqn, props });
+      nodesCreated++;
+
+      // Create CONTAINS relationship from package
+      if (packageName) {
+        const containsQuery = `
+          MATCH (pkg:Package {name: $packageName})
+          MATCH (p:Property {fqn: $fqn})
+          MERGE (pkg)-[:CONTAINS]->(p)
+        `;
+        await this.client.write(containsQuery, { packageName, fqn });
+        relationshipsCreated++;
+      }
+    }
+
+    return { nodesCreated, relationshipsCreated };
   }
 }
 

@@ -127,6 +127,18 @@ Represents a Kotlin type alias.
 - `filePath`: String - Source file path
 - `lineNumber`: Integer - Declaration line number
 
+### Constructor
+Represents a Kotlin secondary constructor.
+
+**Properties:**
+- `fqn`: String - Fully qualified name (e.g., `com.example.User.<init>`, `com.example.User.<init>1`)
+- `visibility`: String - Visibility (`public`, `private`, `protected`, `internal`)
+- `declaringClass`: String - FQN of the declaring class
+- `parameterCount`: Integer - Number of parameters
+- `delegatesTo`: String (optional) - Constructor delegation (`this` or `super`)
+- `filePath`: String - Source file path
+- `lineNumber`: Integer - Declaration line number
+
 ---
 
 ## Relationships

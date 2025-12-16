@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Neo4jContainer, StartedNeo4jContainer } from '@testcontainers/neo4j';
 import { Neo4jClient } from '../../neo4j/neo4j.js';
-import { Neo4jWriter, buildFqn, serializeTypeParameters } from './index.js';
+import { Neo4jWriter, buildFqn, serializeTypeParameters, extractTypeNames } from './index.js';
 import type { ResolvedFile, ParsedClass, ParsedFunction, ParsedProperty, SourceLocation } from '../types.js';
 
 // =============================================================================
@@ -102,6 +102,57 @@ describe('Helper Functions', () => {
 
     it('should filter empty parts', () => {
       expect(buildFqn('com.example', '', 'UserService')).toBe('com.example.UserService');
+    });
+  });
+
+  describe('extractTypeNames', () => {
+    it('should return empty array for undefined', () => {
+      expect(extractTypeNames(undefined)).toEqual([]);
+    });
+
+    it('should return empty array for empty string', () => {
+      expect(extractTypeNames('')).toEqual([]);
+    });
+
+    it('should extract simple type name', () => {
+      expect(extractTypeNames('User')).toEqual(['User']);
+    });
+
+    it('should extract type from generic', () => {
+      expect(extractTypeNames('List<User>')).toEqual(['User']);
+    });
+
+    it('should extract multiple types from Map', () => {
+      const types = extractTypeNames('Map<UserId, UserData>');
+      expect(types).toContain('UserId');
+      expect(types).toContain('UserData');
+    });
+
+    it('should handle nullable types', () => {
+      expect(extractTypeNames('User?')).toEqual(['User']);
+    });
+
+    it('should handle nested generics', () => {
+      const types = extractTypeNames('List<Pair<User, Order>>');
+      expect(types).toContain('User');
+      expect(types).toContain('Order');
+    });
+
+    it('should filter built-in types', () => {
+      expect(extractTypeNames('String')).toEqual([]);
+      expect(extractTypeNames('Int')).toEqual([]);
+      expect(extractTypeNames('List<String>')).toEqual([]);
+      expect(extractTypeNames('Map<String, Int>')).toEqual([]);
+    });
+
+    it('should extract user types while filtering built-ins', () => {
+      const types = extractTypeNames('Map<String, User>');
+      expect(types).toEqual(['User']);
+    });
+
+    it('should not duplicate types', () => {
+      const types = extractTypeNames('Pair<User, User>');
+      expect(types).toEqual(['User']);
     });
   });
 
@@ -1494,6 +1545,533 @@ describe('Neo4jWriter Integration Tests', () => {
 
       expect(result.errors).toHaveLength(0);
       expect(result.filesProcessed).toBe(1);
+    });
+  });
+
+  // ===========================================================================
+  // NEW FEATURE TESTS: USES, RETURNS, Secondary Constructors, Destructuring
+  // ===========================================================================
+
+  describe('writeFiles - USES relationship', () => {
+    it('should create USES relationship from function parameter type', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({ name: 'User' }),
+          createParsedClass({
+            name: 'UserService',
+            functions: [
+              createParsedFunction({
+                name: 'save',
+                parameters: [{ name: 'user', type: 'User', annotations: [] }],
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const uses = await client.query<{ func: string; used: string; context: string }>(
+        'MATCH (f:Function)-[r:USES]->(c:Class) RETURN f.name as func, c.name as used, r.context as context'
+      );
+      expect(uses).toHaveLength(1);
+      expect(uses[0]?.func).toBe('save');
+      expect(uses[0]?.used).toBe('User');
+      expect(uses[0]?.context).toBe('parameter');
+    });
+
+    it('should create USES relationship from extension function receiver', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [createParsedClass({ name: 'CustomType' })],
+        topLevelFunctions: [
+          createParsedFunction({
+            name: 'doSomething',
+            isExtension: true,
+            receiverType: 'CustomType',
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const uses = await client.query<{ func: string; used: string; context: string }>(
+        'MATCH (f:Function)-[r:USES]->(c:Class) RETURN f.name as func, c.name as used, r.context as context'
+      );
+      expect(uses).toHaveLength(1);
+      expect(uses[0]?.func).toBe('doSomething');
+      expect(uses[0]?.used).toBe('CustomType');
+      expect(uses[0]?.context).toBe('receiver');
+    });
+
+    it('should create USES relationship to interface', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({ name: 'Repository', kind: 'interface' }),
+          createParsedClass({
+            name: 'UserService',
+            functions: [
+              createParsedFunction({
+                name: 'setRepo',
+                parameters: [{ name: 'repo', type: 'Repository', annotations: [] }],
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const uses = await client.query<{ func: string; used: string }>(
+        'MATCH (f:Function)-[:USES]->(i:Interface) RETURN f.name as func, i.name as used'
+      );
+      expect(uses).toHaveLength(1);
+      expect(uses[0]?.func).toBe('setRepo');
+      expect(uses[0]?.used).toBe('Repository');
+    });
+
+    it('should not create USES for built-in types like String, Int', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'UserService',
+            functions: [
+              createParsedFunction({
+                name: 'process',
+                parameters: [
+                  { name: 'name', type: 'String', annotations: [] },
+                  { name: 'count', type: 'Int', annotations: [] },
+                ],
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const uses = await client.query<{ count: number }>(
+        'MATCH (:Function)-[r:USES]->() RETURN count(r) as count'
+      );
+      expect(uses[0]?.count).toBe(0);
+    });
+
+    it('should extract types from generic parameters', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({ name: 'User' }),
+          createParsedClass({
+            name: 'UserService',
+            functions: [
+              createParsedFunction({
+                name: 'saveAll',
+                parameters: [{ name: 'users', type: 'List<User>', annotations: [] }],
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const uses = await client.query<{ used: string }>(
+        'MATCH (:Function)-[:USES]->(c:Class) RETURN c.name as used'
+      );
+      expect(uses).toHaveLength(1);
+      expect(uses[0]?.used).toBe('User');
+    });
+  });
+
+  describe('writeFiles - RETURNS relationship', () => {
+    it('should create RETURNS relationship from function return type', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({ name: 'User' }),
+          createParsedClass({
+            name: 'UserService',
+            functions: [
+              createParsedFunction({
+                name: 'findById',
+                returnType: 'User',
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const returns = await client.query<{ func: string; returned: string }>(
+        'MATCH (f:Function)-[:RETURNS]->(c:Class) RETURN f.name as func, c.name as returned'
+      );
+      expect(returns).toHaveLength(1);
+      expect(returns[0]?.func).toBe('findById');
+      expect(returns[0]?.returned).toBe('User');
+    });
+
+    it('should create RETURNS relationship to interface', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({ name: 'Repository', kind: 'interface' }),
+          createParsedClass({
+            name: 'ServiceFactory',
+            functions: [
+              createParsedFunction({
+                name: 'createRepo',
+                returnType: 'Repository',
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const returns = await client.query<{ func: string; returned: string }>(
+        'MATCH (f:Function)-[:RETURNS]->(i:Interface) RETURN f.name as func, i.name as returned'
+      );
+      expect(returns).toHaveLength(1);
+      expect(returns[0]?.func).toBe('createRepo');
+      expect(returns[0]?.returned).toBe('Repository');
+    });
+
+    it('should extract return types from generic wrappers', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({ name: 'User' }),
+          createParsedClass({
+            name: 'UserService',
+            functions: [
+              createParsedFunction({
+                name: 'findAll',
+                returnType: 'List<User>',
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const returns = await client.query<{ returned: string }>(
+        'MATCH (:Function)-[:RETURNS]->(c:Class) RETURN c.name as returned'
+      );
+      expect(returns).toHaveLength(1);
+      expect(returns[0]?.returned).toBe('User');
+    });
+
+    it('should handle nullable return types', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({ name: 'User' }),
+          createParsedClass({
+            name: 'UserService',
+            functions: [
+              createParsedFunction({
+                name: 'findById',
+                returnType: 'User?',
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const returns = await client.query<{ returned: string }>(
+        'MATCH (:Function)-[:RETURNS]->(c:Class) RETURN c.name as returned'
+      );
+      expect(returns).toHaveLength(1);
+      expect(returns[0]?.returned).toBe('User');
+    });
+  });
+
+  describe('writeFiles - Secondary constructors', () => {
+    it('should create Constructor node for secondary constructor', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'User',
+            secondaryConstructors: [
+              {
+                parameters: [{ name: 'name', type: 'String', annotations: [] }],
+                visibility: 'public',
+                annotations: [],
+                location: defaultLocation,
+              },
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const constructors = await client.query<{ fqn: string; declaringClass: string; paramCount: number }>(
+        'MATCH (c:Constructor) RETURN c.fqn as fqn, c.declaringClass as declaringClass, c.parameterCount as paramCount'
+      );
+      expect(constructors).toHaveLength(1);
+      expect(constructors[0]?.fqn).toBe('com.example.User.<init>');
+      expect(constructors[0]?.declaringClass).toBe('com.example.User');
+      expect(constructors[0]?.paramCount).toBe(1);
+    });
+
+    it('should create DECLARES relationship from class to constructor', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'User',
+            secondaryConstructors: [
+              {
+                parameters: [],
+                visibility: 'public',
+                annotations: [],
+                location: defaultLocation,
+              },
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const declares = await client.query<{ className: string; ctorFqn: string }>(
+        'MATCH (cls:Class)-[:DECLARES]->(c:Constructor) RETURN cls.name as className, c.fqn as ctorFqn'
+      );
+      expect(declares).toHaveLength(1);
+      expect(declares[0]?.className).toBe('User');
+    });
+
+    it('should create multiple secondary constructors with unique FQNs', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'User',
+            secondaryConstructors: [
+              {
+                parameters: [{ name: 'name', type: 'String', annotations: [] }],
+                visibility: 'public',
+                annotations: [],
+                location: defaultLocation,
+              },
+              {
+                parameters: [
+                  { name: 'name', type: 'String', annotations: [] },
+                  { name: 'age', type: 'Int', annotations: [] },
+                ],
+                visibility: 'public',
+                annotations: [],
+                location: { ...defaultLocation, startLine: 10 },
+              },
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const constructors = await client.query<{ fqn: string; paramCount: number }>(
+        'MATCH (c:Constructor) RETURN c.fqn as fqn, c.parameterCount as paramCount ORDER BY c.fqn'
+      );
+      expect(constructors).toHaveLength(2);
+      expect(constructors[0]?.fqn).toBe('com.example.User.<init>');
+      expect(constructors[0]?.paramCount).toBe(1);
+      expect(constructors[1]?.fqn).toBe('com.example.User.<init>1');
+      expect(constructors[1]?.paramCount).toBe(2);
+    });
+
+    it('should store delegatesTo property', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'User',
+            secondaryConstructors: [
+              {
+                parameters: [{ name: 'name', type: 'String', annotations: [] }],
+                visibility: 'public',
+                delegatesTo: 'this',
+                annotations: [],
+                location: defaultLocation,
+              },
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const constructors = await client.query<{ delegatesTo: string }>(
+        'MATCH (c:Constructor) RETURN c.delegatesTo as delegatesTo'
+      );
+      expect(constructors).toHaveLength(1);
+      expect(constructors[0]?.delegatesTo).toBe('this');
+    });
+
+    it('should create parameters for constructor', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'User',
+            secondaryConstructors: [
+              {
+                parameters: [
+                  { name: 'name', type: 'String', annotations: [] },
+                  { name: 'age', type: 'Int', defaultValue: '0', annotations: [] },
+                ],
+                visibility: 'public',
+                annotations: [],
+                location: defaultLocation,
+              },
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const params = await client.query<{ name: string; type: string; position: number; hasDefault: boolean }>(
+        `MATCH (c:Constructor)-[r:HAS_PARAMETER]->(p:Parameter)
+         RETURN p.name as name, p.type as type, r.position as position, p.hasDefault as hasDefault
+         ORDER BY r.position`
+      );
+      expect(params).toHaveLength(2);
+      expect(params[0]?.name).toBe('name');
+      expect(params[0]?.position).toBe(0);
+      expect(params[0]?.hasDefault).toBe(false);
+      expect(params[1]?.name).toBe('age');
+      expect(params[1]?.position).toBe(1);
+      expect(params[1]?.hasDefault).toBe(true);
+    });
+  });
+
+  describe('writeFiles - Destructuring declarations', () => {
+    it('should create Property nodes for destructuring components', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        destructuringDeclarations: [
+          {
+            componentNames: ['first', 'second'],
+            visibility: 'public',
+            isVal: true,
+            location: defaultLocation,
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const props = await client.query<{ name: string; isDestructured: boolean; destructuringIndex: number }>(
+        'MATCH (p:Property {isDestructured: true}) RETURN p.name as name, p.isDestructured as isDestructured, p.destructuringIndex as destructuringIndex ORDER BY p.destructuringIndex'
+      );
+      expect(props).toHaveLength(2);
+      expect(props[0]?.name).toBe('first');
+      expect(props[0]?.destructuringIndex).toBe(0);
+      expect(props[1]?.name).toBe('second');
+      expect(props[1]?.destructuringIndex).toBe(1);
+    });
+
+    it('should store component types when available', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        destructuringDeclarations: [
+          {
+            componentNames: ['name', 'age'],
+            componentTypes: ['String', 'Int'],
+            visibility: 'public',
+            isVal: true,
+            location: defaultLocation,
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const props = await client.query<{ name: string; type: string }>(
+        'MATCH (p:Property {isDestructured: true}) RETURN p.name as name, p.type as type ORDER BY p.destructuringIndex'
+      );
+      expect(props).toHaveLength(2);
+      expect(props[0]?.type).toBe('String');
+      expect(props[1]?.type).toBe('Int');
+    });
+
+    it('should mark destructured properties as var when isVal is false', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        destructuringDeclarations: [
+          {
+            componentNames: ['x', 'y'],
+            visibility: 'private',
+            isVal: false,
+            location: defaultLocation,
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const props = await client.query<{ isMutable: boolean; visibility: string }>(
+        'MATCH (p:Property {isDestructured: true}) RETURN p.isMutable as isMutable, p.visibility as visibility LIMIT 1'
+      );
+      expect(props).toHaveLength(1);
+      expect(props[0]?.isMutable).toBe(true);
+      expect(props[0]?.visibility).toBe('private');
+    });
+
+    it('should create CONTAINS relationship from package', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        destructuringDeclarations: [
+          {
+            componentNames: ['a', 'b'],
+            visibility: 'public',
+            isVal: true,
+            location: defaultLocation,
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const contains = await client.query<{ pkg: string; prop: string }>(
+        'MATCH (pkg:Package)-[:CONTAINS]->(p:Property {isDestructured: true}) RETURN pkg.name as pkg, p.name as prop ORDER BY p.name'
+      );
+      expect(contains).toHaveLength(2);
+      expect(contains[0]?.pkg).toBe('com.example');
+    });
+
+    it('should store initializer expression', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        destructuringDeclarations: [
+          {
+            componentNames: ['key', 'value'],
+            initializer: 'Pair("hello", 42)',
+            visibility: 'public',
+            isVal: true,
+            location: defaultLocation,
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const props = await client.query<{ initializer: string }>(
+        'MATCH (p:Property {isDestructured: true}) RETURN p.initializer as initializer LIMIT 1'
+      );
+      expect(props).toHaveLength(1);
+      expect(props[0]?.initializer).toBe('Pair("hello", 42)');
     });
   });
 });

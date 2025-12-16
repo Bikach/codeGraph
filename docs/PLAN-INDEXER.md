@@ -21,7 +21,7 @@ codegraph/
 │       ├── index.ts              # MCP server (existant)
 │       ├── cli.ts                # NEW: Entry point CLI `codegraph-indexer`
 │       ├── indexer/              # NEW: Module indexeur
-│       │   ├── parsers/          # Parsers par langage (modulaires)
+│       │   ├── parsers/          # Parsers par langage (modulaires) ✅
 │       │   │   ├── kotlin/
 │       │   │   │   ├── parser.ts     # Parsing tree-sitter-kotlin
 │       │   │   │   ├── extractor.ts  # Extraction spécifique Kotlin
@@ -177,13 +177,13 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 - [x] Utilitaires : lookupSymbol, findSymbols, getResolutionStats
 - [x] Tests ajoutés : constructor calls resolution, overload resolution, qualified calls
 
-### Étape 4 : Writer Neo4j ✅ DONE (62 tests)
+### Étape 4 : Writer Neo4j ✅ DONE (91 tests)
 - [x] Créer `mcp-server/src/indexer/writer/` (module modulaire) :
   - `types.ts` : Types du writer (WriteResult, WriteError, WriterOptions)
   - `index.ts` : Neo4jWriter class avec toutes les méthodes d'écriture
   - `index.test.ts` : Tests d'intégration avec Testcontainers (Neo4j réel)
-- [x] Création des nœuds (Package, Class, Interface, Object, Function, Property, Parameter, Annotation, TypeAlias)
-- [x] Création des relations principales (CONTAINS, DECLARES, EXTENDS, IMPLEMENTS, CALLS, HAS_PARAMETER, ANNOTATED_WITH)
+- [x] Création des nœuds (Package, Class, Interface, Object, Function, Property, Parameter, Annotation, TypeAlias, Constructor)
+- [x] Création des relations (CONTAINS, DECLARES, EXTENDS, IMPLEMENTS, CALLS, USES, RETURNS, HAS_PARAMETER, ANNOTATED_WITH)
 - [x] Batch processing avec UNWIND pour performance (configurable via `batchSize`)
 - [x] Gestion des contraintes d'unicité (`ensureConstraintsAndIndexes()`)
 - [x] Option `clearBefore` pour ré-indexation complète
@@ -200,15 +200,13 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 - Top-level functions/properties avec CONTAINS depuis Package
 - Annotations avec arguments JSON
 - ResolvedCalls en batch avec comptage des duplicates
+- USES relationship (Function → Class/Interface) avec extraction automatique des types des paramètres
+- RETURNS relationship (Function → Class/Interface) avec extraction du type de retour
+- Secondary constructors comme nœuds Constructor avec paramètres et delegatesTo
+- Destructuring declarations comme Property avec isDestructured et destructuringIndex
 
-**Relations non implémentées (optionnelles) :**
-- [ ] USES relationship (Function → Class/Interface utilisée) - utile pour analyse de dépendances
-- [ ] RETURNS relationship (Function → Class/Interface retournée) - utile pour analyse de dépendances
-
-**Éléments non écrits en Neo4j (parsés mais ignorés) :**
-- Secondary constructors (`ParsedConstructor`) - pourraient être des nœuds Constructor
-- Destructuring declarations - pourraient être des nœuds Property
-- Object expressions - anonymes, difficiles à référencer
+**Éléments parsés mais non écrits en Neo4j :**
+- Object expressions - anonymes, difficiles à référencer (utilité limitée dans le graphe)
 
 ### Étape 5 : CLI `codegraph-indexer`
 - [ ] Créer `mcp-server/src/cli.ts` :
@@ -295,9 +293,9 @@ Notes:
 | **Parser registry** | Registre modulaire des parsers par extension | - |
 | **Parser Kotlin** | Parsing tree-sitter avec extraction complète | 123 |
 | **Resolver** | Résolution des symboles et appels cross-fichiers | 48 |
-| **Writer** | Écriture batch vers Neo4j avec Testcontainers | 62 |
+| **Writer** | Écriture batch vers Neo4j avec Testcontainers | 91 |
 
-**Total : 233 tests**
+**Total : 262 tests**
 
 ### Fonctionnalités Kotlin supportées
 

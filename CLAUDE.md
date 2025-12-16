@@ -58,7 +58,7 @@ codegraph/
 │       ├── neo4j/
 │       │   ├── neo4j.ts        # Neo4j client wrapper (modern executeQuery API)
 │       │   └── neo4j.types.ts  # Neo4j type definitions
-│       ├── indexer/            # Multi-language code indexer (171 tests)
+│       ├── indexer/            # Multi-language code indexer (262 tests)
 │       │   ├── index.ts        # Module exports
 │       │   ├── types.ts        # Common types (ParsedFile, LanguageParser, etc.)
 │       │   ├── parsers/
@@ -95,13 +95,13 @@ codegraph/
 
 ### Indexer Module (`indexer/`)
 
-Multi-language code indexer that parses source files and populates the Neo4j graph. **Status: 171 tests passing.**
+Multi-language code indexer that parses source files and populates the Neo4j graph. **Status: 262 tests passing.**
 
 **Architecture**:
 - **Modular parsers**: Each language has its own parser in `parsers/<language>/`
 - **Registry pattern**: `parsers/registry.ts` maps file extensions to parsers with lazy loading
 - **Resolver**: `resolver/` resolves cross-file symbol references (buildSymbolTable, resolveSymbols)
-- **Writer**: `writer.ts` writes to Neo4j (TODO)
+- **Writer**: `writer/` writes to Neo4j with batch processing and full relationship support
 
 **Key types** (`types.ts`):
 - `LanguageParser`: Interface all parsers must implement
@@ -230,4 +230,5 @@ npm run test:watch
 **Test counts:**
 - Parser Kotlin: 123 tests
 - Resolver: 48 tests
-- Total: 171 tests (342 with dist/)
+- Writer: 91 tests
+- Total: 262 tests
