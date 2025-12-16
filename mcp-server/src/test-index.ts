@@ -325,7 +325,7 @@ async function main(): Promise<void> {
   log(`Classes/Interfaces/Objects: ${totalClasses}`, 1);
   log(`Functions: ${totalFunctions}`, 1);
   log(`Properties: ${totalProperties}`, 1);
-  log(`Unresolved calls: ${totalCalls}`, 1);
+  log(`Total calls (before resolution): ${totalCalls}`, 1);
   console.log('');
 
   // ==========================================================================
@@ -354,12 +354,26 @@ async function main(): Promise<void> {
       // Collect all unresolved calls
       const unresolvedByName = new Map<string, { count: number; receivers: Set<string>; files: Set<string> }>();
 
+      // Build a set of resolved call locations for fast lookup
+      // Key format: "filePath:startLine:startColumn"
+      const buildResolvedCallsSet = (resolvedCalls: typeof resolvedFiles[0]['resolvedCalls'], filePath: string): Set<string> => {
+        const resolvedSet = new Set<string>();
+        for (const rc of resolvedCalls) {
+          const key = `${filePath}:${rc.location.startLine}:${rc.location.startColumn}`;
+          resolvedSet.add(key);
+        }
+        return resolvedSet;
+      };
+
       const collectUnresolved = (
-        calls: Array<{ name: string; resolvedFqn?: string; receiver?: string }>,
+        calls: Array<{ name: string; receiver?: string; location: { startLine: number; startColumn: number } }>,
+        resolvedSet: Set<string>,
         filePath: string
       ): void => {
         for (const call of calls) {
-          if (!call.resolvedFqn) {
+          const callKey = `${filePath}:${call.location.startLine}:${call.location.startColumn}`;
+          // If this call's location is NOT in the resolved set, it's unresolved
+          if (!resolvedSet.has(callKey)) {
             const key = call.name;
             if (!unresolvedByName.has(key)) {
               unresolvedByName.set(key, { count: 0, receivers: new Set(), files: new Set() });
@@ -375,15 +389,17 @@ async function main(): Promise<void> {
       };
 
       for (const resolved of resolvedFiles) {
+        const resolvedSet = buildResolvedCallsSet(resolved.resolvedCalls, resolved.filePath);
+
         for (const cls of resolved.classes) {
           for (const fn of cls.functions) {
-            collectUnresolved(fn.calls, resolved.filePath);
+            collectUnresolved(fn.calls, resolvedSet, resolved.filePath);
           }
           // Nested classes
           const processNested = (classes: typeof resolved.classes): void => {
             for (const c of classes) {
               for (const fn of c.functions) {
-                collectUnresolved(fn.calls, resolved.filePath);
+                collectUnresolved(fn.calls, resolvedSet, resolved.filePath);
               }
               processNested(c.nestedClasses);
             }
@@ -391,7 +407,7 @@ async function main(): Promise<void> {
           processNested(cls.nestedClasses);
         }
         for (const fn of resolved.topLevelFunctions) {
-          collectUnresolved(fn.calls, resolved.filePath);
+          collectUnresolved(fn.calls, resolvedSet, resolved.filePath);
         }
       }
 
