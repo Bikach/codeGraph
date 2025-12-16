@@ -62,3 +62,14 @@ export {
   type WriterOptions,
   type ClearResult,
 } from './writer/index.js';
+
+// Domain
+export {
+  analyzeDomains,
+  type Domain,
+  type DomainConfig,
+  type DomainsConfigFile,
+  type DomainAnalysisResult,
+  type DomainDependency,
+  type DomainInferenceOptions,
+} from './domain/index.js';

@@ -24,6 +24,7 @@ import type {
   ParsedObjectExpression,
 } from '../types.js';
 import type { WriteResult, WriterOptions, ClearResult, NodeRelResult } from './types.js';
+import { analyzeDomains, type DomainAnalysisResult } from '../domain/index.js';
 
 // =============================================================================
 // Helper functions
@@ -142,6 +143,8 @@ export class Neo4jWriter {
       'CREATE CONSTRAINT constructor_fqn_unique IF NOT EXISTS FOR (c:Constructor) REQUIRE c.fqn IS UNIQUE',
       // Annotation uniqueness by name (annotations are shared across elements)
       'CREATE CONSTRAINT annotation_name_unique IF NOT EXISTS FOR (a:Annotation) REQUIRE a.name IS UNIQUE',
+      // Domain uniqueness by name
+      'CREATE CONSTRAINT domain_name_unique IF NOT EXISTS FOR (d:Domain) REQUIRE d.name IS UNIQUE',
     ];
 
     const indexes = [
@@ -181,7 +184,7 @@ export class Neo4jWriter {
       MATCH (n)
       WHERE n:Package OR n:Class OR n:Interface OR n:Object
          OR n:Function OR n:Property OR n:Parameter OR n:Annotation OR n:TypeAlias
-         OR n:Constructor
+         OR n:Constructor OR n:Domain
       DETACH DELETE n
     `;
 
@@ -251,6 +254,13 @@ export class Neo4jWriter {
     // Write RETURNS relationships (Function -> return type)
     const returnsResult = await this.writeReturnsRelationships(files);
     result.relationshipsCreated += returnsResult;
+
+    // Analyze and write domains (if enabled)
+    if (options.analyzeDomains !== false) {
+      const domainResult = await this.writeDomains(files, options.domainsConfigPath);
+      result.nodesCreated += domainResult.nodesCreated;
+      result.relationshipsCreated += domainResult.relationshipsCreated;
+    }
 
     return result;
   }
@@ -1439,6 +1449,76 @@ export class Neo4jWriter {
       const funcResult = await this.writeFunction(func, anonymousFqn, filePath);
       nodesCreated += funcResult.nodesCreated;
       relationshipsCreated += funcResult.relationshipsCreated;
+    }
+
+    return { nodesCreated, relationshipsCreated };
+  }
+
+  /**
+   * Analyze and write domains to Neo4j.
+   * Creates Domain nodes, OWNS relationships to packages, and DEPENDS_ON between domains.
+   */
+  private async writeDomains(
+    files: ResolvedFile[],
+    configPath?: string
+  ): Promise<NodeRelResult> {
+    let nodesCreated = 0;
+    let relationshipsCreated = 0;
+
+    // Analyze domains
+    const analysis: DomainAnalysisResult = await analyzeDomains(files, { configPath });
+
+    if (analysis.domains.length === 0) {
+      return { nodesCreated, relationshipsCreated };
+    }
+
+    // Create Domain nodes
+    for (const domain of analysis.domains) {
+      const props: Record<string, unknown> = {
+        name: domain.name,
+      };
+      if (domain.description) {
+        props.description = domain.description;
+      }
+      if (domain.patterns.length > 0) {
+        props.patterns = domain.patterns;
+      }
+
+      const createDomainQuery = `
+        MERGE (d:Domain {name: $name})
+        SET d += $props
+        RETURN d
+      `;
+      await this.client.write(createDomainQuery, { name: domain.name, props });
+      nodesCreated++;
+
+      // Create OWNS relationships to packages
+      if (domain.matchedPackages.length > 0) {
+        const ownsQuery = `
+          UNWIND $packages AS pkgName
+          MATCH (d:Domain {name: $domainName})
+          MATCH (p:Package {name: pkgName})
+          MERGE (d)-[:OWNS]->(p)
+        `;
+        await this.client.write(ownsQuery, {
+          domainName: domain.name,
+          packages: domain.matchedPackages,
+        });
+        relationshipsCreated += domain.matchedPackages.length;
+      }
+    }
+
+    // Create DEPENDS_ON relationships between domains
+    if (analysis.dependencies.length > 0) {
+      const dependsOnQuery = `
+        UNWIND $deps AS dep
+        MATCH (from:Domain {name: dep.from})
+        MATCH (to:Domain {name: dep.to})
+        MERGE (from)-[r:DEPENDS_ON]->(to)
+        SET r.weight = dep.weight
+      `;
+      await this.client.write(dependsOnQuery, { deps: analysis.dependencies });
+      relationshipsCreated += analysis.dependencies.length;
     }
 
     return { nodesCreated, relationshipsCreated };

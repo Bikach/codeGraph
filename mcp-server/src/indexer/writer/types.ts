@@ -48,6 +48,10 @@ export interface WriterOptions {
   clearBefore?: boolean;
   /** Create constraints and indexes if missing (default: true) */
   ensureSchema?: boolean;
+  /** Enable domain analysis and writing (default: true) */
+  analyzeDomains?: boolean;
+  /** Path to codegraph.domains.json for domain configuration */
+  domainsConfigPath?: string;
 }
 
 // =============================================================================

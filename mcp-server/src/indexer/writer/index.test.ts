@@ -2301,4 +2301,227 @@ describe('Neo4jWriter Integration Tests', () => {
       expect(objects[1]?.fqn).toBe('com.example.<anonymous>@25');
     });
   });
+
+  // ===========================================================================
+  // Domain Analysis and Writing
+  // ===========================================================================
+
+  describe('writeFiles - Domain analysis', () => {
+    it('should create Domain nodes from inferred domains', async () => {
+      const files = [
+        createResolvedFile({
+          packageName: 'com.example.payment.service',
+          classes: [createParsedClass({ name: 'PaymentService' })],
+        }),
+        createResolvedFile({
+          filePath: '/test/User.kt',
+          packageName: 'com.example.user.domain',
+          classes: [createParsedClass({ name: 'User' })],
+        }),
+      ];
+
+      await writer.writeFiles(files);
+
+      const domains = await client.query<{ name: string }>(
+        'MATCH (d:Domain) RETURN d.name as name ORDER BY d.name'
+      );
+      expect(domains).toHaveLength(2);
+      expect(domains[0]?.name).toBe('Payment');
+      expect(domains[1]?.name).toBe('User');
+    });
+
+    it('should create OWNS relationship from Domain to Package', async () => {
+      const files = [
+        createResolvedFile({
+          packageName: 'com.example.payment.service',
+          classes: [createParsedClass({ name: 'PaymentService' })],
+        }),
+        createResolvedFile({
+          filePath: '/test/PaymentRepo.kt',
+          packageName: 'com.example.payment.repository',
+          classes: [createParsedClass({ name: 'PaymentRepository' })],
+        }),
+      ];
+
+      await writer.writeFiles(files);
+
+      const owns = await client.query<{ domain: string; pkg: string }>(
+        'MATCH (d:Domain)-[:OWNS]->(p:Package) RETURN d.name as domain, p.name as pkg ORDER BY p.name'
+      );
+      expect(owns).toHaveLength(2);
+      expect(owns[0]?.domain).toBe('Payment');
+      expect(owns[0]?.pkg).toBe('com.example.payment.repository');
+      expect(owns[1]?.domain).toBe('Payment');
+      expect(owns[1]?.pkg).toBe('com.example.payment.service');
+    });
+
+    it('should create DEPENDS_ON relationship between domains', async () => {
+      const files = [
+        createResolvedFile({
+          packageName: 'com.example.order.service',
+          classes: [
+            createParsedClass({
+              name: 'OrderService',
+              functions: [createParsedFunction({ name: 'createOrder' })],
+            }),
+          ],
+          resolvedCalls: [
+            {
+              fromFqn: 'com.example.order.service.OrderService.createOrder',
+              toFqn: 'com.example.payment.service.PaymentService.charge',
+              location: defaultLocation,
+            },
+          ],
+        }),
+        createResolvedFile({
+          filePath: '/test/Payment.kt',
+          packageName: 'com.example.payment.service',
+          classes: [
+            createParsedClass({
+              name: 'PaymentService',
+              functions: [createParsedFunction({ name: 'charge' })],
+            }),
+          ],
+        }),
+      ];
+
+      await writer.writeFiles(files);
+
+      const deps = await client.query<{ from: string; to: string; weight: number }>(
+        'MATCH (d1:Domain)-[r:DEPENDS_ON]->(d2:Domain) RETURN d1.name as from, d2.name as to, r.weight as weight'
+      );
+      expect(deps).toHaveLength(1);
+      expect(deps[0]?.from).toBe('Order');
+      expect(deps[0]?.to).toBe('Payment');
+      expect(deps[0]?.weight).toBe(1);
+    });
+
+    it('should skip domain analysis when analyzeDomains option is false', async () => {
+      const files = [
+        createResolvedFile({
+          packageName: 'com.example.payment.service',
+          classes: [createParsedClass({ name: 'PaymentService' })],
+        }),
+      ];
+
+      await writer.writeFiles(files, { analyzeDomains: false });
+
+      const domains = await client.query<{ count: number }>(
+        'MATCH (d:Domain) RETURN count(d) as count'
+      );
+      expect(domains[0]?.count).toBe(0);
+    });
+
+    it('should not create self-referencing domain dependencies', async () => {
+      const files = [
+        createResolvedFile({
+          packageName: 'com.example.payment.service',
+          classes: [
+            createParsedClass({
+              name: 'PaymentService',
+              functions: [createParsedFunction({ name: 'process' })],
+            }),
+          ],
+          resolvedCalls: [
+            {
+              fromFqn: 'com.example.payment.service.PaymentService.process',
+              toFqn: 'com.example.payment.validator.PaymentValidator.validate',
+              location: defaultLocation,
+            },
+          ],
+        }),
+        createResolvedFile({
+          filePath: '/test/Validator.kt',
+          packageName: 'com.example.payment.validator',
+          classes: [
+            createParsedClass({
+              name: 'PaymentValidator',
+              functions: [createParsedFunction({ name: 'validate' })],
+            }),
+          ],
+        }),
+      ];
+
+      await writer.writeFiles(files);
+
+      // Both packages belong to Payment domain, so no DEPENDS_ON should be created
+      const deps = await client.query<{ count: number }>(
+        'MATCH (:Domain)-[r:DEPENDS_ON]->(:Domain) RETURN count(r) as count'
+      );
+      expect(deps[0]?.count).toBe(0);
+    });
+
+    it('should handle files without package names', async () => {
+      const files = [
+        createResolvedFile({
+          // No packageName
+          classes: [createParsedClass({ name: 'TopLevelClass' })],
+        }),
+        createResolvedFile({
+          filePath: '/test/Payment.kt',
+          packageName: 'com.example.payment',
+          classes: [createParsedClass({ name: 'PaymentService' })],
+        }),
+      ];
+
+      await writer.writeFiles(files);
+
+      const domains = await client.query<{ name: string }>(
+        'MATCH (d:Domain) RETURN d.name as name'
+      );
+      // Only Payment domain should be created
+      expect(domains).toHaveLength(1);
+      expect(domains[0]?.name).toBe('Payment');
+    });
+
+    it('should accumulate weight for multiple cross-domain calls', async () => {
+      const files = [
+        createResolvedFile({
+          packageName: 'com.example.order.service',
+          classes: [
+            createParsedClass({
+              name: 'OrderService',
+              functions: [
+                createParsedFunction({ name: 'createOrder' }),
+                createParsedFunction({ name: 'processOrder' }),
+              ],
+            }),
+          ],
+          resolvedCalls: [
+            {
+              fromFqn: 'com.example.order.service.OrderService.createOrder',
+              toFqn: 'com.example.payment.service.PaymentService.charge',
+              location: defaultLocation,
+            },
+            {
+              fromFqn: 'com.example.order.service.OrderService.processOrder',
+              toFqn: 'com.example.payment.service.PaymentService.refund',
+              location: { ...defaultLocation, startLine: 20 },
+            },
+          ],
+        }),
+        createResolvedFile({
+          filePath: '/test/Payment.kt',
+          packageName: 'com.example.payment.service',
+          classes: [
+            createParsedClass({
+              name: 'PaymentService',
+              functions: [
+                createParsedFunction({ name: 'charge' }),
+                createParsedFunction({ name: 'refund' }),
+              ],
+            }),
+          ],
+        }),
+      ];
+
+      await writer.writeFiles(files);
+
+      const deps = await client.query<{ weight: number }>(
+        'MATCH (:Domain {name: "Order"})-[r:DEPENDS_ON]->(:Domain {name: "Payment"}) RETURN r.weight as weight'
+      );
+      expect(deps).toHaveLength(1);
+      expect(deps[0]?.weight).toBe(2);
+    });
+  });
 });
