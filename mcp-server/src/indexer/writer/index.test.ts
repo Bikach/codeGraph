@@ -2075,4 +2075,230 @@ describe('Neo4jWriter Integration Tests', () => {
       expect(props[0]?.initializer).toBe('Pair("hello", 42)');
     });
   });
+
+  describe('writeFiles - Object expressions (anonymous objects)', () => {
+    it('should create Object node for anonymous object', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        objectExpressions: [
+          {
+            superTypes: ['ClickListener'],
+            properties: [],
+            functions: [],
+            location: { ...defaultLocation, startLine: 10 },
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const objects = await client.query<{ fqn: string; name: string; isAnonymous: boolean; lineNumber: number }>(
+        'MATCH (o:Object {isAnonymous: true}) RETURN o.fqn as fqn, o.name as name, o.isAnonymous as isAnonymous, o.lineNumber as lineNumber'
+      );
+      expect(objects).toHaveLength(1);
+      expect(objects[0]?.fqn).toBe('com.example.<anonymous>@10');
+      expect(objects[0]?.name).toBe('<anonymous>');
+      expect(objects[0]?.isAnonymous).toBe(true);
+      expect(objects[0]?.lineNumber).toBe(10);
+    });
+
+    it('should store superTypes on anonymous object', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        objectExpressions: [
+          {
+            superTypes: ['Runnable', 'Serializable'],
+            properties: [],
+            functions: [],
+            location: defaultLocation,
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const objects = await client.query<{ superTypes: string[] }>(
+        'MATCH (o:Object {isAnonymous: true}) RETURN o.superTypes as superTypes'
+      );
+      expect(objects).toHaveLength(1);
+      expect(objects[0]?.superTypes).toEqual(['Runnable', 'Serializable']);
+    });
+
+    it('should create CONTAINS relationship from package', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        objectExpressions: [
+          {
+            superTypes: [],
+            properties: [],
+            functions: [],
+            location: { ...defaultLocation, startLine: 5 },
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const contains = await client.query<{ pkg: string; obj: string }>(
+        'MATCH (pkg:Package)-[:CONTAINS]->(o:Object {isAnonymous: true}) RETURN pkg.name as pkg, o.fqn as obj'
+      );
+      expect(contains).toHaveLength(1);
+      expect(contains[0]?.pkg).toBe('com.example');
+      expect(contains[0]?.obj).toBe('com.example.<anonymous>@5');
+    });
+
+    it('should create IMPLEMENTS relationship to interface', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({ name: 'ClickListener', kind: 'interface' }),
+        ],
+        objectExpressions: [
+          {
+            superTypes: ['ClickListener'],
+            properties: [],
+            functions: [],
+            location: defaultLocation,
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const implements_ = await client.query<{ obj: string; iface: string }>(
+        'MATCH (o:Object {isAnonymous: true})-[:IMPLEMENTS]->(i:Interface) RETURN o.name as obj, i.name as iface'
+      );
+      expect(implements_).toHaveLength(1);
+      expect(implements_[0]?.obj).toBe('<anonymous>');
+      expect(implements_[0]?.iface).toBe('ClickListener');
+    });
+
+    it('should create IMPLEMENTS relationship to class (extends)', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({ name: 'BaseHandler', kind: 'class', isAbstract: true }),
+        ],
+        objectExpressions: [
+          {
+            superTypes: ['BaseHandler'],
+            properties: [],
+            functions: [],
+            location: defaultLocation,
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const implements_ = await client.query<{ obj: string; cls: string }>(
+        'MATCH (o:Object {isAnonymous: true})-[:IMPLEMENTS]->(c:Class) RETURN o.name as obj, c.name as cls'
+      );
+      expect(implements_).toHaveLength(1);
+      expect(implements_[0]?.cls).toBe('BaseHandler');
+    });
+
+    it('should write properties of object expression', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        objectExpressions: [
+          {
+            superTypes: [],
+            properties: [
+              createParsedProperty({ name: 'counter', type: 'Int', isVal: false }),
+            ],
+            functions: [],
+            location: { ...defaultLocation, startLine: 15 },
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const props = await client.query<{ name: string; type: string; declaringType: string }>(
+        'MATCH (o:Object {isAnonymous: true})-[:DECLARES]->(p:Property) RETURN p.name as name, p.type as type, p.declaringType as declaringType'
+      );
+      expect(props).toHaveLength(1);
+      expect(props[0]?.name).toBe('counter');
+      expect(props[0]?.type).toBe('Int');
+      expect(props[0]?.declaringType).toBe('com.example.<anonymous>@15');
+    });
+
+    it('should write functions of object expression', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        objectExpressions: [
+          {
+            superTypes: ['Runnable'],
+            properties: [],
+            functions: [
+              createParsedFunction({ name: 'run', visibility: 'public' }),
+            ],
+            location: { ...defaultLocation, startLine: 20 },
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const funcs = await client.query<{ name: string; fqn: string; declaringType: string }>(
+        'MATCH (o:Object {isAnonymous: true})-[:DECLARES]->(f:Function) RETURN f.name as name, f.fqn as fqn, f.declaringType as declaringType'
+      );
+      expect(funcs).toHaveLength(1);
+      expect(funcs[0]?.name).toBe('run');
+      expect(funcs[0]?.fqn).toBe('com.example.<anonymous>@20.run');
+      expect(funcs[0]?.declaringType).toBe('com.example.<anonymous>@20');
+    });
+
+    it('should handle object expression without package', async () => {
+      const file = createResolvedFile({
+        // No packageName
+        objectExpressions: [
+          {
+            superTypes: ['Listener'],
+            properties: [],
+            functions: [],
+            location: { ...defaultLocation, startLine: 7 },
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const objects = await client.query<{ fqn: string }>(
+        'MATCH (o:Object {isAnonymous: true}) RETURN o.fqn as fqn'
+      );
+      expect(objects).toHaveLength(1);
+      expect(objects[0]?.fqn).toBe('<anonymous>@7');
+    });
+
+    it('should handle multiple object expressions in same file', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        objectExpressions: [
+          {
+            superTypes: ['InterfaceA'],
+            properties: [],
+            functions: [],
+            location: { ...defaultLocation, startLine: 10 },
+          },
+          {
+            superTypes: ['InterfaceB'],
+            properties: [],
+            functions: [],
+            location: { ...defaultLocation, startLine: 25 },
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const objects = await client.query<{ fqn: string }>(
+        'MATCH (o:Object {isAnonymous: true}) RETURN o.fqn as fqn ORDER BY o.lineNumber'
+      );
+      expect(objects).toHaveLength(2);
+      expect(objects[0]?.fqn).toBe('com.example.<anonymous>@10');
+      expect(objects[1]?.fqn).toBe('com.example.<anonymous>@25');
+    });
+  });
 });

@@ -21,6 +21,7 @@ import type {
   ParsedTypeAlias,
   ParsedConstructor,
   ParsedDestructuringDeclaration,
+  ParsedObjectExpression,
 } from '../types.js';
 import type { WriteResult, WriterOptions, ClearResult, NodeRelResult } from './types.js';
 
@@ -298,6 +299,17 @@ export class Neo4jWriter {
       );
       nodesCreated += destructResult.nodesCreated;
       relationshipsCreated += destructResult.relationshipsCreated;
+    }
+
+    // Write object expressions (anonymous objects)
+    for (const objExpr of file.objectExpressions) {
+      const objExprResult = await this.writeObjectExpression(
+        objExpr,
+        file.packageName,
+        file.filePath
+      );
+      nodesCreated += objExprResult.nodesCreated;
+      relationshipsCreated += objExprResult.relationshipsCreated;
     }
 
     return { nodesCreated, relationshipsCreated };
@@ -1345,6 +1357,88 @@ export class Neo4jWriter {
         await this.client.write(containsQuery, { packageName, fqn });
         relationshipsCreated++;
       }
+    }
+
+    return { nodesCreated, relationshipsCreated };
+  }
+
+  /**
+   * Write an object expression (anonymous object) to Neo4j.
+   * Object expressions are anonymous objects like: `object : Interface { ... }`
+   */
+  private async writeObjectExpression(
+    objExpr: ParsedObjectExpression,
+    packageName: string | undefined,
+    filePath: string
+  ): Promise<NodeRelResult> {
+    let nodesCreated = 0;
+    let relationshipsCreated = 0;
+
+    // Create a unique FQN based on location (same convention as resolver)
+    const anonymousFqn = packageName
+      ? `${packageName}.<anonymous>@${objExpr.location.startLine}`
+      : `<anonymous>@${objExpr.location.startLine}`;
+
+    const props: Record<string, unknown> = {
+      fqn: anonymousFqn,
+      name: '<anonymous>',
+      isAnonymous: true,
+      filePath,
+      lineNumber: objExpr.location.startLine,
+    };
+
+    if (objExpr.superTypes.length > 0) {
+      props.superTypes = objExpr.superTypes;
+    }
+
+    // Create the anonymous object node
+    const createQuery = `
+      MERGE (o:Object {fqn: $fqn})
+      SET o += $props
+      RETURN o
+    `;
+    await this.client.write(createQuery, { fqn: anonymousFqn, props });
+    nodesCreated++;
+
+    // Create CONTAINS relationship from package
+    if (packageName) {
+      const containsQuery = `
+        MATCH (pkg:Package {name: $packageName})
+        MATCH (o:Object {fqn: $fqn})
+        MERGE (pkg)-[:CONTAINS]->(o)
+      `;
+      await this.client.write(containsQuery, { packageName, fqn: anonymousFqn });
+      relationshipsCreated++;
+    }
+
+    // Create IMPLEMENTS relationships for super types (interfaces/classes)
+    for (const superType of objExpr.superTypes) {
+      const implementsQuery = `
+        MATCH (o:Object {fqn: $objectFqn})
+        OPTIONAL MATCH (ifaceByFqn:Interface {fqn: $superType})
+        OPTIONAL MATCH (ifaceByName:Interface {name: $superType})
+        OPTIONAL MATCH (classByFqn:Class {fqn: $superType})
+        OPTIONAL MATCH (classByName:Class {name: $superType})
+        WITH o, COALESCE(ifaceByFqn, ifaceByName, classByFqn, classByName) AS target
+        WHERE target IS NOT NULL
+        MERGE (o)-[:IMPLEMENTS]->(target)
+      `;
+      await this.client.write(implementsQuery, { objectFqn: anonymousFqn, superType });
+      relationshipsCreated++;
+    }
+
+    // Write properties of the object expression
+    for (const prop of objExpr.properties) {
+      const propResult = await this.writeProperty(prop, anonymousFqn, filePath);
+      nodesCreated += propResult.nodesCreated;
+      relationshipsCreated += propResult.relationshipsCreated;
+    }
+
+    // Write functions of the object expression
+    for (const func of objExpr.functions) {
+      const funcResult = await this.writeFunction(func, anonymousFqn, filePath);
+      nodesCreated += funcResult.nodesCreated;
+      relationshipsCreated += funcResult.relationshipsCreated;
     }
 
     return { nodesCreated, relationshipsCreated };
