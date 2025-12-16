@@ -21,10 +21,28 @@ import type {
   ResolvedFile,
 } from '../types.js';
 
-import type { Symbol, FunctionSymbol, SymbolTable, ResolutionContext, ResolutionStats } from './types.js';
+import type {
+  Symbol,
+  FunctionSymbol,
+  ClassSymbol,
+  TypeAliasSymbol,
+  PropertySymbol,
+  SymbolTable,
+  ResolutionContext,
+  ResolutionStats,
+} from './types.js';
 
 // Re-export types
-export type { Symbol, FunctionSymbol, SymbolTable, ResolutionContext, ResolutionStats } from './types.js';
+export type {
+  Symbol,
+  FunctionSymbol,
+  ClassSymbol,
+  TypeAliasSymbol,
+  PropertySymbol,
+  SymbolTable,
+  ResolutionContext,
+  ResolutionStats,
+} from './types.js';
 
 // =============================================================================
 // Symbol Table Builder
@@ -81,17 +99,64 @@ function indexFile(table: SymbolTable, file: ParsedFile): void {
     });
   }
 
-  // Index type aliases as symbols (they can be referenced)
+  // Index type aliases as TypeAliasSymbol (they can be referenced and resolved)
   for (const alias of file.typeAliases) {
     const fqn = packageName ? `${packageName}.${alias.name}` : alias.name;
-    addSymbol(table, {
+    const typeAliasSymbol: TypeAliasSymbol = {
       name: alias.name,
       fqn,
-      kind: 'class', // Type aliases are treated as type references
+      kind: 'typealias',
       filePath: file.filePath,
       location: alias.location,
       packageName,
+      aliasedType: alias.aliasedType,
+    };
+    addSymbol(table, typeAliasSymbol);
+  }
+
+  // Index destructuring declarations (each component becomes a property)
+  for (const destructuring of file.destructuringDeclarations) {
+    for (let i = 0; i < destructuring.componentNames.length; i++) {
+      const componentName = destructuring.componentNames[i];
+      if (componentName && componentName !== '_') {
+        const propFqn = packageName ? `${packageName}.${componentName}` : componentName;
+        const propSymbol: PropertySymbol = {
+          name: componentName,
+          fqn: propFqn,
+          kind: 'property',
+          filePath: file.filePath,
+          location: destructuring.location,
+          packageName,
+          type: destructuring.componentTypes?.[i],
+          isVal: destructuring.isVal,
+        };
+        addSymbol(table, propSymbol);
+      }
+    }
+  }
+
+  // Index object expressions for dependency tracking
+  // Object expressions implement interfaces/extend classes, so we track those relationships
+  for (const objExpr of file.objectExpressions) {
+    // Object expressions are anonymous, we track them by location
+    const anonymousFqn = packageName
+      ? `${packageName}.<anonymous>@${objExpr.location.startLine}`
+      : `<anonymous>@${objExpr.location.startLine}`;
+
+    // Add to symbol table for reference tracking (not really lookupable, but useful for analysis)
+    addSymbol(table, {
+      name: '<anonymous>',
+      fqn: anonymousFqn,
+      kind: 'object',
+      filePath: file.filePath,
+      location: objExpr.location,
+      packageName,
     });
+
+    // Index functions within object expressions
+    for (const func of objExpr.functions) {
+      indexFunction(table, func, packageName, file.filePath, anonymousFqn);
+    }
   }
 }
 
@@ -111,8 +176,8 @@ function indexClass(
       ? `${packageName}.${cls.name}`
       : cls.name;
 
-  // Add the class itself
-  addSymbol(table, {
+  // Add the class itself with full metadata
+  const classSymbol: ClassSymbol = {
     name: cls.name,
     fqn,
     kind: cls.kind,
@@ -120,17 +185,25 @@ function indexClass(
     location: cls.location,
     parentFqn,
     packageName,
-  });
+    // Inheritance info (will be resolved to FQN later in buildTypeHierarchy)
+    superClass: cls.superClass,
+    interfaces: cls.interfaces,
+    // Kotlin-specific metadata
+    isData: cls.isData || undefined,
+    isSealed: cls.isSealed || undefined,
+    isAbstract: cls.isAbstract || undefined,
+  };
+  addSymbol(table, classSymbol);
 
   // Index functions
   for (const func of cls.functions) {
     indexFunction(table, func, packageName, filePath, fqn);
   }
 
-  // Index properties
+  // Index properties with full metadata
   for (const prop of cls.properties) {
     const propFqn = `${fqn}.${prop.name}`;
-    addSymbol(table, {
+    const propSymbol: PropertySymbol = {
       name: prop.name,
       fqn: propFqn,
       kind: 'property',
@@ -138,7 +211,10 @@ function indexClass(
       location: prop.location,
       parentFqn: fqn,
       packageName,
-    });
+      type: prop.type,
+      isVal: prop.isVal,
+    };
+    addSymbol(table, propSymbol);
   }
 
   // Index nested classes
@@ -148,16 +224,22 @@ function indexClass(
 
   // Index companion object
   if (cls.companionObject) {
-    const companionFqn = `${fqn}.Companion`;
-    addSymbol(table, {
-      name: 'Companion',
+    // Use actual companion object name (might be named, e.g., "companion object Factory")
+    const companionName = cls.companionObject.name !== '<anonymous>' ? cls.companionObject.name : 'Companion';
+    const companionFqn = `${fqn}.${companionName}`;
+
+    const companionSymbol: ClassSymbol = {
+      name: companionName,
       fqn: companionFqn,
       kind: 'object',
       filePath,
       location: cls.companionObject.location,
       parentFqn: fqn,
       packageName,
-    });
+      superClass: cls.companionObject.superClass,
+      interfaces: cls.companionObject.interfaces,
+    };
+    addSymbol(table, companionSymbol);
 
     // Index companion functions and properties
     for (const func of cls.companionObject.functions) {
@@ -165,7 +247,7 @@ function indexClass(
     }
     for (const prop of cls.companionObject.properties) {
       const propFqn = `${companionFqn}.${prop.name}`;
-      addSymbol(table, {
+      const propSymbol: PropertySymbol = {
         name: prop.name,
         fqn: propFqn,
         kind: 'property',
@@ -173,7 +255,10 @@ function indexClass(
         location: prop.location,
         parentFqn: companionFqn,
         packageName,
-      });
+        type: prop.type,
+        isVal: prop.isVal,
+      };
+      addSymbol(table, propSymbol);
     }
   }
 }
@@ -204,6 +289,9 @@ function indexFunction(
     isExtension: func.isExtension,
     isOperator: func.isOperator,
     isInfix: func.isInfix,
+    // Kotlin-specific metadata
+    isSuspend: func.isSuspend || undefined,
+    isInline: func.isInline || undefined,
   };
 
   addSymbol(table, functionSymbol);
@@ -335,16 +423,29 @@ export function resolveSymbols(files: ParsedFile[], symbolTable?: SymbolTable): 
 function resolveFile(table: SymbolTable, file: ParsedFile): ResolvedFile {
   const context = createResolutionContext(file);
   const resolvedCalls: ResolvedCall[] = [];
+  const packageName = file.packageName || '';
 
   // Resolve calls in top-level functions
   for (const func of file.topLevelFunctions) {
-    const funcFqn = file.packageName ? `${file.packageName}.${func.name}` : func.name;
+    const funcFqn = packageName ? `${packageName}.${func.name}` : func.name;
     resolvedCalls.push(...resolveCallsInFunction(table, context, func, funcFqn));
   }
 
   // Resolve calls in classes
   for (const cls of file.classes) {
-    resolvedCalls.push(...resolveCallsInClass(table, context, cls, file.packageName || ''));
+    resolvedCalls.push(...resolveCallsInClass(table, context, cls, packageName));
+  }
+
+  // Resolve calls in object expressions (anonymous objects)
+  for (const objExpr of file.objectExpressions) {
+    const anonymousFqn = packageName
+      ? `${packageName}.<anonymous>@${objExpr.location.startLine}`
+      : `<anonymous>@${objExpr.location.startLine}`;
+
+    for (const func of objExpr.functions) {
+      const funcFqn = `${anonymousFqn}.${func.name}`;
+      resolvedCalls.push(...resolveCallsInFunction(table, context, func, funcFqn));
+    }
   }
 
   return {
@@ -571,6 +672,7 @@ function resolveCall(table: SymbolTable, context: ResolutionContext, call: Parse
 
 /**
  * Resolve a method call on a specific type.
+ * Handles type aliases by resolving to the underlying type.
  */
 function resolveMethodInType(
   table: SymbolTable,
@@ -582,7 +684,18 @@ function resolveMethodInType(
   const baseType = typeName.split('<')[0]?.trim() ?? typeName;
 
   // Try to resolve the type FQN
-  const typeFqn = resolveSymbolByName(table, context, baseType)?.fqn || baseType;
+  const symbol = resolveSymbolByName(table, context, baseType);
+  let typeFqn = symbol?.fqn || baseType;
+
+  // If it's a type alias, resolve to the underlying type
+  if (symbol?.kind === 'typealias') {
+    const aliasSymbol = symbol as TypeAliasSymbol;
+    const underlyingBaseType = aliasSymbol.aliasedType.split('<')[0]?.trim() ?? aliasSymbol.aliasedType;
+    const underlyingSymbol = resolveSymbolByName(table, context, underlyingBaseType);
+    if (underlyingSymbol) {
+      typeFqn = underlyingSymbol.fqn;
+    }
+  }
 
   // Look for method in the type
   const methodFqn = `${typeFqn}.${methodName}`;

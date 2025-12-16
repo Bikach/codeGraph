@@ -216,15 +216,29 @@ describe('kotlinParser', () => {
     it('should extract class extending class with constructor call', async () => {
       const source = `class AdminService : BaseService()`;
       const result = await kotlinParser.parse(source, '/test/AdminService.kt');
-      expect(result.classes[0]!.interfaces).toContain('BaseService');
+      // BaseService() has parentheses = constructor call = superclass
+      expect(result.classes[0]!.superClass).toBe('BaseService');
+      expect(result.classes[0]!.interfaces).toHaveLength(0);
     });
 
     it('should extract multiple interfaces', async () => {
       const source = `class UserService : UserRepository, Serializable, Closeable`;
       const result = await kotlinParser.parse(source, '/test/UserService.kt');
+      // No parentheses = all interfaces
+      expect(result.classes[0]!.superClass).toBeUndefined();
       expect(result.classes[0]!.interfaces).toHaveLength(3);
       expect(result.classes[0]!.interfaces).toContain('UserRepository');
       expect(result.classes[0]!.interfaces).toContain('Serializable');
+      expect(result.classes[0]!.interfaces).toContain('Closeable');
+    });
+
+    it('should extract superclass and interfaces together', async () => {
+      // In Kotlin: BaseService() has parens = superclass, Repository/Closeable = interfaces
+      const source = `class UserService : BaseService(), Repository, Closeable`;
+      const result = await kotlinParser.parse(source, '/test/UserService.kt');
+      expect(result.classes[0]!.superClass).toBe('BaseService');
+      expect(result.classes[0]!.interfaces).toHaveLength(2);
+      expect(result.classes[0]!.interfaces).toContain('Repository');
       expect(result.classes[0]!.interfaces).toContain('Closeable');
     });
 

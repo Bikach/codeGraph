@@ -19,7 +19,7 @@ export interface Symbol {
   /** Fully qualified name (e.g., "com.example.service.UserService") */
   fqn: string;
   /** Symbol kind */
-  kind: 'class' | 'interface' | 'object' | 'enum' | 'annotation' | 'function' | 'property';
+  kind: 'class' | 'interface' | 'object' | 'enum' | 'annotation' | 'function' | 'property' | 'typealias';
   /** File where the symbol is defined */
   filePath: string;
   /** Location in the source file */
@@ -32,6 +32,23 @@ export interface Symbol {
   receiverType?: string;
   /** Package name */
   packageName?: string;
+}
+
+/**
+ * Represents a class/interface/object symbol with additional metadata.
+ */
+export interface ClassSymbol extends Symbol {
+  kind: 'class' | 'interface' | 'object' | 'enum' | 'annotation';
+  /** Superclass FQN (resolved) */
+  superClass?: string;
+  /** Interface FQNs (resolved) */
+  interfaces: string[];
+  /** Kotlin-specific: is this a data class? */
+  isData?: boolean;
+  /** Kotlin-specific: is this a sealed class? */
+  isSealed?: boolean;
+  /** Is this an abstract class/interface? */
+  isAbstract?: boolean;
 }
 
 /**
@@ -49,6 +66,30 @@ export interface FunctionSymbol extends Symbol {
   isOperator?: boolean;
   /** Is this an infix function? */
   isInfix?: boolean;
+  /** Kotlin-specific: is this a suspend function? */
+  isSuspend?: boolean;
+  /** Kotlin-specific: is this an inline function? */
+  isInline?: boolean;
+}
+
+/**
+ * Represents a type alias symbol.
+ */
+export interface TypeAliasSymbol extends Symbol {
+  kind: 'typealias';
+  /** The aliased type (e.g., "List<String>" for "typealias StringList = List<String>") */
+  aliasedType: string;
+}
+
+/**
+ * Represents a property symbol with additional metadata.
+ */
+export interface PropertySymbol extends Symbol {
+  kind: 'property';
+  /** Property type */
+  type?: string;
+  /** Is this a val (immutable) or var (mutable)? */
+  isVal?: boolean;
 }
 
 /**
