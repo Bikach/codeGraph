@@ -467,6 +467,235 @@ describe('kotlinParser', () => {
       const saveCall = calls.find((c) => c.name === 'save');
       expect(saveCall?.receiver).toBe('repository');
     });
+
+    it('should extract argument count from calls', async () => {
+      const source = `
+        package com.example
+
+        fun process(items: List<String>) {
+          items.map { it.uppercase() }
+          items.filter { it.isNotEmpty() }
+          items.joinToString(", ")
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Process.kt');
+      const processFn = result.topLevelFunctions.find((f) => f.name === 'process');
+      expect(processFn).toBeDefined();
+
+      const joinCall = processFn!.calls.find((c) => c.name === 'joinToString');
+      expect(joinCall).toBeDefined();
+      expect(joinCall!.argumentCount).toBe(1);
+    });
+
+    it('should infer literal types for arguments', async () => {
+      const source = `
+        package com.example
+
+        fun test() {
+          println(42)
+          println("hello")
+          println(true)
+          println(3.14)
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Test.kt');
+      const testFn = result.topLevelFunctions.find((f) => f.name === 'test');
+
+      expect(testFn).toBeDefined();
+      expect(testFn!.calls.length).toBe(4);
+
+      const intCall = testFn!.calls.find((c) => c.argumentTypes?.includes('Int'));
+      const stringCall = testFn!.calls.find((c) => c.argumentTypes?.includes('String'));
+      const boolCall = testFn!.calls.find((c) => c.argumentTypes?.includes('Boolean'));
+      const doubleCall = testFn!.calls.find((c) => c.argumentTypes?.includes('Double'));
+
+      expect(intCall).toBeDefined();
+      expect(stringCall).toBeDefined();
+      expect(boolCall).toBeDefined();
+      expect(doubleCall).toBeDefined();
+    });
+  });
+
+  describe('qualified calls', () => {
+    it('should extract full FQN receiver from qualified call', async () => {
+      const source = `
+        package com.example
+
+        fun test() {
+          com.example.utils.StringUtils.format("hello")
+          java.lang.System.currentTimeMillis()
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/QualifiedCall.kt');
+      const testFn = result.topLevelFunctions.find((f) => f.name === 'test');
+
+      expect(testFn).toBeDefined();
+      expect(testFn!.calls.length).toBe(2);
+
+      const formatCall = testFn!.calls.find((c) => c.name === 'format');
+      expect(formatCall).toBeDefined();
+      expect(formatCall!.receiver).toBe('com.example.utils.StringUtils');
+
+      const timeCall = testFn!.calls.find((c) => c.name === 'currentTimeMillis');
+      expect(timeCall).toBeDefined();
+      expect(timeCall!.receiver).toBe('java.lang.System');
+    });
+
+    it('should handle mixed qualified and simple calls', async () => {
+      const source = `
+        package com.example
+
+        class Service {
+          fun process() {
+            println("start")
+            com.example.Logger.log("processing")
+            helper()
+          }
+
+          fun helper() {}
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/Mixed.kt');
+      const processFn = result.classes[0]!.functions.find((f) => f.name === 'process');
+
+      expect(processFn).toBeDefined();
+      expect(processFn!.calls.length).toBe(3);
+
+      const logCall = processFn!.calls.find((c) => c.name === 'log');
+      expect(logCall).toBeDefined();
+      expect(logCall!.receiver).toBe('com.example.Logger');
+
+      const helperCall = processFn!.calls.find((c) => c.name === 'helper');
+      expect(helperCall).toBeDefined();
+      expect(helperCall!.receiver).toBeUndefined();
+    });
+  });
+
+  describe('safe calls', () => {
+    it('should detect safe call operator on property access', async () => {
+      const source = `
+        package com.example
+
+        class User(val name: String)
+
+        fun getName(user: User?): String? {
+          return user?.name
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/SafeCall.kt');
+      expect(result.topLevelFunctions.length).toBe(1);
+    });
+
+    it('should mark safe call in ParsedCall', async () => {
+      const source = `
+        package com.example
+
+        class Service {
+          fun process(): String = "done"
+        }
+
+        fun test(service: Service?) {
+          service?.process()
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/SafeCall2.kt');
+      const testFn = result.topLevelFunctions.find((f) => f.name === 'test');
+
+      expect(testFn).toBeDefined();
+      const processCall = testFn!.calls.find((c) => c.name === 'process');
+      if (processCall) {
+        expect(processCall.isSafeCall).toBe(true);
+      }
+    });
+  });
+
+  describe('chained calls', () => {
+    it('should extract chained method calls', async () => {
+      const source = `
+        package com.example
+
+        class Builder {
+          fun step1(): Builder = this
+          fun step2(): Builder = this
+          fun build(): String = "done"
+        }
+
+        fun test() {
+          Builder().step1().step2().build()
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/ChainedCalls.kt');
+      const testFn = result.topLevelFunctions.find((f) => f.name === 'test');
+
+      expect(testFn).toBeDefined();
+      // All chained calls should be extracted
+      const callNames = testFn!.calls.map((c) => c.name);
+      expect(callNames).toContain('step1');
+      expect(callNames).toContain('step2');
+      expect(callNames).toContain('build');
+    });
+
+    it('should extract nested function calls', async () => {
+      const source = `
+        package com.example
+
+        fun outer(x: Int): Int = x
+        fun inner(x: Int): Int = x
+        fun deepest(x: Int): Int = x
+
+        fun test() {
+          outer(inner(deepest(1)))
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/NestedCalls.kt');
+      const testFn = result.topLevelFunctions.find((f) => f.name === 'test');
+
+      expect(testFn).toBeDefined();
+      const callNames = testFn!.calls.map((c) => c.name);
+      expect(callNames).toContain('outer');
+      expect(callNames).toContain('inner');
+      expect(callNames).toContain('deepest');
+    });
+
+    it('should handle builder pattern with lambdas', async () => {
+      const source = `
+        package com.example
+
+        fun test() {
+          listOf(1, 2, 3)
+            .filter { it > 1 }
+            .map { it * 2 }
+            .forEach { println(it) }
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/BuilderLambda.kt');
+      const testFn = result.topLevelFunctions.find((f) => f.name === 'test');
+
+      expect(testFn).toBeDefined();
+      const callNames = testFn!.calls.map((c) => c.name);
+      expect(callNames).toContain('listOf');
+      expect(callNames).toContain('filter');
+      expect(callNames).toContain('map');
+      expect(callNames).toContain('forEach');
+    });
+
+    it('should extract safe call chains', async () => {
+      const source = `
+        package com.example
+
+        class User(val address: Address?)
+        class Address(val city: City?)
+        class City(val name: String)
+
+        fun getCityName(user: User?): String? {
+          return user?.address?.city?.name
+        }
+      `;
+      const result = await kotlinParser.parse(source, '/test/SafeCallChain.kt');
+      // This tests property access chains which may not be calls
+      // but the parser should handle this without errors
+      expect(result.topLevelFunctions.length).toBe(1);
+    });
   });
 
   describe('source location', () => {

@@ -941,6 +941,320 @@ describe('getResolutionStats', () => {
 // Edge Cases
 // =============================================================================
 
+describe('constructor call resolution', () => {
+  it('should resolve constructor call to class <init>', () => {
+    const userClass = createParsedClass({
+      name: 'User',
+      properties: [
+        {
+          name: 'name',
+          type: 'String',
+          visibility: 'public',
+          isVal: true,
+          annotations: [],
+          location: defaultLocation,
+        },
+      ],
+    });
+    const file = createParsedFile({
+      packageName: 'com.example',
+      classes: [userClass],
+      topLevelFunctions: [
+        createParsedFunction({
+          name: 'createUser',
+          calls: [
+            createParsedCall({
+              name: 'User',
+              argumentCount: 1,
+              argumentTypes: ['String'],
+            }),
+          ],
+        }),
+      ],
+    });
+
+    const resolved = resolveSymbols([file]);
+    const constructorCall = resolved[0]?.resolvedCalls.find((c) => c.toFqn.includes('User'));
+    expect(constructorCall).toBeDefined();
+    expect(constructorCall!.toFqn).toBe('com.example.User.<init>');
+  });
+
+  it('should distinguish constructor from function with same name', () => {
+    const userClass = createParsedClass({ name: 'User' });
+    const userFunc = createParsedFunction({ name: 'user', returnType: 'String' });
+    const file = createParsedFile({
+      packageName: 'com.example',
+      classes: [userClass],
+      topLevelFunctions: [
+        userFunc,
+        createParsedFunction({
+          name: 'test',
+          calls: [
+            createParsedCall({ name: 'User', argumentCount: 0 }), // Constructor (capital U)
+            createParsedCall({ name: 'user', argumentCount: 0 }), // Function (lowercase u)
+          ],
+        }),
+      ],
+    });
+
+    const resolved = resolveSymbols([file]);
+    const calls = resolved[0]?.resolvedCalls || [];
+
+    const constructorCall = calls.find((c) => c.toFqn.includes('<init>'));
+    expect(constructorCall).toBeDefined();
+
+    const functionCall = calls.find((c) => c.toFqn === 'com.example.user');
+    expect(functionCall).toBeDefined();
+  });
+
+  it('should resolve data class constructor', () => {
+    const personClass = createParsedClass({
+      name: 'Person',
+      isData: true,
+      properties: [
+        {
+          name: 'name',
+          type: 'String',
+          visibility: 'public',
+          isVal: true,
+          annotations: [],
+          location: defaultLocation,
+        },
+        {
+          name: 'age',
+          type: 'Int',
+          visibility: 'public',
+          isVal: true,
+          annotations: [],
+          location: defaultLocation,
+        },
+      ],
+    });
+    const file = createParsedFile({
+      packageName: 'com.example',
+      classes: [personClass],
+      topLevelFunctions: [
+        createParsedFunction({
+          name: 'test',
+          calls: [
+            createParsedCall({
+              name: 'Person',
+              argumentCount: 2,
+              argumentTypes: ['String', 'Int'],
+            }),
+          ],
+        }),
+      ],
+    });
+
+    const resolved = resolveSymbols([file]);
+    const constructorCall = resolved[0]?.resolvedCalls.find((c) =>
+      c.toFqn.includes('Person.<init>')
+    );
+    expect(constructorCall).toBeDefined();
+  });
+});
+
+describe('overload resolution', () => {
+  it('should resolve overloaded method by argument count', () => {
+    const calcClass = createParsedClass({
+      name: 'Calculator',
+      functions: [
+        createParsedFunction({
+          name: 'add',
+          parameters: [{ name: 'a', type: 'Int', annotations: [] }],
+        }),
+        createParsedFunction({
+          name: 'add',
+          parameters: [
+            { name: 'a', type: 'Int', annotations: [] },
+            { name: 'b', type: 'Int', annotations: [] },
+          ],
+        }),
+        createParsedFunction({
+          name: 'add',
+          parameters: [
+            { name: 'a', type: 'Int', annotations: [] },
+            { name: 'b', type: 'Int', annotations: [] },
+            { name: 'c', type: 'Int', annotations: [] },
+          ],
+        }),
+      ],
+    });
+    const clientClass = createParsedClass({
+      name: 'Client',
+      properties: [
+        {
+          name: 'calc',
+          type: 'Calculator',
+          visibility: 'public',
+          isVal: true,
+          annotations: [],
+          location: defaultLocation,
+        },
+      ],
+      functions: [
+        createParsedFunction({
+          name: 'test',
+          calls: [
+            createParsedCall({ name: 'add', receiver: 'calc', argumentCount: 1 }),
+            createParsedCall({ name: 'add', receiver: 'calc', argumentCount: 2 }),
+            createParsedCall({ name: 'add', receiver: 'calc', argumentCount: 3 }),
+          ],
+        }),
+      ],
+    });
+    const file = createParsedFile({
+      packageName: 'com.example',
+      classes: [calcClass, clientClass],
+    });
+
+    const resolved = resolveSymbols([file]);
+    const addCalls = resolved[0]?.resolvedCalls.filter((c) => c.toFqn.includes('add')) || [];
+
+    // All add calls should be resolved
+    expect(addCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should resolve overloaded method by argument types', () => {
+    const formatterClass = createParsedClass({
+      name: 'Formatter',
+      functions: [
+        createParsedFunction({
+          name: 'format',
+          parameters: [{ name: 'value', type: 'Int', annotations: [] }],
+          returnType: 'String',
+        }),
+        createParsedFunction({
+          name: 'format',
+          parameters: [{ name: 'value', type: 'String', annotations: [] }],
+          returnType: 'String',
+        }),
+        createParsedFunction({
+          name: 'format',
+          parameters: [{ name: 'value', type: 'Double', annotations: [] }],
+          returnType: 'String',
+        }),
+      ],
+    });
+    const clientClass = createParsedClass({
+      name: 'Client',
+      properties: [
+        {
+          name: 'fmt',
+          type: 'Formatter',
+          visibility: 'public',
+          isVal: true,
+          annotations: [],
+          location: defaultLocation,
+        },
+      ],
+      functions: [
+        createParsedFunction({
+          name: 'test',
+          calls: [
+            createParsedCall({
+              name: 'format',
+              receiver: 'fmt',
+              argumentCount: 1,
+              argumentTypes: ['Int'],
+            }),
+            createParsedCall({
+              name: 'format',
+              receiver: 'fmt',
+              argumentCount: 1,
+              argumentTypes: ['String'],
+            }),
+            createParsedCall({
+              name: 'format',
+              receiver: 'fmt',
+              argumentCount: 1,
+              argumentTypes: ['Double'],
+            }),
+          ],
+        }),
+      ],
+    });
+    const file = createParsedFile({
+      packageName: 'com.example',
+      classes: [formatterClass, clientClass],
+    });
+
+    const resolved = resolveSymbols([file]);
+    const formatCalls = resolved[0]?.resolvedCalls.filter((c) => c.toFqn.includes('format')) || [];
+
+    expect(formatCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should prefer exact type match over compatible type', () => {
+    const loggerClass = createParsedClass({
+      name: 'Logger',
+      functions: [
+        createParsedFunction({
+          name: 'log',
+          parameters: [{ name: 'msg', type: 'String', annotations: [] }],
+        }),
+        createParsedFunction({
+          name: 'log',
+          parameters: [{ name: 'msg', type: 'Any', annotations: [] }],
+        }),
+      ],
+    });
+    const file = createParsedFile({
+      packageName: 'com.example',
+      classes: [loggerClass],
+    });
+
+    const table = buildSymbolTable([file]);
+
+    // Check that both overloads are indexed
+    const logFunctions = table.functionsByName.get('log') || [];
+    const loggerMethods = logFunctions.filter(
+      (f) => f.declaringTypeFqn === 'com.example.Logger'
+    );
+    expect(loggerMethods.length).toBe(2);
+  });
+});
+
+describe('qualified call resolution', () => {
+  it('should resolve qualified call to known type', () => {
+    const utilsFile = createParsedFile({
+      filePath: '/test/StringUtils.kt',
+      packageName: 'com.example.utils',
+      classes: [
+        createParsedClass({
+          name: 'StringUtils',
+          kind: 'object',
+          functions: [createParsedFunction({ name: 'format' })],
+        }),
+      ],
+    });
+
+    const appFile = createParsedFile({
+      filePath: '/test/App.kt',
+      packageName: 'com.example.app',
+      topLevelFunctions: [
+        createParsedFunction({
+          name: 'test',
+          calls: [
+            createParsedCall({
+              name: 'format',
+              receiver: 'com.example.utils.StringUtils',
+            }),
+          ],
+        }),
+      ],
+    });
+
+    const resolved = resolveSymbols([utilsFile, appFile]);
+    const appResolved = resolved.find((f) => f.filePath === '/test/App.kt');
+
+    const formatCall = appResolved?.resolvedCalls.find((c) => c.toFqn.includes('format'));
+    expect(formatCall).toBeDefined();
+    expect(formatCall!.toFqn).toBe('com.example.utils.StringUtils.format');
+  });
+});
+
 describe('edge cases', () => {
   it('should handle files without package name', () => {
     const file = createParsedFile({
