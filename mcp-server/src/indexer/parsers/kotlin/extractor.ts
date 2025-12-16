@@ -579,6 +579,7 @@ function extractCalls(body: SyntaxNode): ParsedCall[] {
 function extractCallExpression(node: SyntaxNode): ParsedCall | undefined {
   // call_expression has structure: receiver.function_name(args)
   // or just: function_name(args)
+  // For qualified calls: com.example.Utils.method(args) has nested navigation_expressions
 
   const navigations = findChildByType(node, 'navigation_expression');
   const callSuffix = findChildByType(node, 'call_suffix');
@@ -590,24 +591,11 @@ function extractCallExpression(node: SyntaxNode): ParsedCall | undefined {
   let isSafeCall = false;
 
   if (navigations) {
-    // receiver.method() or receiver?.method() pattern
-    const parts = navigations.children.filter((c) => c.type !== 'navigation_suffix');
-    receiver = parts[0]?.text;
-
-    const navSuffix = findChildByType(navigations, 'navigation_suffix');
-    // Check for safe call operator (?.)
-    if (navSuffix) {
-      // Safe navigation: look for '?.' token directly in navigation_suffix children
-      // tree-sitter-kotlin represents it as a direct child with text '?.'
-      for (const child of navSuffix.children) {
-        if (child.text === '?.' || child.type === '?.') {
-          isSafeCall = true;
-          break;
-        }
-      }
-    }
-    const methodName = navSuffix?.children.find((c) => c.type === 'simple_identifier');
-    name = methodName?.text ?? '<unknown>';
+    // Extract the full receiver path and method name from navigation_expression
+    const { receiverPath, methodName, hasSafeCall } = extractNavigationPath(navigations);
+    receiver = receiverPath;
+    name = methodName;
+    isSafeCall = hasSafeCall;
   } else {
     // Direct function call
     const identifier = node.children.find((c) => c.type === 'simple_identifier');
@@ -626,6 +614,61 @@ function extractCallExpression(node: SyntaxNode): ParsedCall | undefined {
     isSafeCall: isSafeCall || undefined,
     location: nodeLocation(node),
   };
+}
+
+/**
+ * Extract the full navigation path from a (possibly nested) navigation_expression.
+ * Handles qualified calls like: com.example.Utils.method()
+ * Returns the receiver path (com.example.Utils) and the method name (method).
+ */
+function extractNavigationPath(navExpr: SyntaxNode): {
+  receiverPath: string | undefined;
+  methodName: string;
+  hasSafeCall: boolean;
+} {
+  // Collect all parts of the navigation path
+  const parts: string[] = [];
+  let hasSafeCall = false;
+
+  // Recursively collect parts from nested navigation_expressions
+  function collectParts(node: SyntaxNode): void {
+    if (node.type === 'simple_identifier') {
+      parts.push(node.text);
+    } else if (node.type === 'navigation_expression') {
+      // Process children in order
+      for (const child of node.children) {
+        if (child.type === 'navigation_expression' || child.type === 'simple_identifier') {
+          collectParts(child);
+        } else if (child.type === 'navigation_suffix') {
+          // Check for safe call
+          for (const suffixChild of child.children) {
+            if (suffixChild.text === '?.' || suffixChild.type === '?.') {
+              hasSafeCall = true;
+            } else if (suffixChild.type === 'simple_identifier') {
+              parts.push(suffixChild.text);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  collectParts(navExpr);
+
+  // The last part is the method name, everything before is the receiver
+  if (parts.length === 0) {
+    return { receiverPath: undefined, methodName: '<unknown>', hasSafeCall };
+  }
+
+  if (parts.length === 1) {
+    // Just a method call without receiver (shouldn't happen for navigation_expression)
+    return { receiverPath: undefined, methodName: parts[0]!, hasSafeCall };
+  }
+
+  const methodName = parts.pop()!;
+  const receiverPath = parts.join('.');
+
+  return { receiverPath, methodName, hasSafeCall };
 }
 
 /**

@@ -619,6 +619,156 @@ describe('Parser → Resolver Integration', () => {
     });
   });
 
+  describe('qualified calls', () => {
+    it('should extract full FQN receiver from qualified call', async () => {
+      const source = `
+        package com.example
+
+        fun test() {
+          com.example.utils.StringUtils.format("hello")
+          java.lang.System.currentTimeMillis()
+        }
+      `;
+      const parsed = await kotlinParser.parse(source, '/test/QualifiedCall.kt');
+      const testFn = parsed.topLevelFunctions.find((f) => f.name === 'test');
+
+      expect(testFn).toBeDefined();
+      expect(testFn!.calls.length).toBe(2);
+
+      // Check that receivers include the full FQN
+      const formatCall = testFn!.calls.find((c) => c.name === 'format');
+      expect(formatCall).toBeDefined();
+      expect(formatCall!.receiver).toBe('com.example.utils.StringUtils');
+
+      const timeCall = testFn!.calls.find((c) => c.name === 'currentTimeMillis');
+      expect(timeCall).toBeDefined();
+      expect(timeCall!.receiver).toBe('java.lang.System');
+    });
+
+    it('should resolve qualified call to known type', async () => {
+      const file1 = `
+        package com.example.utils
+
+        object StringUtils {
+          fun format(s: String): String = s
+        }
+      `;
+
+      const file2 = `
+        package com.example.app
+
+        fun test() {
+          com.example.utils.StringUtils.format("hello")
+        }
+      `;
+
+      const parsed1 = await kotlinParser.parse(file1, '/test/StringUtils.kt');
+      const parsed2 = await kotlinParser.parse(file2, '/test/App.kt');
+
+      const resolved = resolveSymbols([parsed1, parsed2]);
+      const appFile = resolved.find((f) => f.filePath === '/test/App.kt')!;
+
+      // The qualified call should be resolved
+      const formatCall = appFile.resolvedCalls.find((c) => c.toFqn.includes('format'));
+      expect(formatCall).toBeDefined();
+      expect(formatCall!.toFqn).toBe('com.example.utils.StringUtils.format');
+    });
+
+    it('should handle mixed qualified and simple calls', async () => {
+      const source = `
+        package com.example
+
+        class Service {
+          fun process() {
+            println("start")
+            com.example.Logger.log("processing")
+            helper()
+          }
+
+          fun helper() {}
+        }
+
+        object Logger {
+          fun log(msg: String) {}
+        }
+      `;
+
+      const parsed = await kotlinParser.parse(source, '/test/Mixed.kt');
+      const resolved = resolveSymbols([parsed]);
+
+      const mixedFile = resolved[0]!;
+      // Should have calls: println, log, helper
+      expect(mixedFile.resolvedCalls.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('constructor calls', () => {
+    it('should resolve constructor call to class', async () => {
+      const source = `
+        package com.example
+
+        class User(val name: String)
+
+        fun createUser(): User {
+          return User("John")
+        }
+      `;
+      const parsed = await kotlinParser.parse(source, '/test/Constructor.kt');
+      const resolved = resolveSymbols([parsed]);
+
+      const file = resolved[0]!;
+      // Constructor call should be resolved
+      const constructorCall = file.resolvedCalls.find((c) => c.toFqn.includes('User'));
+      expect(constructorCall).toBeDefined();
+      expect(constructorCall!.toFqn).toBe('com.example.User.<init>');
+    });
+
+    it('should distinguish constructor from function with same name', async () => {
+      const source = `
+        package com.example
+
+        class User(val name: String)
+
+        fun user(): String = "not a constructor"
+
+        fun test() {
+          val u = User("John")
+          val s = user()
+        }
+      `;
+      const parsed = await kotlinParser.parse(source, '/test/ConstructorVsFunction.kt');
+      const resolved = resolveSymbols([parsed]);
+
+      const file = resolved[0]!;
+
+      // Constructor call should resolve to <init>
+      const constructorCall = file.resolvedCalls.find((c) => c.toFqn.includes('<init>'));
+      expect(constructorCall).toBeDefined();
+
+      // Function call should resolve to the function
+      const functionCall = file.resolvedCalls.find((c) => c.toFqn === 'com.example.user');
+      expect(functionCall).toBeDefined();
+    });
+
+    it('should resolve data class constructor', async () => {
+      const source = `
+        package com.example
+
+        data class Person(val name: String, val age: Int)
+
+        fun test() {
+          val p = Person("Alice", 30)
+        }
+      `;
+      const parsed = await kotlinParser.parse(source, '/test/DataClass.kt');
+      const resolved = resolveSymbols([parsed]);
+
+      const file = resolved[0]!;
+      const constructorCall = file.resolvedCalls.find((c) => c.toFqn.includes('Person.<init>'));
+      expect(constructorCall).toBeDefined();
+    });
+  });
+
   describe('safe calls (nullable types)', () => {
     it('should detect safe call operator', async () => {
       const source = `

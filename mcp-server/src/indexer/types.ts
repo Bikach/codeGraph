@@ -119,6 +119,8 @@ export interface ParsedCall {
   argumentCount?: number;
   /** Is this a safe call (receiver?.method())? */
   isSafeCall?: boolean;
+  /** Is this a constructor call? (resolved at resolution time) */
+  isConstructorCall?: boolean;
   location: SourceLocation;
 }
 

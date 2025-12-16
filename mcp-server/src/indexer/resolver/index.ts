@@ -581,6 +581,18 @@ function resolveCallsInFunction(
 function resolveCall(table: SymbolTable, context: ResolutionContext, call: ParsedCall): string | undefined {
   const { name, receiver, receiverType } = call;
 
+  // 0. Check for qualified call (receiver is already an FQN like "com.example.Utils")
+  if (receiver && receiver.includes('.')) {
+    const resolved = resolveQualifiedCall(table, receiver, name, call);
+    if (resolved) return resolved;
+  }
+
+  // 0.5. Check for constructor call (no receiver, name matches a class)
+  if (!receiver) {
+    const constructorFqn = resolveConstructorCall(table, context, name, call);
+    if (constructorFqn) return constructorFqn;
+  }
+
   // 1. If receiver type is explicit, look for method in that type
   if (receiverType) {
     const resolved = resolveMethodInType(table, context, receiverType, name, call);
@@ -701,6 +713,95 @@ function findFunctionsInPackage(table: SymbolTable, packageName: string, functio
   }
 
   return candidates;
+}
+
+/**
+ * Check if a call without receiver is a constructor call.
+ * In Kotlin, `User("John")` can be a constructor call if `User` is a class.
+ * Returns the class FQN if it's a constructor, undefined otherwise.
+ */
+function resolveConstructorCall(
+  table: SymbolTable,
+  context: ResolutionContext,
+  name: string,
+  _call: ParsedCall
+): string | undefined {
+  // Check if name starts with uppercase (Kotlin convention for classes)
+  // This is a heuristic - not all class names start with uppercase
+  const startsWithUppercase = name.length > 0 && name[0] === name[0]?.toUpperCase() && name[0] !== name[0]?.toLowerCase();
+
+  if (!startsWithUppercase) {
+    // Probably not a constructor call
+    return undefined;
+  }
+
+  // Try to find a class with this name
+  const classSymbol = resolveSymbolByName(table, context, name);
+
+  if (classSymbol && (classSymbol.kind === 'class' || classSymbol.kind === 'enum' || classSymbol.kind === 'annotation')) {
+    // This is a constructor call - return the class FQN with <init> marker
+    // Note: We return the class FQN directly, as constructors are typically
+    // represented as the class instantiation in the call graph
+    return `${classSymbol.fqn}.<init>`;
+  }
+
+  // Also check for data class copy() pattern, etc.
+  return undefined;
+}
+
+/**
+ * Resolve a qualified call where the receiver is already an FQN.
+ * Examples: com.example.Utils.parse(), java.lang.System.currentTimeMillis()
+ */
+function resolveQualifiedCall(
+  table: SymbolTable,
+  qualifiedReceiver: string,
+  methodName: string,
+  call: ParsedCall
+): string | undefined {
+  // Try direct FQN lookup
+  const directFqn = `${qualifiedReceiver}.${methodName}`;
+  if (table.byFqn.has(directFqn)) {
+    return directFqn;
+  }
+
+  // Check if qualified receiver is a known type (with overload resolution)
+  if (table.byFqn.has(qualifiedReceiver)) {
+    const candidates = findMethodsInType(table, qualifiedReceiver, methodName);
+    if (candidates.length > 0) {
+      const best = selectBestOverload(candidates, call);
+      if (best) return best.fqn;
+    }
+
+    // Try companion object
+    const companionFqn = `${qualifiedReceiver}.Companion`;
+    const companionCandidates = findMethodsInType(table, companionFqn, methodName);
+    if (companionCandidates.length > 0) {
+      const best = selectBestOverload(companionCandidates, call);
+      if (best) return best.fqn;
+    }
+  }
+
+  // Try to find as a top-level function in the package
+  // e.g., com.example.utils.parse() where parse is a top-level function in com.example.utils
+  const lastDotIndex = qualifiedReceiver.lastIndexOf('.');
+  if (lastDotIndex > 0) {
+    const packagePart = qualifiedReceiver.substring(0, lastDotIndex);
+    const lastPart = qualifiedReceiver.substring(lastDotIndex + 1);
+
+    // Check if lastPart.methodName is a function in packagePart
+    // e.g., com.example (package) . Utils (object) . method (function)
+    const objectFqn = `${packagePart}.${lastPart}`;
+    if (table.byFqn.has(objectFqn)) {
+      const candidates = findMethodsInType(table, objectFqn, methodName);
+      if (candidates.length > 0) {
+        const best = selectBestOverload(candidates, call);
+        if (best) return best.fqn;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 /**
