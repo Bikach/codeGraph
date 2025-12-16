@@ -787,4 +787,713 @@ describe('Neo4jWriter Integration Tests', () => {
       expect(result.relationshipsCreated).toBeGreaterThanOrEqual(5);
     });
   });
+
+  // ===========================================================================
+  // Additional tests for previously uncovered cases
+  // ===========================================================================
+
+  describe('writeFiles - Enum classes', () => {
+    it('should create enum as Class with isEnum property', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'Status',
+            kind: 'enum',
+            visibility: 'public',
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const enums = await client.query<{ name: string; isEnum: boolean; fqn: string }>(
+        'MATCH (c:Class {name: "Status"}) RETURN c.name as name, c.isEnum as isEnum, c.fqn as fqn'
+      );
+      expect(enums).toHaveLength(1);
+      expect(enums[0]?.name).toBe('Status');
+      expect(enums[0]?.isEnum).toBe(true);
+      expect(enums[0]?.fqn).toBe('com.example.Status');
+    });
+
+    it('should create enum with functions and properties', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'Color',
+            kind: 'enum',
+            properties: [createParsedProperty({ name: 'hex', type: 'String' })],
+            functions: [createParsedFunction({ name: 'toRgb', returnType: 'IntArray' })],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const members = await client.query<{ propName: string; funcName: string }>(
+        `MATCH (c:Class {name: "Color"})-[:DECLARES]->(p:Property)
+         MATCH (c)-[:DECLARES]->(f:Function)
+         RETURN p.name as propName, f.name as funcName`
+      );
+      expect(members).toHaveLength(1);
+      expect(members[0]?.propName).toBe('hex');
+      expect(members[0]?.funcName).toBe('toRgb');
+    });
+  });
+
+  describe('writeFiles - Annotation classes', () => {
+    it('should create annotation class with isAnnotationClass property', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'MyAnnotation',
+            kind: 'annotation',
+            visibility: 'public',
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const annotations = await client.query<{ name: string; isAnnotationClass: boolean }>(
+        'MATCH (c:Class {name: "MyAnnotation"}) RETURN c.name as name, c.isAnnotationClass as isAnnotationClass'
+      );
+      expect(annotations).toHaveLength(1);
+      expect(annotations[0]?.name).toBe('MyAnnotation');
+      expect(annotations[0]?.isAnnotationClass).toBe(true);
+    });
+
+    it('should create annotation class with properties (annotation parameters)', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'Deprecated',
+            kind: 'annotation',
+            properties: [
+              createParsedProperty({ name: 'message', type: 'String' }),
+              createParsedProperty({ name: 'level', type: 'DeprecationLevel' }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const props = await client.query<{ name: string }>(
+        'MATCH (c:Class {name: "Deprecated"})-[:DECLARES]->(p:Property) RETURN p.name as name ORDER BY p.name'
+      );
+      expect(props).toHaveLength(2);
+      expect(props[0]?.name).toBe('level');
+      expect(props[1]?.name).toBe('message');
+    });
+  });
+
+  describe('writeFiles - Sealed classes and interfaces', () => {
+    it('should create sealed class with isSealed property', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'Result',
+            kind: 'class',
+            isSealed: true,
+            visibility: 'public',
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const sealed = await client.query<{ name: string; isSealed: boolean }>(
+        'MATCH (c:Class {name: "Result"}) RETURN c.name as name, c.isSealed as isSealed'
+      );
+      expect(sealed).toHaveLength(1);
+      expect(sealed[0]?.isSealed).toBe(true);
+    });
+
+    it('should create sealed interface with isSealed property', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'State',
+            kind: 'interface',
+            isSealed: true,
+            visibility: 'public',
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const sealed = await client.query<{ name: string; isSealed: boolean }>(
+        'MATCH (i:Interface {name: "State"}) RETURN i.name as name, i.isSealed as isSealed'
+      );
+      expect(sealed).toHaveLength(1);
+      expect(sealed[0]?.isSealed).toBe(true);
+    });
+
+    it('should create sealed class hierarchy', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'Result',
+            kind: 'class',
+            isSealed: true,
+            nestedClasses: [
+              createParsedClass({ name: 'Success', superClass: 'Result' }),
+              createParsedClass({ name: 'Error', superClass: 'Result' }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const hierarchy = await client.query<{ parent: string; child: string }>(
+        'MATCH (child:Class)-[:EXTENDS]->(parent:Class {name: "Result"}) RETURN parent.name as parent, child.name as child ORDER BY child.name'
+      );
+      expect(hierarchy).toHaveLength(2);
+      expect(hierarchy[0]?.child).toBe('Error');
+      expect(hierarchy[1]?.child).toBe('Success');
+    });
+  });
+
+  describe('writeFiles - Type parameters', () => {
+    it('should store type parameters on class', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'Container',
+            typeParameters: [
+              { name: 'T' },
+              { name: 'R', bounds: ['Comparable<R>'] },
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const classes = await client.query<{ name: string; typeParameters: string[] }>(
+        'MATCH (c:Class {name: "Container"}) RETURN c.name as name, c.typeParameters as typeParameters'
+      );
+      expect(classes).toHaveLength(1);
+      expect(classes[0]?.typeParameters).toEqual(['T', 'R : Comparable<R>']);
+    });
+
+    it('should store type parameters with variance on interface', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'Producer',
+            kind: 'interface',
+            typeParameters: [{ name: 'T', variance: 'out' }],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const interfaces = await client.query<{ typeParameters: string[] }>(
+        'MATCH (i:Interface {name: "Producer"}) RETURN i.typeParameters as typeParameters'
+      );
+      expect(interfaces).toHaveLength(1);
+      expect(interfaces[0]?.typeParameters).toEqual(['out T']);
+    });
+
+    it('should store type parameters on function', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'Utils',
+            functions: [
+              createParsedFunction({
+                name: 'transform',
+                typeParameters: [
+                  { name: 'T', isReified: true },
+                  { name: 'R', bounds: ['Any'] },
+                ],
+                returnType: 'R',
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const funcs = await client.query<{ typeParameters: string[] }>(
+        'MATCH (f:Function {name: "transform"}) RETURN f.typeParameters as typeParameters'
+      );
+      expect(funcs).toHaveLength(1);
+      expect(funcs[0]?.typeParameters).toEqual(['reified T', 'R : Any']);
+    });
+
+    it('should store type parameters on type alias', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        typeAliases: [
+          {
+            name: 'Mapper',
+            aliasedType: '(T) -> R',
+            visibility: 'public',
+            typeParameters: [{ name: 'T' }, { name: 'R' }],
+            location: defaultLocation,
+          },
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const aliases = await client.query<{ typeParameters: string[] }>(
+        'MATCH (t:TypeAlias {name: "Mapper"}) RETURN t.typeParameters as typeParameters'
+      );
+      expect(aliases).toHaveLength(1);
+      expect(aliases[0]?.typeParameters).toEqual(['T', 'R']);
+    });
+  });
+
+  describe('writeFiles - Extension functions', () => {
+    it('should store receiverType on extension function in class', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'StringExtensions',
+            functions: [
+              createParsedFunction({
+                name: 'capitalizeFirst',
+                isExtension: true,
+                receiverType: 'String',
+                returnType: 'String',
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const funcs = await client.query<{ name: string; isExtension: boolean; receiverType: string }>(
+        'MATCH (f:Function {name: "capitalizeFirst"}) RETURN f.name as name, f.isExtension as isExtension, f.receiverType as receiverType'
+      );
+      expect(funcs).toHaveLength(1);
+      expect(funcs[0]?.isExtension).toBe(true);
+      expect(funcs[0]?.receiverType).toBe('String');
+    });
+
+    it('should store receiverType on top-level extension function', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        topLevelFunctions: [
+          createParsedFunction({
+            name: 'isBlank',
+            isExtension: true,
+            receiverType: 'String?',
+            returnType: 'Boolean',
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const funcs = await client.query<{ isExtension: boolean; receiverType: string; isTopLevel: boolean }>(
+        'MATCH (f:Function {name: "isBlank"}) RETURN f.isExtension as isExtension, f.receiverType as receiverType, f.isTopLevel as isTopLevel'
+      );
+      expect(funcs).toHaveLength(1);
+      expect(funcs[0]?.isExtension).toBe(true);
+      expect(funcs[0]?.receiverType).toBe('String?');
+      expect(funcs[0]?.isTopLevel).toBe(true);
+    });
+  });
+
+  describe('writeFiles - clearBefore option', () => {
+    it('should clear existing data when clearBefore is true', async () => {
+      // First, create some data
+      const file1 = createResolvedFile({
+        packageName: 'com.example',
+        classes: [createParsedClass({ name: 'OldClass' })],
+      });
+      await writer.writeFiles([file1]);
+
+      // Verify data exists
+      let classes = await client.query<{ count: number }>('MATCH (c:Class) RETURN count(c) as count');
+      expect(classes[0]?.count).toBe(1);
+
+      // Now write with clearBefore
+      const file2 = createResolvedFile({
+        packageName: 'com.other',
+        classes: [createParsedClass({ name: 'NewClass' })],
+      });
+      await writer.writeFiles([file2], { clearBefore: true });
+
+      // Verify old data is gone and new data exists
+      classes = await client.query<{ count: number }>('MATCH (c:Class) RETURN count(c) as count');
+      expect(classes[0]?.count).toBe(1);
+
+      const names = await client.query<{ name: string }>('MATCH (c:Class) RETURN c.name as name');
+      expect(names[0]?.name).toBe('NewClass');
+    });
+
+    it('should preserve existing data when clearBefore is false', async () => {
+      // First, create some data
+      const file1 = createResolvedFile({
+        packageName: 'com.example',
+        classes: [createParsedClass({ name: 'OldClass' })],
+      });
+      await writer.writeFiles([file1]);
+
+      // Write more data without clearing
+      const file2 = createResolvedFile({
+        packageName: 'com.other',
+        classes: [createParsedClass({ name: 'NewClass' })],
+      });
+      await writer.writeFiles([file2], { clearBefore: false });
+
+      // Both should exist
+      const classes = await client.query<{ name: string }>('MATCH (c:Class) RETURN c.name as name ORDER BY c.name');
+      expect(classes).toHaveLength(2);
+      expect(classes[0]?.name).toBe('NewClass');
+      expect(classes[1]?.name).toBe('OldClass');
+    });
+  });
+
+  describe('writeFiles - batchSize configuration', () => {
+    it('should process calls in batches', async () => {
+      // Create many calls to test batching (more than default batch size of 100)
+      const functions: ReturnType<typeof createParsedFunction>[] = [];
+      const resolvedCalls: ResolvedFile['resolvedCalls'] = [];
+
+      // Create 10 functions
+      for (let i = 0; i < 10; i++) {
+        functions.push(createParsedFunction({ name: `func${i}` }));
+      }
+
+      // Create 50 calls (5 calls from each function to different targets)
+      for (let i = 0; i < 10; i++) {
+        for (let j = 0; j < 5; j++) {
+          const targetIdx = (i + j + 1) % 10;
+          resolvedCalls.push({
+            fromFqn: `com.example.Service.func${i}`,
+            toFqn: `com.example.Service.func${targetIdx}`,
+            location: defaultLocation,
+          });
+        }
+      }
+
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'Service',
+            functions,
+          }),
+        ],
+        resolvedCalls,
+      });
+
+      // Use small batch size to force multiple batches
+      const smallBatchWriter = new Neo4jWriter(client, { batchSize: 10 });
+      const result = await smallBatchWriter.writeFiles([file]);
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.relationshipsCreated).toBeGreaterThan(0);
+
+      // Verify all calls were created
+      const callCount = await client.query<{ count: number }>(
+        'MATCH (:Function)-[r:CALLS]->(:Function) RETURN count(r) as count'
+      );
+      expect(callCount[0]?.count).toBeGreaterThan(0);
+    });
+  });
+
+  describe('writeFiles - Lambda parameters with functionType', () => {
+    it('should store functionType on lambda parameter', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'CollectionUtils',
+            functions: [
+              createParsedFunction({
+                name: 'map',
+                parameters: [
+                  { name: 'list', type: 'List<T>', annotations: [] },
+                  {
+                    name: 'transform',
+                    type: '(T) -> R',
+                    annotations: [],
+                    functionType: {
+                      parameterTypes: ['T'],
+                      returnType: 'R',
+                      isSuspend: false,
+                    },
+                  },
+                ],
+                returnType: 'List<R>',
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const params = await client.query<{ name: string; functionType: string }>(
+        `MATCH (f:Function {name: "map"})-[:HAS_PARAMETER]->(p:Parameter {name: "transform"})
+         RETURN p.name as name, p.functionType as functionType`
+      );
+      expect(params).toHaveLength(1);
+      expect(params[0]?.functionType).toBeDefined();
+      const ft = JSON.parse(params[0]!.functionType);
+      expect(ft.parameterTypes).toEqual(['T']);
+      expect(ft.returnType).toBe('R');
+      expect(ft.isSuspend).toBe(false);
+    });
+
+    it('should store suspend functionType on lambda parameter', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'AsyncUtils',
+            functions: [
+              createParsedFunction({
+                name: 'retry',
+                parameters: [
+                  {
+                    name: 'block',
+                    type: 'suspend () -> T',
+                    annotations: [],
+                    functionType: {
+                      parameterTypes: [],
+                      returnType: 'T',
+                      isSuspend: true,
+                    },
+                  },
+                ],
+                isSuspend: true,
+                returnType: 'T',
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const params = await client.query<{ functionType: string }>(
+        `MATCH (f:Function {name: "retry"})-[:HAS_PARAMETER]->(p:Parameter {name: "block"})
+         RETURN p.functionType as functionType`
+      );
+      expect(params).toHaveLength(1);
+      const ft = JSON.parse(params[0]!.functionType);
+      expect(ft.isSuspend).toBe(true);
+    });
+
+    it('should store functionType with receiver on lambda parameter', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'BuilderUtils',
+            functions: [
+              createParsedFunction({
+                name: 'build',
+                parameters: [
+                  {
+                    name: 'init',
+                    type: 'StringBuilder.() -> Unit',
+                    annotations: [],
+                    functionType: {
+                      parameterTypes: [],
+                      returnType: 'Unit',
+                      isSuspend: false,
+                      receiverType: 'StringBuilder',
+                    },
+                  },
+                ],
+                returnType: 'String',
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const params = await client.query<{ functionType: string }>(
+        `MATCH (f:Function {name: "build"})-[:HAS_PARAMETER]->(p:Parameter {name: "init"})
+         RETURN p.functionType as functionType`
+      );
+      expect(params).toHaveLength(1);
+      const ft = JSON.parse(params[0]!.functionType);
+      expect(ft.receiverType).toBe('StringBuilder');
+    });
+  });
+
+  describe('writeFiles - Parameter modifiers (crossinline/noinline)', () => {
+    it('should store crossinline modifier on parameter', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'InlineUtils',
+            functions: [
+              createParsedFunction({
+                name: 'runSafe',
+                isInline: true,
+                parameters: [
+                  {
+                    name: 'block',
+                    type: '() -> Unit',
+                    annotations: [],
+                    isCrossinline: true,
+                  },
+                ],
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const params = await client.query<{ name: string; isCrossinline: boolean }>(
+        `MATCH (f:Function {name: "runSafe"})-[:HAS_PARAMETER]->(p:Parameter)
+         RETURN p.name as name, p.isCrossinline as isCrossinline`
+      );
+      expect(params).toHaveLength(1);
+      expect(params[0]?.isCrossinline).toBe(true);
+    });
+
+    it('should store noinline modifier on parameter', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'InlineUtils',
+            functions: [
+              createParsedFunction({
+                name: 'measure',
+                isInline: true,
+                parameters: [
+                  {
+                    name: 'action',
+                    type: '() -> T',
+                    annotations: [],
+                    isNoinline: true,
+                  },
+                ],
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const params = await client.query<{ name: string; isNoinline: boolean }>(
+        `MATCH (f:Function {name: "measure"})-[:HAS_PARAMETER]->(p:Parameter)
+         RETURN p.name as name, p.isNoinline as isNoinline`
+      );
+      expect(params).toHaveLength(1);
+      expect(params[0]?.isNoinline).toBe(true);
+    });
+  });
+
+  describe('writeFiles - Abstract functions and classes', () => {
+    it('should store isAbstract on class and function', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'BaseRepository',
+            isAbstract: true,
+            functions: [
+              createParsedFunction({
+                name: 'findAll',
+                isAbstract: true,
+                returnType: 'List<T>',
+              }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const classes = await client.query<{ isAbstract: boolean }>(
+        'MATCH (c:Class {name: "BaseRepository"}) RETURN c.isAbstract as isAbstract'
+      );
+      expect(classes[0]?.isAbstract).toBe(true);
+
+      const funcs = await client.query<{ isAbstract: boolean }>(
+        'MATCH (f:Function {name: "findAll"}) RETURN f.isAbstract as isAbstract'
+      );
+      expect(funcs[0]?.isAbstract).toBe(true);
+    });
+  });
+
+  describe('writeFiles - Visibility modifiers', () => {
+    it('should store different visibility modifiers', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [
+          createParsedClass({
+            name: 'MixedVisibility',
+            visibility: 'public',
+            functions: [
+              createParsedFunction({ name: 'publicFn', visibility: 'public' }),
+              createParsedFunction({ name: 'privateFn', visibility: 'private' }),
+              createParsedFunction({ name: 'protectedFn', visibility: 'protected' }),
+              createParsedFunction({ name: 'internalFn', visibility: 'internal' }),
+            ],
+            properties: [
+              createParsedProperty({ name: 'publicProp', visibility: 'public' }),
+              createParsedProperty({ name: 'privateProp', visibility: 'private' }),
+            ],
+          }),
+        ],
+      });
+
+      await writer.writeFiles([file]);
+
+      const funcs = await client.query<{ name: string; visibility: string }>(
+        'MATCH (f:Function) RETURN f.name as name, f.visibility as visibility ORDER BY f.name'
+      );
+      expect(funcs).toHaveLength(4);
+      expect(funcs.find(f => f.name === 'privateFn')?.visibility).toBe('private');
+      expect(funcs.find(f => f.name === 'protectedFn')?.visibility).toBe('protected');
+      expect(funcs.find(f => f.name === 'internalFn')?.visibility).toBe('internal');
+
+      const props = await client.query<{ name: string; visibility: string }>(
+        'MATCH (p:Property) RETURN p.name as name, p.visibility as visibility ORDER BY p.name'
+      );
+      expect(props.find(p => p.name === 'privateProp')?.visibility).toBe('private');
+    });
+  });
+
+  describe('writeFiles - ensureSchema option', () => {
+    it('should skip schema creation when ensureSchema is false', async () => {
+      const file = createResolvedFile({
+        packageName: 'com.example',
+        classes: [createParsedClass({ name: 'TestClass' })],
+      });
+
+      // This should work without creating constraints (they already exist from earlier tests)
+      const result = await writer.writeFiles([file], { ensureSchema: false });
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.filesProcessed).toBe(1);
+    });
+  });
 });

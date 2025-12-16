@@ -33,7 +33,10 @@ codegraph/
 │       │   │   ├── types.ts      # Types du resolver
 │       │   │   ├── resolver.ts   # Logique de résolution
 │       │   │   └── index.ts      # Exports
-│       │   ├── writer.ts         # Écriture batch Neo4j (partagé)
+│       │   ├── writer/            # Écriture batch Neo4j (modulaire) ✅
+│       │   │   ├── types.ts      # Types du writer
+│       │   │   ├── index.ts      # Neo4jWriter class
+│       │   │   └── index.test.ts # Tests Testcontainers
 │       │   ├── types.ts          # Types communs
 │       │   └── index.ts          # Exports
 │       └── tools/
@@ -174,12 +177,38 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 - [x] Utilitaires : lookupSymbol, findSymbols, getResolutionStats
 - [x] Tests ajoutés : constructor calls resolution, overload resolution, qualified calls
 
-### Étape 4 : Writer Neo4j
-- [ ] Créer `mcp-server/src/indexer/writer.ts` :
-  - Création des nœuds (Package, Class, Interface, Function, etc.)
-  - Création des relations (CONTAINS, DECLARES, CALLS, USES, etc.)
-  - Batch processing pour performance
-  - Gestion des contraintes d'unicité
+### Étape 4 : Writer Neo4j ✅ DONE (62 tests)
+- [x] Créer `mcp-server/src/indexer/writer/` (module modulaire) :
+  - `types.ts` : Types du writer (WriteResult, WriteError, WriterOptions)
+  - `index.ts` : Neo4jWriter class avec toutes les méthodes d'écriture
+  - `index.test.ts` : Tests d'intégration avec Testcontainers (Neo4j réel)
+- [x] Création des nœuds (Package, Class, Interface, Object, Function, Property, Parameter, Annotation, TypeAlias)
+- [x] Création des relations principales (CONTAINS, DECLARES, EXTENDS, IMPLEMENTS, CALLS, HAS_PARAMETER, ANNOTATED_WITH)
+- [x] Batch processing avec UNWIND pour performance (configurable via `batchSize`)
+- [x] Gestion des contraintes d'unicité (`ensureConstraintsAndIndexes()`)
+- [x] Option `clearBefore` pour ré-indexation complète
+- [x] Comptage des appels multiples (CALLS avec `count` property)
+
+**Fonctionnalités implémentées :**
+- Classes, interfaces, objects, enums (via isEnum), annotation classes (via isAnnotationClass)
+- Functions avec tous les modifiers (suspend, inline, infix, operator, extension)
+- Properties avec mutabilité, type, initializer
+- Parameters avec position, type, defaultValue, functionType (lambda)
+- Type parameters sérialisés avec variance, bounds, reified
+- Companion objects avec parentClass
+- Nested classes avec FQN correct
+- Top-level functions/properties avec CONTAINS depuis Package
+- Annotations avec arguments JSON
+- ResolvedCalls en batch avec comptage des duplicates
+
+**Relations non implémentées (optionnelles) :**
+- [ ] USES relationship (Function → Class/Interface utilisée) - utile pour analyse de dépendances
+- [ ] RETURNS relationship (Function → Class/Interface retournée) - utile pour analyse de dépendances
+
+**Éléments non écrits en Neo4j (parsés mais ignorés) :**
+- Secondary constructors (`ParsedConstructor`) - pourraient être des nœuds Constructor
+- Destructuring declarations - pourraient être des nœuds Property
+- Object expressions - anonymes, difficiles à référencer
 
 ### Étape 5 : CLI `codegraph-indexer`
 - [ ] Créer `mcp-server/src/cli.ts` :
@@ -226,8 +255,8 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 | `mcp-server/src/indexer/parsers/kotlin/extractor.ts` | Créer | ✅ DONE (~1350 lignes) |
 | `mcp-server/src/indexer/parsers/kotlin/index.ts` | Créer | ✅ DONE |
 | `mcp-server/src/indexer/parsers/kotlin/index.test.ts` | Tests | ✅ DONE (123 tests) |
-| `mcp-server/src/indexer/resolver/` | Créer (module modulaire) | ✅ DONE |
-| `mcp-server/src/indexer/writer.ts` | Créer (partagé) | ⏳ TODO |
+| `mcp-server/src/indexer/resolver/` | Créer (module modulaire) | ✅ DONE (48 tests) |
+| `mcp-server/src/indexer/writer/` | Créer (module modulaire) | ✅ DONE (62 tests) |
 | `mcp-server/src/indexer/index.ts` | Créer | ✅ DONE |
 | `mcp-server/src/tools/index-codebase/*` | Créer (4 fichiers) | ⏳ TODO |
 | `mcp-server/src/index.ts` | Modifier (enregistrer tool) | ⏳ TODO |
@@ -266,6 +295,9 @@ Notes:
 | **Parser registry** | Registre modulaire des parsers par extension | - |
 | **Parser Kotlin** | Parsing tree-sitter avec extraction complète | 123 |
 | **Resolver** | Résolution des symboles et appels cross-fichiers | 48 |
+| **Writer** | Écriture batch vers Neo4j avec Testcontainers | 62 |
+
+**Total : 233 tests**
 
 ### Fonctionnalités Kotlin supportées
 
@@ -283,7 +315,7 @@ Notes:
 ### Prochaines étapes
 
 1. ~~**Resolver** : Résolution des symboles et appels cross-fichiers~~ ✅ DONE
-2. **Writer** : Écriture batch vers Neo4j
+2. ~~**Writer** : Écriture batch vers Neo4j~~ ✅ DONE
 3. **CLI** : Commande `codegraph-indexer`
 4. **MCP Tool** : Outil `index_codebase` pour Claude
 
