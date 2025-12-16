@@ -395,19 +395,37 @@ async function main(): Promise<void> {
           for (const fn of cls.functions) {
             collectUnresolved(fn.calls, resolvedSet, resolved.filePath);
           }
-          // Nested classes
+          // Companion object
+          if (cls.companionObject) {
+            for (const fn of cls.companionObject.functions) {
+              collectUnresolved(fn.calls, resolvedSet, resolved.filePath);
+            }
+          }
+          // Nested classes (recursive)
           const processNested = (classes: typeof resolved.classes): void => {
             for (const c of classes) {
               for (const fn of c.functions) {
                 collectUnresolved(fn.calls, resolvedSet, resolved.filePath);
+              }
+              if (c.companionObject) {
+                for (const fn of c.companionObject.functions) {
+                  collectUnresolved(fn.calls, resolvedSet, resolved.filePath);
+                }
               }
               processNested(c.nestedClasses);
             }
           };
           processNested(cls.nestedClasses);
         }
+        // Top-level functions
         for (const fn of resolved.topLevelFunctions) {
           collectUnresolved(fn.calls, resolvedSet, resolved.filePath);
+        }
+        // Object expressions (anonymous objects)
+        for (const objExpr of resolved.objectExpressions) {
+          for (const fn of objExpr.functions) {
+            collectUnresolved(fn.calls, resolvedSet, resolved.filePath);
+          }
         }
       }
 
