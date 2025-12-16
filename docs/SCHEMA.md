@@ -26,11 +26,15 @@ Represents a Kotlin package.
 Represents a Kotlin class.
 
 **Properties:**
-- `name`: String - Class name
+- `fqn`: String - Fully qualified name (e.g., `com.example.UserService`)
+- `name`: String - Simple class name
 - `visibility`: String - Visibility (`public`, `private`, `protected`, `internal`)
 - `isAbstract`: Boolean - Indicates if the class is abstract
 - `isData`: Boolean - Indicates if it's a data class
 - `isSealed`: Boolean - Indicates if it's a sealed class
+- `superClass`: String (optional) - Superclass name
+- `interfaces`: String[] - Implemented interfaces
+- `typeParameters`: String[] (optional) - Generic type parameters
 - `filePath`: String - Source file path
 - `lineNumber`: Integer - Declaration line number
 
@@ -38,8 +42,12 @@ Represents a Kotlin class.
 Represents a Kotlin interface.
 
 **Properties:**
-- `name`: String - Interface name
+- `fqn`: String - Fully qualified name
+- `name`: String - Simple interface name
 - `visibility`: String - Visibility (`public`, `private`, `protected`, `internal`)
+- `isSealed`: Boolean - Indicates if it's a sealed interface
+- `interfaces`: String[] - Extended interfaces
+- `typeParameters`: String[] (optional) - Generic type parameters
 - `filePath`: String - Source file path
 - `lineNumber`: Integer - Declaration line number
 
@@ -47,9 +55,11 @@ Represents a Kotlin interface.
 Represents a Kotlin object (singleton or companion object).
 
 **Properties:**
-- `name`: String - Object name
+- `fqn`: String - Fully qualified name
+- `name`: String - Object name (or "Companion" for anonymous companion objects)
 - `visibility`: String - Visibility (`public`, `private`, `protected`, `internal`)
 - `isCompanion`: Boolean - Indicates if it's a companion object
+- `parentClass`: String (optional) - Parent class for companion objects
 - `filePath`: String - Source file path
 - `lineNumber`: Integer - Declaration line number
 
@@ -57,11 +67,19 @@ Represents a Kotlin object (singleton or companion object).
 Represents a Kotlin function.
 
 **Properties:**
+- `fqn`: String - Fully qualified name (e.g., `com.example.UserService.save`)
 - `name`: String - Function name
 - `visibility`: String - Visibility (`public`, `private`, `protected`, `internal`)
 - `isExtension`: Boolean - Indicates if it's an extension function
 - `isSuspend`: Boolean - Indicates if it's a suspend function (coroutine)
+- `isInline`: Boolean - Indicates if it's an inline function
+- `isInfix`: Boolean - Indicates if it's an infix function
+- `isOperator`: Boolean - Indicates if it's an operator function
+- `isAbstract`: Boolean - Indicates if it's an abstract function
+- `receiverType`: String (optional) - Receiver type for extension functions
 - `returnType`: String - Function return type
+- `typeParameters`: String[] (optional) - Generic type parameters
+- `declaringType`: String - FQN of the declaring class/interface/object
 - `filePath`: String - Source file path
 - `lineNumber`: Integer - Declaration line number
 
@@ -69,10 +87,13 @@ Represents a Kotlin function.
 Represents a Kotlin property.
 
 **Properties:**
+- `fqn`: String - Fully qualified name
 - `name`: String - Property name
 - `visibility`: String - Visibility (`public`, `private`, `protected`, `internal`)
 - `isMutable`: Boolean - Indicates if it's a `var` (true) or `val` (false)
 - `type`: String - Property type
+- `initializer`: String (optional) - Initializer expression (for delegated properties like `by lazy`)
+- `declaringType`: String - FQN of the declaring class/interface/object
 - `filePath`: String - Source file path
 - `lineNumber`: Integer - Declaration line number
 
@@ -83,12 +104,28 @@ Represents a function parameter.
 - `name`: String - Parameter name
 - `type`: String - Parameter type
 - `hasDefault`: Boolean - Indicates if the parameter has a default value
+- `isCrossinline`: Boolean (optional) - For inline function lambda parameters
+- `isNoinline`: Boolean (optional) - For inline function lambda parameters
+- `functionType`: Object (optional) - For lambda parameters, contains `parameterTypes`, `returnType`, `receiverType`, `isSuspend`
 
 ### Annotation
 Represents a Kotlin annotation.
 
 **Properties:**
 - `name`: String - Annotation name (e.g., `@Override`, `@Deprecated`)
+- `arguments`: Object (optional) - Annotation arguments as key-value pairs
+
+### TypeAlias
+Represents a Kotlin type alias.
+
+**Properties:**
+- `fqn`: String - Fully qualified name
+- `name`: String - Alias name
+- `aliasedType`: String - The type being aliased
+- `visibility`: String - Visibility
+- `typeParameters`: String[] (optional) - Generic type parameters
+- `filePath`: String - Source file path
+- `lineNumber`: Integer - Declaration line number
 
 ---
 
@@ -129,6 +166,10 @@ Links a function that calls another function.
 
 **Properties:**
 - `count`: Integer (optional) - Number of calls within the function
+- `isSafeCall`: Boolean (optional) - True if using `?.` operator
+- `receiver`: String (optional) - Receiver expression (e.g., "repository", "com.example.Utils")
+- `argumentCount`: Integer (optional) - Number of arguments passed
+- `argumentTypes`: String[] (optional) - Inferred types of arguments
 
 ### USES
 Links a function to a type it uses (class or interface).
@@ -590,12 +631,21 @@ CREATE (func)-[:HAS_PARAMETER {position: 0}]->(param)
 
 ### 4. Extension
 This schema can be extended to support:
-- Generics and parameterized types
-- Annotations with parameters
+- ~~Generics and parameterized types~~ ✅ Supported
+- ~~Annotations with parameters~~ ✅ Supported
 - Documentation (KDoc)
 - Code metrics (cyclomatic complexity, etc.)
 - Module dependency relationships
 - Versions and Git history
+
+### 5. Indexer Integration
+The schema is populated by the CodeGraph indexer which:
+- Parses Kotlin source files using tree-sitter
+- Extracts all symbols with full metadata
+- Resolves cross-file references (function calls, type usage)
+- Writes to Neo4j in batch for performance
+
+See `docs/PLAN-INDEXER.md` for implementation details.
 
 ---
 

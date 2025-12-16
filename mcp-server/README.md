@@ -1,6 +1,6 @@
 # CodeGraph MCP Server
 
-MCP (Model Context Protocol) server that exposes a Neo4j code graph to LLMs for code analysis and navigation.
+MCP (Model Context Protocol) server that exposes a Neo4j code graph to LLMs for Kotlin code analysis and navigation.
 
 ## Architecture
 
@@ -14,6 +14,14 @@ mcp-server/
 │   ├── neo4j/
 │   │   ├── neo4j.ts          # Neo4j client with helpers
 │   │   └── neo4j.types.ts    # Neo4j type definitions
+│   ├── indexer/              # Multi-language code indexer (171 tests)
+│   │   ├── index.ts          # Module exports
+│   │   ├── types.ts          # Common types (ParsedFile, LanguageParser, etc.)
+│   │   ├── parsers/
+│   │   │   ├── registry.ts   # Parser registry with dynamic imports
+│   │   │   └── kotlin/       # Kotlin parser (tree-sitter based, 123 tests)
+│   │   ├── resolver/         # Symbol resolution (48 tests)
+│   │   └── writer.ts         # Neo4j batch writer (TODO)
 │   └── tools/
 │       ├── index.ts          # Tool handlers implementation
 │       └── formatters.ts     # Compact output formatters
@@ -51,6 +59,15 @@ NEO4J_PASSWORD=your-password
 ```bash
 # Watch mode with auto-reload
 npm run dev
+
+# Type checking
+npm run typecheck
+
+# Run tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
 ```
 
 ### Production
@@ -83,43 +100,87 @@ Add the configuration in `claude_desktop_config.json`:
 }
 ```
 
-## Available Tools
+## Indexer Module
 
-### 1. `find_class`
+The indexer parses Kotlin source files and resolves cross-file symbol references.
 
-Search for a class or interface by name.
+### Supported Kotlin Features
+
+| Category | Features |
+|----------|----------|
+| **Classes** | class, interface, object, enum, annotation, data, sealed, abstract |
+| **Members** | functions, properties, companion objects, nested classes |
+| **Constructors** | primary (with val/var properties), secondary |
+| **Generics** | type parameters, bounds, variance (in/out), reified, where clause |
+| **Functions** | extension, suspend, inline, infix, operator |
+| **Lambda** | function types, receiver types, crossinline, noinline |
+| **Calls** | chained calls, nested calls, safe calls (?.), qualified calls (FQN) |
+| **Other** | imports, annotations with arguments, type aliases, destructuring |
+
+### Programmatic Usage
+
+```typescript
+import { kotlinParser } from './indexer/parsers/kotlin/index.js';
+import { buildSymbolTable, resolveSymbols, getResolutionStats } from './indexer/index.js';
+
+// Parse Kotlin files
+const file1 = await kotlinParser.parse(sourceCode1, '/path/to/File1.kt');
+const file2 = await kotlinParser.parse(sourceCode2, '/path/to/File2.kt');
+
+// Build symbol table and resolve calls
+const symbolTable = buildSymbolTable([file1, file2]);
+const resolved = resolveSymbols([file1, file2], symbolTable);
+
+// Get resolution statistics
+const stats = getResolutionStats(resolved);
+console.log(`Resolution rate: ${stats.resolutionRate * 100}%`);
+```
+
+### Tests
+
+```bash
+# Run all tests (171 tests)
+npm test
+
+# Parser tests: 123 tests
+# Resolver tests: 48 tests
+```
+
+## Available MCP Tools
+
+### 1. `search_nodes`
+
+Search for classes, interfaces, or functions by name.
 
 **Parameters:**
-- `name` (string, required): Class name
+- `name` (string, required): Name to search
 - `exact_match` (boolean, optional): Exact or partial search
 
-**Example:**
-```typescript
-{
-  "name": "UserService",
-  "exact_match": true
-}
-```
+### 2. `get_callers`
 
-### 2. `get_dependencies`
-
-List dependencies of a class.
+Find all functions that call a specified function.
 
 **Parameters:**
-- `class_name` (string, required): Class name
+- `function_name` (string, required): Function name
+- `class_name` (string, optional): Class name
+
+### 3. `get_callees`
+
+Find all functions called by a specified function.
+
+**Parameters:**
+- `function_name` (string, required): Function name
+- `class_name` (string, optional): Class name
+
+### 4. `get_neighbors`
+
+Get dependencies and dependents of a class/interface.
+
+**Parameters:**
+- `name` (string, required): Class or interface name
 - `depth` (number, optional): Depth (1-5, default: 1)
-- `include_external` (boolean, optional): Include npm dependencies
 
-**Example:**
-```typescript
-{
-  "class_name": "UserService",
-  "depth": 2,
-  "include_external": false
-}
-```
-
-### 3. `get_implementations`
+### 5. `get_implementations`
 
 Find implementations of an interface.
 
@@ -127,50 +188,55 @@ Find implementations of an interface.
 - `interface_name` (string, required): Interface name
 - `include_indirect` (boolean, optional): Include indirect implementations
 
-**Example:**
-```typescript
-{
-  "interface_name": "IRepository",
-  "include_indirect": true
-}
-```
+### 6. `get_impact`
 
-### 4. `trace_calls`
-
-Trace function calls.
+Analyze impact of modifying a node.
 
 **Parameters:**
-- `function_name` (string, required): Function name
-- `class_name` (string, optional): Class name
-- `direction` (string, optional): "callers", "callees", or "both"
-- `depth` (number, optional): Depth (1-5, default: 2)
+- `name` (string, required): Node name
+- `depth` (number, optional): Analysis depth
 
-**Example:**
-```typescript
-{
-  "function_name": "authenticate",
-  "direction": "both",
-  "depth": 2
-}
-```
+### 7. `find_path`
 
-### 5. `search_code`
-
-Full-text search in code.
+Find shortest path between two nodes.
 
 **Parameters:**
-- `query` (string, required): Search term
-- `entity_types` (array, optional): Entity types ["class", "function", "property", "interface"]
-- `limit` (number, optional): Max results (1-100, default: 20)
+- `from` (string, required): Source node
+- `to` (string, required): Target node
 
-**Example:**
-```typescript
-{
-  "query": "authentication",
-  "entity_types": ["class", "function"],
-  "limit": 10
-}
-```
+### 8. `get_file_symbols`
+
+List all symbols defined in a file.
+
+**Parameters:**
+- `file_path` (string, required): File path
+
+## Neo4j Data Model
+
+The code graph contains the following nodes:
+
+- **Package**: Kotlin package
+- **Class**: Class (data, sealed, abstract)
+- **Interface**: Kotlin interface
+- **Object**: Singleton or companion object
+- **Function**: Function or method
+- **Property**: Class or top-level property
+- **Parameter**: Function parameter
+- **Annotation**: Kotlin annotation
+
+And relationships:
+
+- `CONTAINS`: Package → Class/Interface/Object
+- `DECLARES`: Class/Interface/Object → Function/Property
+- `EXTENDS`: Class → Class (inheritance)
+- `IMPLEMENTS`: Class → Interface
+- `CALLS`: Function → Function
+- `USES`: Function → Class/Interface
+- `HAS_PARAMETER`: Function → Parameter
+- `ANNOTATED_WITH`: Element → Annotation
+- `RETURNS`: Function → Class/Interface
+
+See `docs/SCHEMA.md` for complete schema with Cypher examples.
 
 ## Development
 
@@ -178,49 +244,28 @@ Full-text search in code.
 
 - **src/index.ts**: Main MCP server with tool registration
 - **src/config/**: Configuration module
-  - `config.ts`: Server configuration from environment variables
-  - `config.types.ts`: TypeScript interfaces (Neo4jConfig, ServerConfig, Config)
 - **src/neo4j/**: Neo4j client module
-  - `neo4j.ts`: Neo4j client with simplified API
-  - `neo4j.types.ts`: TypeScript types (QueryOptions, ResultRecord)
-- **src/tools/**: Tool handlers module
-  - `index.ts`: Handler functions for each MCP tool
-  - `formatters.ts`: Compact output formatters for token optimization
+- **src/indexer/**: Code indexer module
+  - `types.ts`: Common types for all parsers
+  - `parsers/`: Language-specific parsers
+  - `resolver/`: Symbol resolution logic
+  - `writer.ts`: Neo4j batch writer (TODO)
+- **src/tools/**: MCP tool handlers
 
 ### Next Steps
 
-1. Implement tool handlers in `src/tools/`
-2. Create optimized Cypher queries for each operation
-3. Add unit tests
-4. Add input schema validation
-5. Implement caching for frequent queries
-6. Add metrics and monitoring
+1. ~~Implement Kotlin parser~~ ✅ DONE (123 tests)
+2. ~~Implement symbol resolver~~ ✅ DONE (48 tests)
+3. Implement Neo4j batch writer
+4. Implement CLI `codegraph-indexer`
+5. Implement MCP tool `index_codebase`
 
 ### Code Conventions
 
 - TypeScript strict mode enabled
 - JSDoc comments for public functions
 - Explicit error handling
-- User input validation
-
-## Neo4j Data Model
-
-The code graph contains the following nodes:
-
-- **Class**: Class or interface
-- **Function**: Function or method
-- **Property**: Class property
-- **File**: Source file
-
-And relationships:
-
-- `DEPENDS_ON`: Dependency between classes
-- `IMPLEMENTS`: Interface implementation
-- `EXTENDS`: Inheritance
-- `CALLS`: Function call
-- `CONTAINS`: File contents
-- `HAS_PROPERTY`: Class property
-- `HAS_METHOD`: Class method
+- Unit tests for all modules
 
 ## License
 

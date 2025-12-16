@@ -58,13 +58,18 @@ codegraph/
 │       ├── neo4j/
 │       │   ├── neo4j.ts        # Neo4j client wrapper (modern executeQuery API)
 │       │   └── neo4j.types.ts  # Neo4j type definitions
-│       ├── indexer/            # Multi-language code indexer
+│       ├── indexer/            # Multi-language code indexer (171 tests)
 │       │   ├── index.ts        # Module exports
 │       │   ├── types.ts        # Common types (ParsedFile, LanguageParser, etc.)
 │       │   ├── parsers/
 │       │   │   ├── registry.ts # Parser registry with dynamic imports
-│       │   │   └── kotlin/     # Kotlin parser (tree-sitter based)
-│       │   ├── resolver.ts     # Symbol resolution (TODO)
+│       │   │   └── kotlin/     # Kotlin parser (tree-sitter based, 123 tests)
+│       │   │       ├── parser.ts     # Tree-sitter initialization
+│       │   │       ├── extractor.ts  # AST extraction (~1350 lines)
+│       │   │       └── index.ts      # LanguageParser implementation
+│       │   ├── resolver/       # Symbol resolution (48 tests) ✅
+│       │   │   ├── types.ts    # Symbol, SymbolTable, ResolutionContext
+│       │   │   └── index.ts    # Resolution logic
 │       │   └── writer.ts       # Neo4j batch writer (TODO)
 │       └── tools/
 │           ├── <tool-name>/    # One directory per tool (e.g., search-nodes/)
@@ -90,17 +95,35 @@ codegraph/
 
 ### Indexer Module (`indexer/`)
 
-Multi-language code indexer that parses source files and populates the Neo4j graph.
+Multi-language code indexer that parses source files and populates the Neo4j graph. **Status: 171 tests passing.**
 
 **Architecture**:
-- **Modular parsers**: Each language has its own parser in `parsers/<language>/` (~300-400 lines each)
+- **Modular parsers**: Each language has its own parser in `parsers/<language>/`
 - **Registry pattern**: `parsers/registry.ts` maps file extensions to parsers with lazy loading
-- **Shared components**: `resolver.ts` and `writer.ts` are language-agnostic
+- **Resolver**: `resolver/` resolves cross-file symbol references (buildSymbolTable, resolveSymbols)
+- **Writer**: `writer.ts` writes to Neo4j (TODO)
 
 **Key types** (`types.ts`):
 - `LanguageParser`: Interface all parsers must implement
 - `ParsedFile`: Normalized output from any parser (classes, functions, imports, etc.)
 - `ResolvedFile`: ParsedFile with resolved cross-references
+- `ParsedCall`: Function call with receiver, arguments, safe call detection
+
+**Resolver exports** (`resolver/`):
+- `buildSymbolTable(files)`: Build a global symbol table from parsed files
+- `resolveSymbols(files, table?)`: Resolve all calls to their target FQNs
+- `lookupSymbol(table, fqn)`: Find a symbol by fully qualified name
+- `findSymbols(table, pattern)`: Find symbols matching a pattern (glob-style)
+- `getResolutionStats(resolved)`: Get resolution statistics
+
+**Kotlin Parser features** (`parsers/kotlin/`):
+- Classes, interfaces, objects, enums, annotations (data, sealed, abstract)
+- Functions (extension, suspend, inline, infix, operator)
+- Generics with bounds, variance, reified, where clause
+- Primary/secondary constructors
+- Companion objects
+- Type aliases, destructuring declarations
+- Function calls extraction (chained, nested, safe calls, qualified)
 
 **Adding a new language**:
 1. Create `parsers/<language>/` with `parser.ts`, `extractor.ts`, `index.ts`
@@ -190,4 +213,21 @@ Add to `claude_desktop_config.json`:
 - `@modelcontextprotocol/sdk` ^1.24.3
 - `neo4j-driver` ^5.28.1
 - `zod` for schema validation
+- `tree-sitter` + `tree-sitter-kotlin` for parsing
+- `vitest` for testing
 - Node.js >= 18
+
+## Testing
+
+```bash
+# Run all tests
+cd mcp-server && npm test
+
+# Run tests in watch mode
+npm run test:watch
+```
+
+**Test counts:**
+- Parser Kotlin: 123 tests
+- Resolver: 48 tests
+- Total: 171 tests (342 with dist/)

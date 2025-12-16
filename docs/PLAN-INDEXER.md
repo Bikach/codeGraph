@@ -124,7 +124,7 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
   - Registre des parsers par extension (`.kt` → kotlin, `.java` → java)
   - Fonction `getParserForFile(filePath): LanguageParser`
 
-### Étape 2 : Parser Kotlin ✅ DONE (112 tests, ~99% coverage)
+### Étape 2 : Parser Kotlin ✅ DONE (123 tests)
 - [x] Installer `tree-sitter` et `tree-sitter-kotlin`
 - [x] Créer `mcp-server/src/indexer/parsers/kotlin/parser.ts` :
   - Initialisation tree-sitter-kotlin
@@ -152,9 +152,10 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 - [x] Créer `mcp-server/src/indexer/parsers/kotlin/index.ts` :
   - Export du parser Kotlin implémentant `LanguageParser`
 - [x] Enregistrer le parser Kotlin dans `registry.ts`
-- [x] Tester le parsing : **112 tests passants**
+- [x] Tester le parsing : **123 tests passants**
+  - Tests ajoutés : chained calls, safe calls, qualified calls, argument types inference
 
-### Étape 3 : Résolveur de symboles ✅ DONE (41 tests)
+### Étape 3 : Résolveur de symboles ✅ DONE (48 tests)
 - [x] Créer `mcp-server/src/indexer/resolver/` (module modulaire) :
   - `types.ts` : Types du resolver (Symbol, FunctionSymbol, SymbolTable, ResolutionContext)
   - `resolver.ts` : Logique de résolution des symboles
@@ -171,6 +172,7 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
   - Companion objects
   - Extension functions
 - [x] Utilitaires : lookupSymbol, findSymbols, getResolutionStats
+- [x] Tests ajoutés : constructor calls resolution, overload resolution, qualified calls
 
 ### Étape 4 : Writer Neo4j
 - [ ] Créer `mcp-server/src/indexer/writer.ts` :
@@ -221,9 +223,9 @@ cp docs/commands/codegraph-indexer.md ~/.claude/commands/
 | `mcp-server/src/indexer/types.ts` | Créer (types communs) | ✅ DONE |
 | `mcp-server/src/indexer/parsers/registry.ts` | Créer (registre des parsers) | ✅ DONE |
 | `mcp-server/src/indexer/parsers/kotlin/parser.ts` | Créer | ✅ DONE |
-| `mcp-server/src/indexer/parsers/kotlin/extractor.ts` | Créer | ✅ DONE (~900 lignes) |
+| `mcp-server/src/indexer/parsers/kotlin/extractor.ts` | Créer | ✅ DONE (~1350 lignes) |
 | `mcp-server/src/indexer/parsers/kotlin/index.ts` | Créer | ✅ DONE |
-| `mcp-server/src/indexer/parsers/kotlin/index.test.ts` | Tests | ✅ DONE (112 tests) |
+| `mcp-server/src/indexer/parsers/kotlin/index.test.ts` | Tests | ✅ DONE (123 tests) |
 | `mcp-server/src/indexer/resolver/` | Créer (module modulaire) | ✅ DONE |
 | `mcp-server/src/indexer/writer.ts` | Créer (partagé) | ⏳ TODO |
 | `mcp-server/src/indexer/index.ts` | Créer | ✅ DONE |
@@ -262,8 +264,8 @@ Notes:
 |-----------|-------------|-------|
 | **Types communs** | 15+ interfaces pour représenter le code Kotlin parsé | - |
 | **Parser registry** | Registre modulaire des parsers par extension | - |
-| **Parser Kotlin** | Parsing tree-sitter avec extraction complète | 112 |
-| **Resolver** | Résolution des symboles et appels cross-fichiers | 41 |
+| **Parser Kotlin** | Parsing tree-sitter avec extraction complète | 123 |
+| **Resolver** | Résolution des symboles et appels cross-fichiers | 48 |
 
 ### Fonctionnalités Kotlin supportées
 
@@ -275,6 +277,7 @@ Notes:
 | **Generics** | type parameters, bounds, variance (in/out), reified, where clause |
 | **Fonctions** | extension, suspend, inline, infix, operator |
 | **Lambda** | function types, receiver types, crossinline, noinline |
+| **Appels** | chained calls, nested calls, safe calls (?.), qualified calls (FQN) |
 | **Autres** | imports, annotations avec arguments, type aliases, destructuring |
 
 ### Prochaines étapes
