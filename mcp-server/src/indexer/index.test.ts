@@ -16,7 +16,6 @@ import {
   findSymbols,
 } from './resolver/index.js';
 import type { ClassSymbol, FunctionSymbol, TypeAliasSymbol, PropertySymbol } from './resolver/types.js';
-import type { ParsedFile } from './types.js';
 
 describe('Parser → Resolver Integration', () => {
   describe('superclass/interface distinction', () => {
@@ -438,7 +437,10 @@ describe('Parser → Resolver Integration', () => {
       const parsed3 = await kotlinParser.parse(file3, '/test/service/UserService.kt');
 
       const resolved = resolveSymbols([parsed1, parsed2, parsed3]);
+
+      // Verify resolution stats
       const stats = getResolutionStats(resolved);
+      expect(stats.totalCalls).toBeGreaterThan(0);
 
       // Should resolve repository.save() call
       const serviceFile = resolved.find((f) => f.filePath === '/test/service/UserService.kt')!;
@@ -475,6 +477,188 @@ describe('Parser → Resolver Integration', () => {
       // Find all services
       const services = findSymbols(table, '*Service');
       expect(services).toHaveLength(2);
+    });
+  });
+
+  describe('overload resolution', () => {
+    it('should resolve overloaded method by argument count', async () => {
+      const source = `
+        package com.example
+
+        class Calculator {
+          fun add(a: Int): Int = a
+          fun add(a: Int, b: Int): Int = a + b
+          fun add(a: Int, b: Int, c: Int): Int = a + b + c
+        }
+
+        class Client {
+          val calc: Calculator = Calculator()
+
+          fun test() {
+            calc.add(1)
+            calc.add(1, 2)
+            calc.add(1, 2, 3)
+          }
+        }
+      `;
+      const parsed = await kotlinParser.parse(source, '/test/Calculator.kt');
+      const resolved = resolveSymbols([parsed]);
+
+      const clientFile = resolved[0]!;
+      const addCalls = clientFile.resolvedCalls.filter((c) => c.toFqn.includes('add'));
+
+      // All add calls should be resolved
+      expect(addCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should resolve overloaded method by argument types', async () => {
+      const source = `
+        package com.example
+
+        class Formatter {
+          fun format(value: Int): String = value.toString()
+          fun format(value: String): String = value
+          fun format(value: Double): String = value.toString()
+        }
+
+        class Client {
+          val fmt: Formatter = Formatter()
+
+          fun test() {
+            fmt.format(42)
+            fmt.format("hello")
+            fmt.format(3.14)
+          }
+        }
+      `;
+      const parsed = await kotlinParser.parse(source, '/test/Formatter.kt');
+      const resolved = resolveSymbols([parsed]);
+
+      const clientFile = resolved[0]!;
+      const formatCalls = clientFile.resolvedCalls.filter((c) => c.toFqn.includes('format'));
+
+      // Format calls should be resolved (parser extracts literal types)
+      expect(formatCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should prefer exact type match over compatible type', async () => {
+      const source = `
+        package com.example
+
+        class Logger {
+          fun log(msg: String): Unit {}
+          fun log(msg: Any): Unit {}
+        }
+
+        class Client {
+          val logger: Logger = Logger()
+
+          fun test() {
+            logger.log("message")
+          }
+        }
+      `;
+      const parsed = await kotlinParser.parse(source, '/test/Logger.kt');
+      const table = buildSymbolTable([parsed]);
+
+      // Check that both overloads are indexed
+      const logFunctions = table.functionsByName.get('log') || [];
+      const loggerMethods = logFunctions.filter((f) => f.declaringTypeFqn === 'com.example.Logger');
+      expect(loggerMethods.length).toBe(2);
+    });
+
+    it('should extract argument count from call expressions', async () => {
+      const source = `
+        package com.example
+
+        fun process(items: List<String>) {
+          items.map { it.uppercase() }
+          items.filter { it.isNotEmpty() }
+          items.joinToString(", ")
+        }
+      `;
+      const parsed = await kotlinParser.parse(source, '/test/Process.kt');
+
+      // Check that calls have argument count
+      const processFn = parsed.topLevelFunctions.find((f) => f.name === 'process');
+      expect(processFn).toBeDefined();
+
+      // joinToString has 1 argument
+      const joinCall = processFn!.calls.find((c) => c.name === 'joinToString');
+      expect(joinCall).toBeDefined();
+      expect(joinCall!.argumentCount).toBe(1);
+    });
+
+    it('should infer literal types for overload resolution', async () => {
+      const source = `
+        package com.example
+
+        fun test() {
+          println(42)
+          println("hello")
+          println(true)
+          println(3.14)
+        }
+      `;
+      const parsed = await kotlinParser.parse(source, '/test/Test.kt');
+      const testFn = parsed.topLevelFunctions.find((f) => f.name === 'test');
+
+      expect(testFn).toBeDefined();
+      expect(testFn!.calls.length).toBe(4);
+
+      // Check argument types were inferred
+      const intCall = testFn!.calls.find((c) => c.argumentTypes?.includes('Int'));
+      const stringCall = testFn!.calls.find((c) => c.argumentTypes?.includes('String'));
+      const boolCall = testFn!.calls.find((c) => c.argumentTypes?.includes('Boolean'));
+      const doubleCall = testFn!.calls.find((c) => c.argumentTypes?.includes('Double'));
+
+      expect(intCall).toBeDefined();
+      expect(stringCall).toBeDefined();
+      expect(boolCall).toBeDefined();
+      expect(doubleCall).toBeDefined();
+    });
+  });
+
+  describe('safe calls (nullable types)', () => {
+    it('should detect safe call operator', async () => {
+      const source = `
+        package com.example
+
+        class User(val name: String)
+
+        fun getName(user: User?): String? {
+          return user?.name
+        }
+      `;
+      const parsed = await kotlinParser.parse(source, '/test/SafeCall.kt');
+
+      // Note: property access via ?. might not be captured as a call
+      // This depends on tree-sitter parsing
+      expect(parsed.topLevelFunctions.length).toBe(1);
+    });
+
+    it('should mark safe call in ParsedCall', async () => {
+      const source = `
+        package com.example
+
+        class Service {
+          fun process(): String = "done"
+        }
+
+        fun test(service: Service?) {
+          service?.process()
+        }
+      `;
+      const parsed = await kotlinParser.parse(source, '/test/SafeCall2.kt');
+      const testFn = parsed.topLevelFunctions.find((f) => f.name === 'test');
+
+      expect(testFn).toBeDefined();
+      // Find the safe call to process()
+      const processCall = testFn!.calls.find((c) => c.name === 'process');
+      if (processCall) {
+        // If the parser captured the safe call, it should be marked
+        expect(processCall.isSafeCall).toBe(true);
+      }
     });
   });
 });

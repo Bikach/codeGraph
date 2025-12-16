@@ -113,6 +113,12 @@ export interface ParsedCall {
   receiver?: string;
   /** Receiver type if known */
   receiverType?: string;
+  /** Argument types for overload resolution (if inferrable) */
+  argumentTypes?: string[];
+  /** Number of arguments (always known even if types aren't) */
+  argumentCount?: number;
+  /** Is this a safe call (receiver?.method())? */
+  isSafeCall?: boolean;
   location: SourceLocation;
 }
 

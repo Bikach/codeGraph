@@ -576,13 +576,14 @@ function resolveCallsInFunction(
 /**
  * Resolve a single call to its target FQN.
  * Returns undefined if the call cannot be resolved.
+ * Supports overload resolution using argument types from the call.
  */
 function resolveCall(table: SymbolTable, context: ResolutionContext, call: ParsedCall): string | undefined {
   const { name, receiver, receiverType } = call;
 
   // 1. If receiver type is explicit, look for method in that type
   if (receiverType) {
-    const resolved = resolveMethodInType(table, context, receiverType, name);
+    const resolved = resolveMethodInType(table, context, receiverType, name, call);
     if (resolved) return resolved;
   }
 
@@ -591,7 +592,7 @@ function resolveCall(table: SymbolTable, context: ResolutionContext, call: Parse
     // Check if receiver is a local variable with known type
     const localType = context.localVariables.get(receiver);
     if (localType) {
-      const resolved = resolveMethodInType(table, context, localType, name);
+      const resolved = resolveMethodInType(table, context, localType, name, call);
       if (resolved) return resolved;
     }
 
@@ -599,7 +600,7 @@ function resolveCall(table: SymbolTable, context: ResolutionContext, call: Parse
     if (context.currentClass) {
       const prop = context.currentClass.properties.find((p) => p.name === receiver);
       if (prop?.type) {
-        const resolved = resolveMethodInType(table, context, prop.type, name);
+        const resolved = resolveMethodInType(table, context, prop.type, name, call);
         if (resolved) return resolved;
       }
     }
@@ -607,27 +608,35 @@ function resolveCall(table: SymbolTable, context: ResolutionContext, call: Parse
     // Check if receiver is a class name (static call / companion object)
     const receiverSymbol = resolveSymbolByName(table, context, receiver);
     if (receiverSymbol && (receiverSymbol.kind === 'class' || receiverSymbol.kind === 'object')) {
-      // Look for method in companion object or static context
+      // Look for method in companion object or static context (with overload resolution)
       const companionFqn = `${receiverSymbol.fqn}.Companion`;
-      const companionMethod = table.byFqn.get(`${companionFqn}.${name}`);
-      if (companionMethod) return companionMethod.fqn;
+      const companionCandidates = findMethodsInType(table, companionFqn, name);
+      if (companionCandidates.length > 0) {
+        const best = selectBestOverload(companionCandidates, call);
+        if (best) return best.fqn;
+      }
 
-      // Try direct method lookup (for objects)
-      const directMethod = table.byFqn.get(`${receiverSymbol.fqn}.${name}`);
-      if (directMethod) return directMethod.fqn;
+      // Try direct method lookup (for objects, with overload resolution)
+      const directCandidates = findMethodsInType(table, receiverSymbol.fqn, name);
+      if (directCandidates.length > 0) {
+        const best = selectBestOverload(directCandidates, call);
+        if (best) return best.fqn;
+      }
     }
   }
 
-  // 3. No receiver - look in current class first
+  // 3. No receiver - look in current class first (with overload resolution)
   if (context.currentClass) {
     const classFqn = getClassFqn(context);
-    const methodFqn = `${classFqn}.${name}`;
-    if (table.byFqn.has(methodFqn)) {
-      return methodFqn;
+    const classCandidates = findMethodsInType(table, classFqn, name);
+
+    if (classCandidates.length > 0) {
+      const best = selectBestOverload(classCandidates, call);
+      if (best) return best.fqn;
     }
 
-    // Check superclass hierarchy
-    const superMethod = resolveMethodInHierarchy(table, context, classFqn, name);
+    // Check superclass hierarchy (with overload resolution)
+    const superMethod = resolveMethodInHierarchy(table, context, classFqn, name, call);
     if (superMethod) return superMethod;
   }
 
@@ -637,33 +646,40 @@ function resolveCall(table: SymbolTable, context: ResolutionContext, call: Parse
     return importedFqn;
   }
 
-  // 5. Look in same package
+  // 5. Look in same package (with overload resolution)
   const packageName = context.currentFile.packageName;
   if (packageName) {
-    const samePackageFqn = `${packageName}.${name}`;
-    if (table.byFqn.has(samePackageFqn)) {
-      return samePackageFqn;
+    const packageCandidates = findFunctionsInPackage(table, packageName, name);
+    if (packageCandidates.length > 0) {
+      const best = selectBestOverload(packageCandidates, call);
+      if (best) return best.fqn;
     }
   }
 
-  // 6. Look in wildcard imports
+  // 6. Look in wildcard imports (with overload resolution)
   for (const wildcardPackage of context.wildcardImports) {
-    const wildcardFqn = `${wildcardPackage}.${name}`;
-    if (table.byFqn.has(wildcardFqn)) {
-      return wildcardFqn;
+    const wildcardCandidates = findFunctionsInPackage(table, wildcardPackage, name);
+    if (wildcardCandidates.length > 0) {
+      const best = selectBestOverload(wildcardCandidates, call);
+      if (best) return best.fqn;
     }
   }
 
-  // 7. Check for extension functions
+  // 7. Check for extension functions (with overload resolution)
   if (receiver) {
-    const extensionFunc = resolveExtensionFunction(table, context, receiver, name);
+    const extensionFunc = resolveExtensionFunction(table, context, receiver, name, call);
     if (extensionFunc) return extensionFunc;
   }
 
-  // 8. Top-level function in any package (last resort)
+  // 8. Top-level function in any package (last resort, with overload resolution)
   const candidates = table.functionsByName.get(name);
-  if (candidates && candidates.length === 1 && candidates[0]) {
-    return candidates[0].fqn;
+  if (candidates && candidates.length > 0) {
+    if (candidates.length === 1 && candidates[0]) {
+      return candidates[0].fqn;
+    }
+    // Multiple candidates - use overload resolution
+    const best = selectBestOverload(candidates, call);
+    if (best) return best.fqn;
   }
 
   // Could not resolve
@@ -671,14 +687,33 @@ function resolveCall(table: SymbolTable, context: ResolutionContext, call: Parse
 }
 
 /**
+ * Find all functions with a given name in a package.
+ */
+function findFunctionsInPackage(table: SymbolTable, packageName: string, functionName: string): FunctionSymbol[] {
+  const candidates: FunctionSymbol[] = [];
+  const allFunctions = table.functionsByName.get(functionName) || [];
+
+  for (const func of allFunctions) {
+    if (func.packageName === packageName && !func.declaringTypeFqn) {
+      // Top-level function in this package
+      candidates.push(func);
+    }
+  }
+
+  return candidates;
+}
+
+/**
  * Resolve a method call on a specific type.
  * Handles type aliases by resolving to the underlying type.
+ * Supports overload resolution when argument info is available.
  */
 function resolveMethodInType(
   table: SymbolTable,
   context: ResolutionContext,
   typeName: string,
-  methodName: string
+  methodName: string,
+  call?: ParsedCall
 ): string | undefined {
   // Remove generics
   const baseType = typeName.split('<')[0]?.trim() ?? typeName;
@@ -697,37 +732,220 @@ function resolveMethodInType(
     }
   }
 
-  // Look for method in the type
-  const methodFqn = `${typeFqn}.${methodName}`;
-  if (table.byFqn.has(methodFqn)) {
-    return methodFqn;
+  // Find all methods with this name in the type
+  const candidates = findMethodsInType(table, typeFqn, methodName);
+
+  if (candidates.length === 0) {
+    // Check type hierarchy
+    return resolveMethodInHierarchy(table, context, typeFqn, methodName, call);
   }
 
-  // Check type hierarchy
-  return resolveMethodInHierarchy(table, context, typeFqn, methodName);
+  if (candidates.length === 1 && candidates[0]) {
+    return candidates[0].fqn;
+  }
+
+  // Multiple candidates - use overload resolution
+  const best = selectBestOverload(candidates, call);
+  return best?.fqn;
+}
+
+/**
+ * Find all methods with a given name in a type.
+ * This handles overloaded methods that share the same base FQN.
+ */
+function findMethodsInType(table: SymbolTable, typeFqn: string, methodName: string): FunctionSymbol[] {
+  const candidates: FunctionSymbol[] = [];
+
+  // Get all functions with this name
+  const allFunctions = table.functionsByName.get(methodName) || [];
+
+  for (const func of allFunctions) {
+    // Check if this function belongs to the type
+    if (func.declaringTypeFqn === typeFqn) {
+      candidates.push(func);
+    }
+  }
+
+  // Also check for exact FQN match (single method case)
+  const exactFqn = `${typeFqn}.${methodName}`;
+  const exactMatch = table.byFqn.get(exactFqn);
+  if (exactMatch?.kind === 'function' && !candidates.some((c) => c.fqn === exactMatch.fqn)) {
+    candidates.push(exactMatch as FunctionSymbol);
+  }
+
+  return candidates;
+}
+
+/**
+ * Select the best overload from candidates based on argument information.
+ * Uses a scoring system to find the most specific match.
+ */
+function selectBestOverload(candidates: FunctionSymbol[], call?: ParsedCall): FunctionSymbol | undefined {
+  if (candidates.length === 0) return undefined;
+  if (candidates.length === 1) return candidates[0];
+  if (!call) return candidates[0]; // No call info, return first candidate
+
+  const argCount = call.argumentCount ?? 0;
+  const argTypes = call.argumentTypes || [];
+
+  // Score each candidate
+  const scored = candidates.map((candidate) => ({
+    func: candidate,
+    score: scoreOverloadMatch(candidate, argCount, argTypes),
+  }));
+
+  // Sort by score (highest first)
+  scored.sort((a, b) => b.score - a.score);
+
+  // Return best match if it has a positive score
+  const best = scored[0];
+  if (best && best.score > 0) {
+    return best.func;
+  }
+
+  // If no good match based on types, try argument count match
+  const countMatches = candidates.filter((c) => c.parameterTypes.length === argCount);
+  if (countMatches.length === 1 && countMatches[0]) {
+    return countMatches[0];
+  }
+
+  // Fallback to first candidate
+  return candidates[0];
+}
+
+/**
+ * Score how well a function signature matches the call arguments.
+ * Higher score = better match.
+ */
+function scoreOverloadMatch(func: FunctionSymbol, argCount: number, argTypes: string[]): number {
+  let score = 0;
+
+  // Exact argument count match is important
+  if (func.parameterTypes.length === argCount) {
+    score += 100;
+  } else if (argCount > func.parameterTypes.length) {
+    // Too many arguments - not a match
+    return -1;
+  }
+  // Note: Fewer args might be OK due to default parameters, but we penalize it slightly
+  else {
+    score += 50; // Partial match (default params might fill the rest)
+  }
+
+  // Score type matches
+  for (let i = 0; i < argTypes.length && i < func.parameterTypes.length; i++) {
+    const argType = argTypes[i];
+    const paramType = func.parameterTypes[i];
+
+    if (!argType || argType === 'Unknown' || !paramType) {
+      // Unknown type - neutral score
+      continue;
+    }
+
+    // Strip generics and nullability for comparison
+    const normalizedArg = normalizeType(argType);
+    const normalizedParam = normalizeType(paramType);
+
+    if (normalizedArg === normalizedParam) {
+      // Exact type match
+      score += 50;
+    } else if (isTypeCompatible(normalizedArg, normalizedParam)) {
+      // Compatible type (e.g., Int is compatible with Number)
+      score += 25;
+    } else {
+      // Type mismatch
+      score -= 10;
+    }
+  }
+
+  return score;
+}
+
+/**
+ * Normalize a type for comparison (strip generics, nullability).
+ */
+function normalizeType(typeName: string): string {
+  return typeName
+    .split('<')[0] // Remove generics
+    ?.replace(/\?$/, '') // Remove nullability
+    ?.trim() ?? typeName;
+}
+
+/**
+ * Check if a source type is compatible with a target type.
+ * This is a simplified check - full type compatibility requires more analysis.
+ */
+function isTypeCompatible(sourceType: string, targetType: string): boolean {
+  // Same type
+  if (sourceType === targetType) return true;
+
+  // Nothing? is compatible with any nullable type
+  if (sourceType === 'Nothing') return true;
+
+  // Numeric type hierarchy
+  const numericHierarchy: Record<string, string[]> = {
+    Byte: ['Short', 'Int', 'Long', 'Float', 'Double', 'Number'],
+    Short: ['Int', 'Long', 'Float', 'Double', 'Number'],
+    Int: ['Long', 'Float', 'Double', 'Number'],
+    Long: ['Float', 'Double', 'Number'],
+    Float: ['Double', 'Number'],
+    Double: ['Number'],
+  };
+
+  // Check numeric compatibility
+  const compatibleWith = numericHierarchy[sourceType];
+  if (compatibleWith?.includes(targetType)) {
+    return true;
+  }
+
+  // Any accepts all types
+  if (targetType === 'Any') return true;
+
+  // CharSequence accepts String
+  if (sourceType === 'String' && targetType === 'CharSequence') return true;
+
+  // Collection hierarchy
+  if (sourceType === 'Collection' && ['Iterable', 'Any'].includes(targetType)) return true;
+
+  return false;
 }
 
 /**
  * Resolve a method by traversing the type hierarchy.
+ * Supports overload resolution when call info is available.
  */
 function resolveMethodInHierarchy(
   table: SymbolTable,
   _context: ResolutionContext,
   typeFqn: string,
-  methodName: string
+  methodName: string,
+  call?: ParsedCall
 ): string | undefined {
   const parents = table.typeHierarchy.get(typeFqn);
   if (!parents) return undefined;
 
   for (const parentFqn of parents) {
-    // Check parent for the method
-    const parentMethodFqn = `${parentFqn}.${methodName}`;
-    if (table.byFqn.has(parentMethodFqn)) {
-      return parentMethodFqn;
+    // Find all methods with this name in the parent type
+    const candidates = findMethodsInType(table, parentFqn, methodName);
+
+    if (candidates.length === 1 && candidates[0]) {
+      return candidates[0].fqn;
+    } else if (candidates.length > 1) {
+      // Multiple overloads - use overload resolution
+      const best = selectBestOverload(candidates, call);
+      if (best) return best.fqn;
+    }
+
+    // Also check exact FQN match for backward compatibility
+    if (candidates.length === 0) {
+      const parentMethodFqn = `${parentFqn}.${methodName}`;
+      if (table.byFqn.has(parentMethodFqn)) {
+        return parentMethodFqn;
+      }
     }
 
     // Recursively check parent's parents
-    const inherited = resolveMethodInHierarchy(table, _context, parentFqn, methodName);
+    const inherited = resolveMethodInHierarchy(table, _context, parentFqn, methodName, call);
     if (inherited) return inherited;
   }
 
@@ -772,20 +990,22 @@ function resolveSymbolByName(table: SymbolTable, context: ResolutionContext, nam
 
 /**
  * Resolve an extension function call.
+ * Supports overload resolution when multiple extension functions match.
  */
 function resolveExtensionFunction(
   table: SymbolTable,
   context: ResolutionContext,
   receiver: string,
-  functionName: string
+  functionName: string,
+  call?: ParsedCall
 ): string | undefined {
   // Get all functions with this name
-  const candidates = table.functionsByName.get(functionName);
-  if (!candidates || candidates.length === 0) return undefined;
+  const allCandidates = table.functionsByName.get(functionName);
+  if (!allCandidates || allCandidates.length === 0) return undefined;
 
   // Filter to extension functions
-  const extensionFuncs = candidates.filter((f) => f.isExtension);
-  if (extensionFuncs.length === 0 || !extensionFuncs[0]) return undefined;
+  const extensionFuncs = allCandidates.filter((f) => f.isExtension);
+  if (extensionFuncs.length === 0) return undefined;
 
   // Try to determine receiver type
   let receiverType: string | undefined;
@@ -799,26 +1019,38 @@ function resolveExtensionFunction(
     receiverType = prop?.type;
   }
 
-  if (!receiverType) {
-    // Can't determine receiver type, return first matching extension function
-    // This is a heuristic - might not be accurate
-    return extensionFuncs[0].fqn;
-  }
-
-  // Find extension function matching the receiver type
-  const baseReceiverType = receiverType.split('<')[0]?.trim() ?? receiverType;
-  for (const ext of extensionFuncs) {
-    if (ext.receiverType) {
+  // Filter by receiver type if known
+  let matchingExtensions = extensionFuncs;
+  if (receiverType) {
+    const baseReceiverType = receiverType.split('<')[0]?.trim() ?? receiverType;
+    matchingExtensions = extensionFuncs.filter((ext) => {
+      if (!ext.receiverType) return false;
       const extReceiverBase = ext.receiverType.split('<')[0]?.trim() ?? ext.receiverType;
-      // Simple match - could be improved with type hierarchy
-      if (extReceiverBase === baseReceiverType || extReceiverBase === receiverType) {
-        return ext.fqn;
-      }
+      return extReceiverBase === baseReceiverType || extReceiverBase === receiverType;
+    });
+
+    // If no exact match, try type compatibility
+    if (matchingExtensions.length === 0) {
+      matchingExtensions = extensionFuncs.filter((ext) => {
+        if (!ext.receiverType) return false;
+        const extReceiverBase = ext.receiverType.split('<')[0]?.trim() ?? ext.receiverType;
+        return isTypeCompatible(baseReceiverType, extReceiverBase);
+      });
     }
   }
 
-  // Fallback: return first matching extension
-  return extensionFuncs[0].fqn;
+  // If still no matches, fall back to all extension functions
+  if (matchingExtensions.length === 0) {
+    matchingExtensions = extensionFuncs;
+  }
+
+  // Use overload resolution if multiple candidates
+  if (matchingExtensions.length === 1 && matchingExtensions[0]) {
+    return matchingExtensions[0].fqn;
+  }
+
+  const best = selectBestOverload(matchingExtensions, call);
+  return best?.fqn;
 }
 
 /**

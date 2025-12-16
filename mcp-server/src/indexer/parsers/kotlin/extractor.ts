@@ -587,13 +587,25 @@ function extractCallExpression(node: SyntaxNode): ParsedCall | undefined {
 
   let name: string;
   let receiver: string | undefined;
+  let isSafeCall = false;
 
   if (navigations) {
-    // receiver.method() pattern
+    // receiver.method() or receiver?.method() pattern
     const parts = navigations.children.filter((c) => c.type !== 'navigation_suffix');
     receiver = parts[0]?.text;
 
     const navSuffix = findChildByType(navigations, 'navigation_suffix');
+    // Check for safe call operator (?.)
+    if (navSuffix) {
+      // Safe navigation: look for '?.' token directly in navigation_suffix children
+      // tree-sitter-kotlin represents it as a direct child with text '?.'
+      for (const child of navSuffix.children) {
+        if (child.text === '?.' || child.type === '?.') {
+          isSafeCall = true;
+          break;
+        }
+      }
+    }
     const methodName = navSuffix?.children.find((c) => c.type === 'simple_identifier');
     name = methodName?.text ?? '<unknown>';
   } else {
@@ -602,12 +614,140 @@ function extractCallExpression(node: SyntaxNode): ParsedCall | undefined {
     name = identifier?.text ?? '<unknown>';
   }
 
+  // Extract argument information from call_suffix
+  const { argumentCount, argumentTypes } = extractCallArguments(callSuffix);
+
   return {
     name,
     receiver,
     receiverType: undefined, // Will be resolved later
+    argumentCount,
+    argumentTypes: argumentTypes.length > 0 ? argumentTypes : undefined,
+    isSafeCall: isSafeCall || undefined,
     location: nodeLocation(node),
   };
+}
+
+/**
+ * Extract argument count and types from a call_suffix node.
+ * Types are inferred from literals and simple expressions where possible.
+ */
+function extractCallArguments(callSuffix: SyntaxNode): { argumentCount: number; argumentTypes: string[] } {
+  const argumentTypes: string[] = [];
+  let argumentCount = 0;
+
+  // call_suffix contains value_arguments which contains value_argument nodes
+  const valueArguments = findChildByType(callSuffix, 'value_arguments');
+  if (!valueArguments) {
+    return { argumentCount: 0, argumentTypes: [] };
+  }
+
+  for (const child of valueArguments.children) {
+    if (child.type === 'value_argument') {
+      argumentCount++;
+      const argType = inferArgumentType(child);
+      argumentTypes.push(argType);
+    }
+  }
+
+  return { argumentCount, argumentTypes };
+}
+
+/**
+ * Infer the type of an argument from its expression.
+ * Returns the inferred type or 'Unknown' if it cannot be determined.
+ */
+function inferArgumentType(valueArgument: SyntaxNode): string {
+  // value_argument may contain: expression, named argument (name = expression), or spread (*array)
+  // Skip the name part for named arguments
+  const expression = findFirstExpression(valueArgument);
+  if (!expression) return 'Unknown';
+
+  return inferExpressionType(expression);
+}
+
+/**
+ * Find the first expression in a node (skips named argument labels).
+ */
+function findFirstExpression(node: SyntaxNode): SyntaxNode | undefined {
+  for (const child of node.children) {
+    // Skip identifier and '=' for named arguments
+    if (child.type === 'simple_identifier' || child.text === '=') continue;
+    // Common expression types
+    if (isExpressionType(child.type)) {
+      return child;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Check if a node type is an expression type.
+ */
+function isExpressionType(type: string): boolean {
+  const expressionTypes = [
+    'integer_literal',
+    'long_literal',
+    'real_literal',
+    'string_literal',
+    'character_literal',
+    'boolean_literal',
+    'null_literal',
+    'call_expression',
+    'navigation_expression',
+    'simple_identifier',
+    'prefix_expression',
+    'postfix_expression',
+    'additive_expression',
+    'multiplicative_expression',
+    'comparison_expression',
+    'equality_expression',
+    'conjunction_expression',
+    'disjunction_expression',
+    'lambda_literal',
+    'object_literal',
+    'collection_literal',
+    'if_expression',
+    'when_expression',
+    'try_expression',
+    'parenthesized_expression',
+  ];
+  return expressionTypes.includes(type);
+}
+
+/**
+ * Infer type from an expression node.
+ */
+function inferExpressionType(expression: SyntaxNode): string {
+  switch (expression.type) {
+    // Literal types - these are certain
+    case 'integer_literal':
+      return 'Int';
+    case 'long_literal':
+      return 'Long';
+    case 'real_literal':
+      // Check for 'f' suffix for Float
+      return expression.text.toLowerCase().endsWith('f') ? 'Float' : 'Double';
+    case 'string_literal':
+      return 'String';
+    case 'character_literal':
+      return 'Char';
+    case 'boolean_literal':
+      return 'Boolean';
+    case 'null_literal':
+      return 'Nothing?';
+    case 'lambda_literal':
+      return 'Function';
+
+    // Collection literals
+    case 'collection_literal':
+      // Could be listOf, arrayOf, etc. - hard to determine element type
+      return 'Collection';
+
+    // For other expressions, we can't reliably infer the type without full type analysis
+    default:
+      return 'Unknown';
+  }
 }
 
 // =============================================================================
