@@ -4,7 +4,7 @@
  * Type definitions for the symbol resolution system.
  */
 
-import type { SourceLocation, ParsedFile, ParsedClass, ParsedFunction } from '../types.js';
+import type { SourceLocation, ParsedFile, ParsedClass, ParsedFunction, SupportedLanguage } from '../types.js';
 
 // =============================================================================
 // Symbol Table Types
@@ -114,6 +114,8 @@ export interface SymbolTable {
 export interface ResolutionContext {
   /** Current file being resolved */
   currentFile: ParsedFile;
+  /** Language of the current file (for stdlib lookup) */
+  language: SupportedLanguage;
   /** Imports available in the current file */
   imports: Map<string, string>; // simpleName -> FQN
   /** Wildcard imports (packages to search) */

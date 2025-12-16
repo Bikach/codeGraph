@@ -26,6 +26,7 @@ const defaultLocation: SourceLocation = {
 function createResolvedFile(overrides: Partial<ResolvedFile> = {}): ResolvedFile {
   return {
     filePath: '/test/Test.kt',
+    language: 'kotlin',
     imports: [],
     classes: [],
     topLevelFunctions: [],

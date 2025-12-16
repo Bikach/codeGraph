@@ -9,7 +9,7 @@
  * 2. Same class/file methods (this.method() or unqualified method())
  * 3. Imported symbols (import com.example.Service)
  * 4. Same package symbols
- * 5. Standard library (kotlin.*, kotlinx.*, java.*)
+ * 5. Standard library (language-specific via StdlibProvider)
  */
 
 import type {
@@ -32,6 +32,8 @@ import type {
   ResolutionStats,
 } from './types.js';
 
+import { getStdlibProvider, getDefaultWildcardImports } from './stdlib/stdlib-registry.js';
+
 // Re-export types
 export type {
   Symbol,
@@ -43,6 +45,28 @@ export type {
   ResolutionContext,
   ResolutionStats,
 } from './types.js';
+
+// Re-export stdlib provider types and registry
+export type { StdlibProvider } from './stdlib/stdlib-provider.js';
+export { NullStdlibProvider } from './stdlib/stdlib-provider.js';
+export { getStdlibProvider, getDefaultWildcardImports, stdlibRegistry, CompositeStdlibProvider } from './stdlib/stdlib-registry.js';
+
+// Re-export stdlib lookup functions for backward compatibility
+export {
+  lookupKotlinStdlibFunction,
+  lookupKotlinStdlibClass,
+  KOTLIN_STDLIB_FUNCTIONS,
+  KOTLIN_STDLIB_CLASSES,
+  KotlinStdlibProvider,
+} from './stdlib/kotlin-stdlib.js';
+
+export {
+  lookupJavaStdlibFunction,
+  lookupJavaStdlibClass,
+  JAVA_STDLIB_FUNCTIONS,
+  JAVA_STDLIB_CLASSES,
+  JavaStdlibProvider,
+} from './stdlib/java-stdlib.js';
 
 // =============================================================================
 // Symbol Table Builder
@@ -474,12 +498,13 @@ function createResolutionContext(file: ParsedFile): ResolutionContext {
     }
   }
 
-  // Add default Kotlin imports
-  const defaultKotlinImports = ['kotlin', 'kotlin.collections', 'kotlin.text', 'kotlin.io', 'kotlin.ranges', 'kotlin.sequences', 'kotlin.annotation'];
-  wildcardImports.push(...defaultKotlinImports);
+  // Add default wildcard imports based on language (from stdlib registry)
+  const defaultImports = getDefaultWildcardImports(file.language);
+  wildcardImports.push(...defaultImports);
 
   return {
     currentFile: file,
+    language: file.language,
     imports,
     wildcardImports,
     localVariables: new Map(),
@@ -692,6 +717,21 @@ function resolveCall(table: SymbolTable, context: ResolutionContext, call: Parse
     // Multiple candidates - use overload resolution
     const best = selectBestOverload(candidates, call);
     if (best) return best.fqn;
+  }
+
+  // 9. Check stdlib functions (language-specific via provider)
+  const stdlibProvider = getStdlibProvider(context.language);
+  const stdlibFunc = stdlibProvider.lookupFunction(name);
+  if (stdlibFunc) {
+    return stdlibFunc.fqn;
+  }
+
+  // 10. Check stdlib static methods (for qualified calls like UUID.randomUUID)
+  if (receiver) {
+    const staticMethod = stdlibProvider.lookupStaticMethod(`${receiver}.${name}`);
+    if (staticMethod) {
+      return staticMethod.fqn;
+    }
   }
 
   // Could not resolve
@@ -1084,6 +1124,13 @@ function resolveSymbolByName(table: SymbolTable, context: ResolutionContext, nam
   const candidates = table.byName.get(name);
   if (candidates && candidates.length === 1) {
     return candidates[0];
+  }
+
+  // 5. Check stdlib classes (language-specific via provider)
+  const stdlibProvider = getStdlibProvider(context.language);
+  const stdlibClass = stdlibProvider.lookupClass(name);
+  if (stdlibClass) {
+    return stdlibClass;
   }
 
   return undefined;

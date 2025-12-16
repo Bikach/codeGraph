@@ -23,6 +23,7 @@ const defaultLocation: SourceLocation = {
 function createParsedFile(overrides: Partial<ParsedFile> = {}): ParsedFile {
   return {
     filePath: '/test/Test.kt',
+    language: 'kotlin',
     imports: [],
     classes: [],
     topLevelFunctions: [],
@@ -1397,5 +1398,241 @@ describe('edge cases', () => {
     expect(table.byFqn.has('com.example.a.Service')).toBe(true);
     expect(table.byFqn.has('com.example.b.Service')).toBe(true);
     expect(table.byName.get('Service')).toHaveLength(2);
+  });
+});
+
+// =============================================================================
+// Multi-Language Stdlib Provider Tests
+// =============================================================================
+
+import {
+  getStdlibProvider,
+  getDefaultWildcardImports,
+  KotlinStdlibProvider,
+  JavaStdlibProvider,
+} from './index.js';
+
+describe('StdlibProvider', () => {
+  describe('KotlinStdlibProvider', () => {
+    const provider = new KotlinStdlibProvider();
+
+    it('should support kotlin language', () => {
+      expect(provider.languages).toContain('kotlin');
+    });
+
+    it('should have default Kotlin imports', () => {
+      expect(provider.defaultWildcardImports).toContain('kotlin');
+      expect(provider.defaultWildcardImports).toContain('kotlin.collections');
+      expect(provider.defaultWildcardImports).toContain('kotlin.text');
+    });
+
+    it('should lookup Kotlin stdlib functions', () => {
+      const listOf = provider.lookupFunction('listOf');
+      expect(listOf).toBeDefined();
+      expect(listOf?.fqn).toBe('kotlin.collections.listOf');
+
+      const println = provider.lookupFunction('println');
+      expect(println).toBeDefined();
+      expect(println?.fqn).toBe('kotlin.io.println');
+    });
+
+    it('should lookup Kotlin stdlib classes', () => {
+      const list = provider.lookupClass('List');
+      expect(list).toBeDefined();
+      expect(list?.fqn).toBe('kotlin.collections.List');
+
+      const string = provider.lookupClass('String');
+      expect(string).toBeDefined();
+      expect(string?.fqn).toBe('kotlin.String');
+    });
+
+    it('should not lookup static methods (Kotlin uses companion objects)', () => {
+      const result = provider.lookupStaticMethod('UUID.randomUUID');
+      expect(result).toBeUndefined();
+    });
+
+    it('should check if symbol is known', () => {
+      expect(provider.isKnownSymbol('listOf')).toBe(true);
+      expect(provider.isKnownSymbol('String')).toBe(true);
+      expect(provider.isKnownSymbol('unknownSymbol')).toBe(false);
+    });
+  });
+
+  describe('JavaStdlibProvider', () => {
+    const provider = new JavaStdlibProvider();
+
+    it('should support java and kotlin languages', () => {
+      expect(provider.languages).toContain('java');
+      expect(provider.languages).toContain('kotlin');
+    });
+
+    it('should have java.lang as default import', () => {
+      expect(provider.defaultWildcardImports).toContain('java.lang');
+    });
+
+    it('should not lookup top-level functions (Java has none)', () => {
+      const result = provider.lookupFunction('println');
+      expect(result).toBeUndefined();
+    });
+
+    it('should lookup Java stdlib classes', () => {
+      const uuid = provider.lookupClass('UUID');
+      expect(uuid).toBeDefined();
+      expect(uuid?.fqn).toBe('java.util.UUID');
+
+      const file = provider.lookupClass('File');
+      expect(file).toBeDefined();
+      expect(file?.fqn).toBe('java.io.File');
+    });
+
+    it('should lookup static methods', () => {
+      const randomUUID = provider.lookupStaticMethod('UUID.randomUUID');
+      expect(randomUUID).toBeDefined();
+      expect(randomUUID?.fqn).toBe('java.util.UUID.randomUUID');
+
+      const currentTimeMillis = provider.lookupStaticMethod('System.currentTimeMillis');
+      expect(currentTimeMillis).toBeDefined();
+      expect(currentTimeMillis?.fqn).toBe('java.lang.System.currentTimeMillis');
+    });
+  });
+});
+
+describe('StdlibRegistry', () => {
+  describe('getStdlibProvider', () => {
+    it('should return composite provider for kotlin', () => {
+      const provider = getStdlibProvider('kotlin');
+      expect(provider.languages).toContain('kotlin');
+    });
+
+    it('should return composite provider for java', () => {
+      const provider = getStdlibProvider('java');
+      expect(provider.languages).toContain('java');
+    });
+
+    it('should return empty provider for typescript (not yet implemented)', () => {
+      const provider = getStdlibProvider('typescript');
+      expect(provider.lookupFunction('console')).toBeUndefined();
+    });
+  });
+
+  describe('getDefaultWildcardImports', () => {
+    it('should return Kotlin and Java imports for kotlin language', () => {
+      const imports = getDefaultWildcardImports('kotlin');
+      expect(imports).toContain('kotlin');
+      expect(imports).toContain('kotlin.collections');
+      expect(imports).toContain('java.lang');
+    });
+
+    it('should return only Java imports for java language', () => {
+      const imports = getDefaultWildcardImports('java');
+      expect(imports).toContain('java.lang');
+      expect(imports).not.toContain('kotlin');
+    });
+  });
+
+  describe('Kotlin uses both Kotlin and Java stdlib', () => {
+    const kotlinProvider = getStdlibProvider('kotlin');
+
+    it('should resolve Kotlin stdlib functions', () => {
+      const listOf = kotlinProvider.lookupFunction('listOf');
+      expect(listOf?.fqn).toBe('kotlin.collections.listOf');
+    });
+
+    it('should resolve Java static methods via lookupStaticMethod', () => {
+      const randomUUID = kotlinProvider.lookupStaticMethod('UUID.randomUUID');
+      expect(randomUUID?.fqn).toBe('java.util.UUID.randomUUID');
+    });
+
+    it('should resolve both Kotlin and Java classes', () => {
+      // Kotlin class
+      const list = kotlinProvider.lookupClass('List');
+      expect(list?.fqn).toBe('kotlin.collections.List');
+
+      // Java class
+      const uuid = kotlinProvider.lookupClass('UUID');
+      expect(uuid?.fqn).toBe('java.util.UUID');
+    });
+  });
+});
+
+describe('Multi-language resolution', () => {
+  it('should resolve Kotlin stdlib calls in Kotlin files', () => {
+    const file = createParsedFile({
+      language: 'kotlin',
+      packageName: 'com.example',
+      classes: [
+        createParsedClass({
+          name: 'Service',
+          functions: [
+            createParsedFunction({
+              name: 'process',
+              calls: [
+                createParsedCall({ name: 'listOf' }),
+                createParsedCall({ name: 'println' }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+
+    const resolved = resolveSymbols([file]);
+    const calls = resolved[0]?.resolvedCalls;
+
+    expect(calls).toHaveLength(2);
+    expect(calls?.find((c) => c.toFqn === 'kotlin.collections.listOf')).toBeDefined();
+    expect(calls?.find((c) => c.toFqn === 'kotlin.io.println')).toBeDefined();
+  });
+
+  it('should resolve Java static method calls in Kotlin files', () => {
+    const file = createParsedFile({
+      language: 'kotlin',
+      packageName: 'com.example',
+      classes: [
+        createParsedClass({
+          name: 'Service',
+          functions: [
+            createParsedFunction({
+              name: 'generateId',
+              calls: [
+                createParsedCall({ name: 'randomUUID', receiver: 'UUID' }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+
+    const resolved = resolveSymbols([file]);
+    const calls = resolved[0]?.resolvedCalls;
+
+    expect(calls).toHaveLength(1);
+    expect(calls?.[0]?.toFqn).toBe('java.util.UUID.randomUUID');
+  });
+
+  it('should use language-specific default imports', () => {
+    // Kotlin file with unqualified call to a Kotlin stdlib function
+    const kotlinFile = createParsedFile({
+      language: 'kotlin',
+      filePath: '/test/Service.kt',
+      packageName: 'com.example',
+      classes: [
+        createParsedClass({
+          name: 'Service',
+          functions: [
+            createParsedFunction({
+              name: 'test',
+              calls: [createParsedCall({ name: 'require' })],
+            }),
+          ],
+        }),
+      ],
+    });
+
+    const resolved = resolveSymbols([kotlinFile]);
+    const calls = resolved[0]?.resolvedCalls;
+
+    // require is a Kotlin stdlib function
+    expect(calls?.[0]?.toFqn).toBe('kotlin.require');
   });
 });

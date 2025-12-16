@@ -6,6 +6,16 @@
  */
 
 // =============================================================================
+// Supported Languages
+// =============================================================================
+
+/**
+ * Supported programming languages for parsing and resolution.
+ * Each language may have its own stdlib provider for symbol resolution.
+ */
+export type SupportedLanguage = 'kotlin' | 'java' | 'typescript' | 'javascript';
+
+// =============================================================================
 // Source Location
 // =============================================================================
 
@@ -180,6 +190,8 @@ export interface ParsedObjectExpression {
 
 export interface ParsedFile {
   filePath: string;
+  /** Language of the source file (determines which stdlib to use for resolution) */
+  language: SupportedLanguage;
   packageName?: string;
   imports: ParsedImport[];
   classes: ParsedClass[];

@@ -37,6 +37,7 @@ export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
 
   const result: ParsedFile = {
     filePath,
+    language: 'kotlin',
     packageName: extractPackageName(root),
     imports: extractImports(root),
     classes: [],
