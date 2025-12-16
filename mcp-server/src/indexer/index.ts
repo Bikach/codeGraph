@@ -19,6 +19,13 @@ export type {
   LanguageParser,
   ResolvedCall,
   ResolvedFile,
+  // Advanced types for language-specific features
+  ParsedTypeParameter,
+  ParsedConstructor,
+  ParsedTypeAlias,
+  ParsedDestructuringDeclaration,
+  ParsedObjectExpression,
+  ParsedFunctionType,
 } from './types.js';
 
 // Parser Registry
