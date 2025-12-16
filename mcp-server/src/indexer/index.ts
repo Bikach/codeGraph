@@ -52,5 +52,13 @@ export {
   type ResolutionStats,
 } from './resolver/index.js';
 
-// Writer (TODO: Étape 4)
-// export { writeToNeo4j } from './writer.js';
+// Writer
+export {
+  Neo4jWriter,
+  buildFqn,
+  serializeTypeParameters,
+  type WriteResult,
+  type WriteError,
+  type WriterOptions,
+  type ClearResult,
+} from './writer/index.js';
