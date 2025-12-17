@@ -1,10 +1,12 @@
-# Plan : Indexeur Tree-sitter Kotlin
+# Plan de développement CodeGraph
 
 ## Objectif
-Créer un indexeur Kotlin avec tree-sitter, distribué via un **plugin Claude Code** :
+Créer un outil d'analyse de code **multi-langage** avec tree-sitter, distribué via un **plugin Claude Code** :
 1. `/codegraph-setup` : Configure et démarre Neo4j via Docker
-2. `/codegraph-indexer` : Indexe le projet courant (via CLI bash, zero tokens)
+2. `/codegraph-index` : Indexe le projet courant (via script bash, zero tokens)
 3. **MCP tools** : Requêtes sur le graphe (search_nodes, get_callers, etc.)
+
+**Langages supportés** : Kotlin (premier langage), architecture extensible pour Java, TypeScript, etc.
 
 ## Architecture cible
 
@@ -21,7 +23,10 @@ codegraph/
 ├── mcp-server/
 │   └── src/
 │       ├── index.ts              # MCP server (tools de requêtes)
-│       ├── cli.ts                # Entry point CLI (indexation)
+│       ├── scripts/              # Scripts d'action (un par commande)
+│       │   ├── setup.ts          # Script setup Neo4j
+│       │   ├── index-project.ts  # Script indexation
+│       │   └── status.ts         # Script status
 │       ├── indexer/              # Module indexeur ✅
 │       │   ├── parsers/          # Parsers par langage (modulaires) ✅
 │       │   │   ├── kotlin/       # Parser Kotlin (123 tests)
@@ -34,14 +39,21 @@ codegraph/
 ├── plugin/                       # Plugin Claude Code
 │   ├── .claude-plugin/
 │   │   └── plugin.json           # Manifest du plugin
-│   ├── commands/
-│   │   ├── codegraph-setup.md    # /codegraph-setup (bash)
-│   │   └── codegraph-indexer.md  # /codegraph-indexer (bash)
-│   ├── dist/                     # MCP server + CLI bundlés (esbuild)
+│   ├── commands/                 # Slash commands (fichiers Markdown)
+│   │   ├── codegraph-setup.md    # /codegraph-setup
+│   │   ├── codegraph-index.md    # /codegraph-index
+│   │   └── codegraph-status.md   # /codegraph-status
+│   ├── scripts/                  # Scripts bash (wrappers)
+│   │   ├── setup.sh              # Appelle dist/setup.js
+│   │   ├── index-project.sh      # Appelle dist/index-project.js
+│   │   └── status.sh             # Appelle dist/status.js
+│   ├── dist/                     # Bundles JS (esbuild)
 │   │   ├── mcp-server.js         # MCP server bundlé
-│   │   └── cli.js                # CLI bundlée
-│   ├── .mcp.json                 # Config MCP auto
-│   └── docker-compose.yml        # Neo4j pour setup
+│   │   ├── setup.js              # Script setup bundlé
+│   │   ├── index-project.js      # Script indexation bundlé
+│   │   └── status.js             # Script status bundlé
+│   ├── .mcp.json                 # Config MCP server
+│   └── docker-compose.yml        # Neo4j config
 ├── .claude-plugin/
 │   └── marketplace.json          # Marketplace manifest
 ├── docker-compose.yml            # Neo4j (dev local)
@@ -59,9 +71,12 @@ codegraph/
 
 # 3. Indexer un projet Kotlin
 cd /path/to/kotlin/project
-/codegraph-indexer
+/codegraph-index
 
-# 4. Utiliser les tools MCP pour explorer
+# 4. Vérifier le status
+/codegraph-status
+
+# 5. Utiliser les tools MCP pour explorer
 # (automatiquement disponibles via le plugin)
 ```
 
@@ -74,27 +89,24 @@ cd /path/to/kotlin/project
 │    ┌─────────────────────────────────────────────────────────────┐     │
 │    │                      Claude Code                             │     │
 │    │                                                              │     │
-│    │   /codegraph-setup          /codegraph-indexer              │     │
-│    │         │                          │                         │     │
-│    │         ▼                          ▼                         │     │
-│    │   bash: docker-compose       bash: codegraph index .        │     │
-│    │         up -d                (CLI directe, zero tokens)     │     │
-│    │         │                          │                         │     │
-│    │         │                          ▼                         │     │
-│    │         │              ┌─────────────────────────┐          │     │
-│    │         │              │   CLI (plugin/dist/cli) │          │     │
-│    │         │              │   parser → resolver →   │          │     │
-│    │         │              │   writer                │          │     │
-│    │         │              └───────────┬─────────────┘          │     │
-│    │         │                          │                         │     │
-│    │         └──────────────────────────┼─────────────────────────│     │
-│    │                                    │                         │     │
-│    │   MCP Tools (requêtes)             │                         │     │
-│    │   search_nodes, get_callers...     │                         │     │
-│    │         │                          │                         │     │
-│    │         ▼                          ▼                         │     │
+│    │   /codegraph-setup       /codegraph-index    /codegraph-status│    │
+│    │         │                      │                    │        │     │
+│    │         ▼                      ▼                    ▼        │     │
+│    │   bash: setup.sh      bash: index-project.sh   bash: status.sh    │
+│    │         │                      │                    │        │     │
+│    │         ▼                      ▼                    ▼        │     │
+│    │   ┌──────────────────────────────────────────────────────┐  │     │
+│    │   │            Scripts JS bundlés (plugin/dist/)         │  │     │
+│    │   │   setup.js │ index-project.js │ status.js            │  │     │
+│    │   │            │ parser → resolver → writer              │  │     │
+│    │   └──────────────────────────┬───────────────────────────┘  │     │
+│    │                              │                               │     │
+│    │   MCP Tools (requêtes)       │                               │     │
+│    │   search_nodes, get_callers..│                               │     │
+│    │         │                    │                               │     │
+│    │         ▼                    ▼                               │     │
 │    │   ┌─────────────────────────────────────────────────┐       │     │
-│    │   │         MCP Server (plugin/dist/mcp-server)     │       │     │
+│    │   │         MCP Server (plugin/dist/mcp-server.js)  │       │     │
 │    │   └─────────────────────────┬───────────────────────┘       │     │
 │    └─────────────────────────────┼───────────────────────────────┘     │
 │                                  │                                      │
@@ -110,7 +122,7 @@ cd /path/to/kotlin/project
 ```
 
 **Séparation des responsabilités** :
-- **Commandes slash** → bash (CLI) : Indexation (écriture) → **zero tokens**
+- **Commandes slash** → scripts bash → scripts JS : Actions (setup, index, status) → **zero tokens**
 - **MCP Server** → tools : Requêtes (lecture) → utilisé par Claude pour explorer le graphe
 
 ## Étapes d'implémentation
@@ -129,14 +141,13 @@ cd /path/to/kotlin/project
 ### Étape 4 : Writer Neo4j ✅ DONE (91 tests)
 - [x] Écriture batch avec toutes les relations
 
-### Étape 5 : CLI pour indexation ✅ DONE
+### Étape 5 : Scripts d'action ⏳ TODO
 
-#### 5.1 Entry point CLI
-- [x] Créer `mcp-server/src/cli.ts` (sans dépendances externes, ANSI colors natifs)
-- [x] Commande `index <path>` : indexe un projet
-- [x] Commande `setup` : démarre Neo4j via docker-compose
-- [x] Commande `status` : vérifie la connexion Neo4j
-- [x] Ajouter `"bin": { "codegraph": "./dist/cli.js" }` dans package.json
+#### 5.1 Scripts dédiés (un par action)
+- [ ] Créer `mcp-server/src/scripts/index-project.ts` : indexe un projet
+- [ ] Créer `mcp-server/src/scripts/setup.ts` : démarre Neo4j via docker-compose
+- [ ] Créer `mcp-server/src/scripts/status.ts` : vérifie la connexion Neo4j
+- [ ] Sans dépendances externes (ANSI colors natifs)
 
 ### Étape 6 : MCP Tools (requêtes) ⏳ TODO
 
@@ -152,22 +163,64 @@ cd /path/to/kotlin/project
 
 ### Étape 7 : Plugin Claude Code ⏳ TODO
 
+#### Architecture du plugin
+
+Un plugin Claude Code est composé de plusieurs éléments optionnels :
+
+```
+codegraph-plugin/
+├── .claude-plugin/
+│   └── plugin.json          # Manifest obligatoire (nom, version, description)
+├── commands/                 # Slash commands (fichiers Markdown)
+│   ├── codegraph-setup.md   # /codegraph-setup
+│   ├── codegraph-index.md   # /codegraph-index
+│   └── codegraph-status.md  # /codegraph-status
+├── agents/                   # Agents spécialisés (optionnel)
+│   └── code-analyzer.md
+├── skills/                   # Skills invoquées par Claude (optionnel)
+│   └── kotlin-analysis/
+│       └── SKILL.md
+├── scripts/                  # Scripts bash (wrappers)
+│   ├── setup.sh             # Appelle node dist/setup.js
+│   ├── index-project.sh     # Appelle node dist/index-project.js
+│   └── status.sh            # Appelle node dist/status.js
+├── dist/                     # Bundles JS (esbuild)
+│   ├── mcp-server.js        # MCP server bundlé
+│   ├── setup.js             # Script setup bundlé
+│   ├── index-project.js     # Script indexation bundlé
+│   └── status.js            # Script status bundlé
+├── .mcp.json                # Configuration MCP server
+└── docker-compose.yml       # Neo4j config
+```
+
+**Composants utilisés par CodeGraph** :
+- **Commands** : Slash commands qui exécutent les scripts bash (zero tokens)
+- **Scripts bash** : Wrappers simples qui appellent les scripts JS bundlés
+- **Scripts JS** : Logique métier (setup, indexation, status)
+- **MCP Server** : Tools de requêtes sur le graphe (search_nodes, get_callers, etc.)
+
+**Note** : On utilise les **commands** et non les hooks car l'indexation est une action manuelle déclenchée par l'utilisateur, pas une réaction automatique à un événement.
+
 #### 7.1 Structure du plugin
 - [ ] Créer `plugin/.claude-plugin/plugin.json` (manifest)
 - [ ] Créer `.claude-plugin/marketplace.json` (marketplace à la racine)
 
-#### 7.2 Commande `/codegraph-setup`
-- [ ] Créer `plugin/commands/codegraph-setup.md`
-- [ ] Instructions bash pour docker-compose up
+#### 7.2 Scripts bash (wrappers)
+- [ ] Créer `plugin/scripts/setup.sh`
+- [ ] Créer `plugin/scripts/index-project.sh`
+- [ ] Créer `plugin/scripts/status.sh`
 
-#### 7.3 Commande `/codegraph-indexer`
-- [ ] Créer `plugin/commands/codegraph-indexer.md`
-- [ ] Instructions bash pour `node dist/cli.js index .`
+#### 7.3 Commandes slash
+- [ ] Créer `plugin/commands/codegraph-setup.md` → exécute `${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh`
+- [ ] Créer `plugin/commands/codegraph-index.md` → exécute `${CLAUDE_PLUGIN_ROOT}/scripts/index-project.sh`
+- [ ] Créer `plugin/commands/codegraph-status.md` → exécute `${CLAUDE_PLUGIN_ROOT}/scripts/status.sh`
 
 #### 7.4 Bundling
 - [ ] Configurer esbuild pour bundler :
   - `src/index.ts` → `plugin/dist/mcp-server.js`
-  - `src/cli.ts` → `plugin/dist/cli.js`
+  - `src/scripts/setup.ts` → `plugin/dist/setup.js`
+  - `src/scripts/index-project.ts` → `plugin/dist/index-project.js`
+  - `src/scripts/status.ts` → `plugin/dist/status.js`
 - [ ] Créer `plugin/.mcp.json` avec config du server
 - [ ] Copier `docker-compose.yml` dans `plugin/`
 - [ ] Ajouter script `npm run bundle` dans package.json
@@ -180,13 +233,18 @@ cd /path/to/kotlin/project
 
 | Fichier | Action | Status |
 |---------|--------|--------|
-| `mcp-server/src/cli.ts` | Créer | ✅ DONE |
-| `mcp-server/package.json` | Ajouter "bin" | ✅ DONE |
+| `mcp-server/src/scripts/setup.ts` | Créer | ⏳ TODO |
+| `mcp-server/src/scripts/index-project.ts` | Créer | ⏳ TODO |
+| `mcp-server/src/scripts/status.ts` | Créer | ⏳ TODO |
 | `mcp-server/src/tools/*/handler.ts` | Implémenter requêtes Cypher | ⏳ TODO |
 | `plugin/.claude-plugin/plugin.json` | Créer | ⏳ TODO |
 | `.claude-plugin/marketplace.json` | Créer | ⏳ TODO |
+| `plugin/scripts/setup.sh` | Créer | ⏳ TODO |
+| `plugin/scripts/index-project.sh` | Créer | ⏳ TODO |
+| `plugin/scripts/status.sh` | Créer | ⏳ TODO |
 | `plugin/commands/codegraph-setup.md` | Créer | ⏳ TODO |
-| `plugin/commands/codegraph-indexer.md` | Créer | ⏳ TODO |
+| `plugin/commands/codegraph-index.md` | Créer | ⏳ TODO |
+| `plugin/commands/codegraph-status.md` | Créer | ⏳ TODO |
 | `plugin/.mcp.json` | Créer | ⏳ TODO |
 | `plugin/docker-compose.yml` | Copier | ⏳ TODO |
 | `README.md` | Mettre à jour | ⏳ TODO |
@@ -209,7 +267,7 @@ cd /path/to/kotlin/project
 }
 ```
 
-Note : La CLI n'utilise pas de dépendances externes (commander, chalk, ora). Elle utilise les ANSI codes natifs pour les couleurs.
+Note : Les scripts n'utilisent pas de dépendances externes (commander, chalk, ora). Ils utilisent les ANSI codes natifs pour les couleurs.
 
 ## Résumé des progrès
 
@@ -222,7 +280,7 @@ Note : La CLI n'utilise pas de dépendances externes (commander, chalk, ora). El
 | **Parser Kotlin** | Parsing tree-sitter avec extraction complète | 123 |
 | **Resolver** | Résolution des symboles et appels cross-fichiers | 48 |
 | **Writer** | Écriture batch vers Neo4j avec Testcontainers | 91 |
-| **CLI** | Commandes index/setup/status, zero dépendances externes | - |
+| **Scripts** | À créer : index/setup/status | - |
 
 **Total : 262 tests**
 
@@ -243,13 +301,13 @@ Note : La CLI n'utilise pas de dépendances externes (commander, chalk, ora). El
 
 1. ~~**Resolver** : Résolution des symboles et appels cross-fichiers~~ ✅ DONE
 2. ~~**Writer** : Écriture batch vers Neo4j~~ ✅ DONE
-3. ~~**CLI** : Entry point pour indexation~~ ✅ DONE
+3. **Scripts** : Scripts dédiés (setup, index, status) ⏳ TODO
 4. **MCP Tools** : Requêtes Cypher (search, callers, etc.) ⏳ TODO
 5. **Plugin** : Structure + commandes + bundling ⏳ TODO
 
-## Spécifications des commandes CLI
+## Spécifications des scripts
 
-### `codegraph setup`
+### `setup.ts` → `/codegraph-setup`
 
 **But** : Préparer l'environnement Neo4j
 
@@ -268,14 +326,15 @@ Note : La CLI n'utilise pas de dépendances externes (commander, chalk, ora). El
 ✓ Constraints and indexes created
 ✓ Neo4j Browser: http://localhost:7474
 
-CodeGraph is ready! Run 'codegraph index .' to index a Kotlin project.
+CodeGraph is ready! Use /codegraph-index to index a project.
 ```
 
-### `codegraph index <path>`
+### `index-project.ts` → `/codegraph-index`
 
 **But** : Indexer un projet Kotlin
 
-**Options** :
+**Arguments** (passés via le script bash) :
+- `<path>` : Chemin du projet (défaut: `.`)
 - `--clear` : Vide la base avant indexation
 - `--exclude <pattern>` : Exclut des fichiers (glob pattern)
 - `--exclude-tests` : Exclut les fichiers de test (*Test.kt, *Spec.kt)
@@ -312,7 +371,7 @@ Writing to Neo4j...
 Done! Explore your code graph at http://localhost:7474
 ```
 
-### `codegraph status`
+### `status.ts` → `/codegraph-status`
 
 **But** : Vérifier l'état de Neo4j et afficher les stats du graphe
 
@@ -332,26 +391,29 @@ Graph statistics:
   IMPLEMENTS: 8
 ```
 
-## Comment les commandes slash appellent la CLI
+## Comment les commandes slash appellent les scripts
 
 Les commandes slash sont des fichiers Markdown qui contiennent des **instructions pour Claude**.
-Quand l'utilisateur tape `/codegraph-indexer`, Claude lit le fichier et **exécute la commande bash**.
+Quand l'utilisateur tape `/codegraph-index`, Claude lit le fichier et **exécute le script bash**.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  Utilisateur tape: /codegraph-indexer                            │
+│  Utilisateur tape: /codegraph-index                              │
 │         │                                                        │
 │         ▼                                                        │
-│  Claude Code lit: plugin/commands/codegraph-indexer.md           │
+│  Claude Code lit: plugin/commands/codegraph-index.md             │
 │         │                                                        │
 │         ▼                                                        │
-│  Le fichier contient: "Exécute: node dist/cli.js index ."        │
+│  Le fichier contient: "Exécute le script index-project.sh"       │
 │         │                                                        │
 │         ▼                                                        │
-│  Claude exécute la commande bash                                 │
+│  Claude exécute: bash ${CLAUDE_PLUGIN_ROOT}/scripts/index-project.sh
 │         │                                                        │
 │         ▼                                                        │
-│  La CLI s'exécute dans le terminal (ZERO tokens LLM)             │
+│  Le script bash appelle: node ${CLAUDE_PLUGIN_ROOT}/dist/index-project.js
+│         │                                                        │
+│         ▼                                                        │
+│  Le script JS s'exécute (ZERO tokens LLM)                        │
 │         │                                                        │
 │         ▼                                                        │
 │  Output affiché à l'utilisateur                                  │
@@ -374,27 +436,58 @@ Démarre Neo4j pour CodeGraph.
 
 Exécute la commande suivante :
 \`\`\`bash
-node {{PLUGIN_DIR}}/dist/cli.js setup
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/setup.sh
 \`\`\`
 
 Si la commande échoue, vérifie que Docker est installé et démarré.
 ```
 
-### `/codegraph-indexer`
+Contenu de `plugin/scripts/setup.sh` :
+```bash
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+node "${SCRIPT_DIR}/../dist/setup.js" "$@"
+```
 
-Contenu de `plugin/commands/codegraph-indexer.md` :
+### `/codegraph-index`
+
+Contenu de `plugin/commands/codegraph-index.md` :
 ```markdown
-Indexe le projet Kotlin courant dans Neo4j.
+Indexe le projet courant dans Neo4j.
 
 Exécute la commande suivante :
 \`\`\`bash
-node {{PLUGIN_DIR}}/dist/cli.js index .
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/index-project.sh .
 \`\`\`
 
 Affiche le résumé de l'indexation à l'utilisateur.
 ```
 
-Note : `{{PLUGIN_DIR}}` sera remplacé par le chemin du plugin installé.
+Contenu de `plugin/scripts/index-project.sh` :
+```bash
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+node "${SCRIPT_DIR}/../dist/index-project.js" "$@"
+```
+
+### `/codegraph-status`
+
+Contenu de `plugin/commands/codegraph-status.md` :
+```markdown
+Affiche le status de Neo4j et les statistiques du graphe.
+
+Exécute la commande suivante :
+\`\`\`bash
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/status.sh
+\`\`\`
+```
+
+Contenu de `plugin/scripts/status.sh` :
+```bash
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+node "${SCRIPT_DIR}/../dist/status.js" "$@"
+```
 
 ## Schema Neo4j (rappel)
 
