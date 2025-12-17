@@ -1,25 +1,27 @@
 # Plan : Indexeur Tree-sitter Kotlin
 
 ## Objectif
-Créer un indexeur Kotlin avec tree-sitter, utilisable via un **plugin Claude Code** avec deux commandes :
+Créer un indexeur Kotlin avec tree-sitter, distribué via un **plugin Claude Code** :
 1. `/codegraph-setup` : Configure et démarre Neo4j via Docker
-2. `/codegraph-indexer` : Indexe le projet courant dans Neo4j
+2. `/codegraph-indexer` : Indexe le projet courant (via CLI bash, zero tokens)
+3. **MCP tools** : Requêtes sur le graphe (search_nodes, get_callers, etc.)
 
 ## Architecture cible
 
 **Approche Plugin Claude Code** : Distribution via marketplace GitHub, MCP server bundlé, Neo4j en Docker local.
 
 Pourquoi ce choix :
-- **Zero friction** : Installation en 2 commandes (`/plugin marketplace add`, `/plugin install`)
+- **Zero friction** : Installation via le store Claude Code
 - **Bundling** : Tout le code JS est bundlé, pas de `npm install` chez l'user
-- **Performance I/O** : L'indexeur tourne en local, pas dans Docker (volumes lents sur macOS)
-- **Intégration native** : Les commandes sont directement dans Claude Code
+- **Zero tokens pour indexation** : Les commandes slash appellent la CLI bash directement
+- **MCP pour requêtes** : Les tools MCP sont utilisés pour explorer le graphe (search, callers, etc.)
 
 ```
 codegraph/
 ├── mcp-server/
 │   └── src/
-│       ├── index.ts              # MCP server (existant)
+│       ├── index.ts              # MCP server (tools de requêtes)
+│       ├── cli.ts                # Entry point CLI (indexation)
 │       ├── indexer/              # Module indexeur ✅
 │       │   ├── parsers/          # Parsers par langage (modulaires) ✅
 │       │   │   ├── kotlin/       # Parser Kotlin (123 tests)
@@ -28,39 +30,39 @@ codegraph/
 │       │   ├── writer/           # Écriture batch Neo4j (91 tests) ✅
 │       │   ├── types.ts          # Types communs
 │       │   └── index.ts          # Exports
-│       └── tools/
-│           └── index-codebase/   # Outil MCP pour indexation
-├── plugin/                       # NEW: Plugin Claude Code
+│       └── tools/                # Outils MCP (requêtes sur le graphe)
+├── plugin/                       # Plugin Claude Code
 │   ├── .claude-plugin/
 │   │   └── plugin.json           # Manifest du plugin
 │   ├── commands/
-│   │   ├── codegraph-setup.md    # /codegraph-setup
-│   │   └── codegraph-indexer.md  # /codegraph-indexer
-│   ├── dist/                     # MCP server bundlé (esbuild)
-│   │   └── index.js
+│   │   ├── codegraph-setup.md    # /codegraph-setup (bash)
+│   │   └── codegraph-indexer.md  # /codegraph-indexer (bash)
+│   ├── dist/                     # MCP server + CLI bundlés (esbuild)
+│   │   ├── mcp-server.js         # MCP server bundlé
+│   │   └── cli.js                # CLI bundlée
 │   ├── .mcp.json                 # Config MCP auto
 │   └── docker-compose.yml        # Neo4j pour setup
 ├── .claude-plugin/
 │   └── marketplace.json          # Marketplace manifest
-├── docker-compose.yml            # Neo4j (existant)
+├── docker-compose.yml            # Neo4j (dev local)
 └── README.md
 ```
 
 ## Comment l'utilisateur installe CodeGraph
 
 ```bash
-# 1. Ajouter le marketplace (une seule fois)
-/plugin marketplace add bikach/codegraph
+# 1. Installer le plugin via le store Claude Code
+/plugin install bikach/codegraph
 
-# 2. Installer le plugin
-/plugin install codegraph@codegraph
-
-# 3. Setup Neo4j (une seule fois par machine)
+# 2. Setup Neo4j (une seule fois par machine)
 /codegraph-setup
 
-# 4. Indexer un projet Kotlin
+# 3. Indexer un projet Kotlin
 cd /path/to/kotlin/project
 /codegraph-indexer
+
+# 4. Utiliser les tools MCP pour explorer
+# (automatiquement disponibles via le plugin)
 ```
 
 ## Comment ça marche
@@ -75,30 +77,41 @@ cd /path/to/kotlin/project
 │    │   /codegraph-setup          /codegraph-indexer              │     │
 │    │         │                          │                         │     │
 │    │         ▼                          ▼                         │     │
-│    │   Lance Docker             Appelle MCP tool                  │     │
-│    │   + Neo4j                  index_codebase                    │     │
-│    └─────────┬──────────────────────────┬────────────────────────┘     │
-│              │                          │                               │
-│              │                          ▼                               │
-│              │           ┌─────────────────────────────────┐           │
-│              │           │   MCP Server (bundlé)           │           │
-│              │           │   plugin/dist/index.js          │           │
-│              │           │                                 │           │
-│              │           │  parser → resolver → writer     │           │
-│              │           └───────────────┬─────────────────┘           │
-│              │                           │                              │
-│              └───────────────────────────┼──────────────────────────────│
-│                                          │                              │
-└──────────────────────────────────────────┼──────────────────────────────┘
-                                           │
-                                           ▼
-                            ┌───────────────────────────────┐
-                            │      Docker (Neo4j only)      │
-                            │  ┌───────────────────────┐    │
-                            │  │    Neo4j (7687)       │    │
-                            │  └───────────────────────┘    │
-                            └───────────────────────────────┘
+│    │   bash: docker-compose       bash: codegraph index .        │     │
+│    │         up -d                (CLI directe, zero tokens)     │     │
+│    │         │                          │                         │     │
+│    │         │                          ▼                         │     │
+│    │         │              ┌─────────────────────────┐          │     │
+│    │         │              │   CLI (plugin/dist/cli) │          │     │
+│    │         │              │   parser → resolver →   │          │     │
+│    │         │              │   writer                │          │     │
+│    │         │              └───────────┬─────────────┘          │     │
+│    │         │                          │                         │     │
+│    │         └──────────────────────────┼─────────────────────────│     │
+│    │                                    │                         │     │
+│    │   MCP Tools (requêtes)             │                         │     │
+│    │   search_nodes, get_callers...     │                         │     │
+│    │         │                          │                         │     │
+│    │         ▼                          ▼                         │     │
+│    │   ┌─────────────────────────────────────────────────┐       │     │
+│    │   │         MCP Server (plugin/dist/mcp-server)     │       │     │
+│    │   └─────────────────────────┬───────────────────────┘       │     │
+│    └─────────────────────────────┼───────────────────────────────┘     │
+│                                  │                                      │
+└──────────────────────────────────┼──────────────────────────────────────┘
+                                   │
+                                   ▼
+                    ┌───────────────────────────────┐
+                    │      Docker (Neo4j only)      │
+                    │  ┌───────────────────────┐    │
+                    │  │    Neo4j (7687)       │    │
+                    │  └───────────────────────┘    │
+                    └───────────────────────────────┘
 ```
+
+**Séparation des responsabilités** :
+- **Commandes slash** → bash (CLI) : Indexation (écriture) → **zero tokens**
+- **MCP Server** → tools : Requêtes (lecture) → utilisé par Claude pour explorer le graphe
 
 ## Étapes d'implémentation
 
@@ -116,35 +129,50 @@ cd /path/to/kotlin/project
 ### Étape 4 : Writer Neo4j ✅ DONE (91 tests)
 - [x] Écriture batch avec toutes les relations
 
-### Étape 5 : Plugin Claude Code ⏳ EN COURS
+### Étape 5 : CLI pour indexation ✅ DONE
 
-#### 5.1 Structure du plugin
+#### 5.1 Entry point CLI
+- [x] Créer `mcp-server/src/cli.ts` (sans dépendances externes, ANSI colors natifs)
+- [x] Commande `index <path>` : indexe un projet
+- [x] Commande `setup` : démarre Neo4j via docker-compose
+- [x] Commande `status` : vérifie la connexion Neo4j
+- [x] Ajouter `"bin": { "codegraph": "./dist/cli.js" }` dans package.json
+
+### Étape 6 : MCP Tools (requêtes) ⏳ TODO
+
+- [ ] Implémenter les requêtes Cypher dans les handlers existants :
+  - `search_nodes` : Recherche de nœuds par nom/pattern
+  - `get_callers` : Fonctions qui appellent une fonction
+  - `get_callees` : Fonctions appelées par une fonction
+  - `get_neighbors` : Dépendances et dépendants d'une classe
+  - `get_implementations` : Implémentations d'une interface
+  - `get_impact` : Analyse d'impact d'une modification
+  - `find_path` : Chemin entre deux nœuds
+  - `get_file_symbols` : Symboles d'un fichier
+
+### Étape 7 : Plugin Claude Code ⏳ TODO
+
+#### 7.1 Structure du plugin
 - [ ] Créer `plugin/.claude-plugin/plugin.json` (manifest)
 - [ ] Créer `.claude-plugin/marketplace.json` (marketplace à la racine)
 
-#### 5.2 Commande `/codegraph-setup`
+#### 7.2 Commande `/codegraph-setup`
 - [ ] Créer `plugin/commands/codegraph-setup.md`
-- [ ] Vérifie que Docker est installé
-- [ ] Démarre Neo4j via docker-compose
-- [ ] Vérifie la connexion à Neo4j
+- [ ] Instructions bash pour docker-compose up
 
-#### 5.3 Commande `/codegraph-indexer`
+#### 7.3 Commande `/codegraph-indexer`
 - [ ] Créer `plugin/commands/codegraph-indexer.md`
-- [ ] Scanne les fichiers .kt du projet courant
-- [ ] Appelle le MCP tool `index_codebase`
-- [ ] Affiche le résumé de l'indexation
+- [ ] Instructions bash pour `node dist/cli.js index .`
 
-#### 5.4 MCP Server bundlé
-- [ ] Configurer esbuild pour bundler `src/index.ts` → `plugin/dist/index.js`
+#### 7.4 Bundling
+- [ ] Configurer esbuild pour bundler :
+  - `src/index.ts` → `plugin/dist/mcp-server.js`
+  - `src/cli.ts` → `plugin/dist/cli.js`
 - [ ] Créer `plugin/.mcp.json` avec config du server
+- [ ] Copier `docker-compose.yml` dans `plugin/`
 - [ ] Ajouter script `npm run bundle` dans package.json
 
-#### 5.5 Outil MCP `index_codebase`
-- [ ] Créer `mcp-server/src/tools/index-codebase/`
-- [ ] Implémente la logique d'indexation complète
-- [ ] Retourne les statistiques d'indexation
-
-### Étape 6 : Documentation
+### Étape 8 : Documentation
 - [ ] Mettre à jour `README.md` avec instructions plugin
 - [ ] Créer guide d'installation détaillé
 
@@ -152,14 +180,15 @@ cd /path/to/kotlin/project
 
 | Fichier | Action | Status |
 |---------|--------|--------|
+| `mcp-server/src/cli.ts` | Créer | ✅ DONE |
+| `mcp-server/package.json` | Ajouter "bin" | ✅ DONE |
+| `mcp-server/src/tools/*/handler.ts` | Implémenter requêtes Cypher | ⏳ TODO |
 | `plugin/.claude-plugin/plugin.json` | Créer | ⏳ TODO |
 | `.claude-plugin/marketplace.json` | Créer | ⏳ TODO |
 | `plugin/commands/codegraph-setup.md` | Créer | ⏳ TODO |
 | `plugin/commands/codegraph-indexer.md` | Créer | ⏳ TODO |
 | `plugin/.mcp.json` | Créer | ⏳ TODO |
-| `plugin/docker-compose.yml` | Créer (copie) | ⏳ TODO |
-| `mcp-server/src/tools/index-codebase/*` | Créer | ⏳ TODO |
-| `mcp-server/package.json` | Ajouter script bundle | ⏳ TODO |
+| `plugin/docker-compose.yml` | Copier | ⏳ TODO |
 | `README.md` | Mettre à jour | ⏳ TODO |
 
 ## Dépendances existantes (déjà installées)
@@ -173,12 +202,14 @@ cd /path/to/kotlin/project
 }
 ```
 
-**Dépendance à ajouter pour bundling** :
+**Dépendances à ajouter pour bundling** :
 ```json
 {
   "esbuild": "^0.24.0"
 }
 ```
+
+Note : La CLI n'utilise pas de dépendances externes (commander, chalk, ora). Elle utilise les ANSI codes natifs pour les couleurs.
 
 ## Résumé des progrès
 
@@ -191,6 +222,7 @@ cd /path/to/kotlin/project
 | **Parser Kotlin** | Parsing tree-sitter avec extraction complète | 123 |
 | **Resolver** | Résolution des symboles et appels cross-fichiers | 48 |
 | **Writer** | Écriture batch vers Neo4j avec Testcontainers | 91 |
+| **CLI** | Commandes index/setup/status, zero dépendances externes | - |
 
 **Total : 262 tests**
 
@@ -211,11 +243,13 @@ cd /path/to/kotlin/project
 
 1. ~~**Resolver** : Résolution des symboles et appels cross-fichiers~~ ✅ DONE
 2. ~~**Writer** : Écriture batch vers Neo4j~~ ✅ DONE
-3. **Plugin** : Structure + commandes + bundling ⏳ EN COURS
+3. ~~**CLI** : Entry point pour indexation~~ ✅ DONE
+4. **MCP Tools** : Requêtes Cypher (search, callers, etc.) ⏳ TODO
+5. **Plugin** : Structure + commandes + bundling ⏳ TODO
 
-## Spécifications des commandes
+## Spécifications des commandes CLI
 
-### `/codegraph-setup`
+### `codegraph setup`
 
 **But** : Préparer l'environnement Neo4j
 
@@ -234,16 +268,21 @@ cd /path/to/kotlin/project
 ✓ Constraints and indexes created
 ✓ Neo4j Browser: http://localhost:7474
 
-CodeGraph is ready! Use /codegraph-indexer to index a Kotlin project.
+CodeGraph is ready! Run 'codegraph index .' to index a Kotlin project.
 ```
 
-### `/codegraph-indexer`
+### `codegraph index <path>`
 
-**But** : Indexer le projet Kotlin courant
+**But** : Indexer un projet Kotlin
+
+**Options** :
+- `--clear` : Vide la base avant indexation
+- `--exclude <pattern>` : Exclut des fichiers (glob pattern)
+- `--exclude-tests` : Exclut les fichiers de test (*Test.kt, *Spec.kt)
 
 **Actions** :
 1. Vérifier que Neo4j est accessible
-2. Scanner les fichiers .kt dans le répertoire courant
+2. Scanner les fichiers .kt dans le chemin spécifié
 3. Parser chaque fichier avec tree-sitter
 4. Résoudre les symboles cross-fichiers
 5. Écrire le graphe dans Neo4j
@@ -272,6 +311,90 @@ Writing to Neo4j...
 
 Done! Explore your code graph at http://localhost:7474
 ```
+
+### `codegraph status`
+
+**But** : Vérifier l'état de Neo4j et afficher les stats du graphe
+
+**Output attendu** :
+```
+Neo4j: ✓ Connected (bolt://localhost:7687)
+
+Graph statistics:
+  Packages:   23
+  Classes:    45
+  Interfaces: 12
+  Functions:  234
+  Properties: 89
+
+  CALLS:      156
+  EXTENDS:    12
+  IMPLEMENTS: 8
+```
+
+## Comment les commandes slash appellent la CLI
+
+Les commandes slash sont des fichiers Markdown qui contiennent des **instructions pour Claude**.
+Quand l'utilisateur tape `/codegraph-indexer`, Claude lit le fichier et **exécute la commande bash**.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Utilisateur tape: /codegraph-indexer                            │
+│         │                                                        │
+│         ▼                                                        │
+│  Claude Code lit: plugin/commands/codegraph-indexer.md           │
+│         │                                                        │
+│         ▼                                                        │
+│  Le fichier contient: "Exécute: node dist/cli.js index ."        │
+│         │                                                        │
+│         ▼                                                        │
+│  Claude exécute la commande bash                                 │
+│         │                                                        │
+│         ▼                                                        │
+│  La CLI s'exécute dans le terminal (ZERO tokens LLM)             │
+│         │                                                        │
+│         ▼                                                        │
+│  Output affiché à l'utilisateur                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Pourquoi c'est efficace** :
+- L'indexation se fait **directement dans le terminal**
+- Claude ne parse pas le contenu des fichiers Kotlin
+- **Zero tokens** consommés pour l'indexation
+- Le MCP server est utilisé uniquement pour les **requêtes** (search, callers, etc.)
+
+## Spécifications des commandes slash
+
+### `/codegraph-setup`
+
+Contenu de `plugin/commands/codegraph-setup.md` :
+```markdown
+Démarre Neo4j pour CodeGraph.
+
+Exécute la commande suivante :
+\`\`\`bash
+node {{PLUGIN_DIR}}/dist/cli.js setup
+\`\`\`
+
+Si la commande échoue, vérifie que Docker est installé et démarré.
+```
+
+### `/codegraph-indexer`
+
+Contenu de `plugin/commands/codegraph-indexer.md` :
+```markdown
+Indexe le projet Kotlin courant dans Neo4j.
+
+Exécute la commande suivante :
+\`\`\`bash
+node {{PLUGIN_DIR}}/dist/cli.js index .
+\`\`\`
+
+Affiche le résumé de l'indexation à l'utilisateur.
+```
+
+Note : `{{PLUGIN_DIR}}` sera remplacé par le chemin du plugin installé.
 
 ## Schema Neo4j (rappel)
 
