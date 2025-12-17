@@ -5,18 +5,50 @@ import type { GetCalleesParams, CalleeResult } from './types.js';
 const formatCallee = (c: CalleeResult) =>
   `${c.depth} | ${c.className ? `${c.className}.` : ''}${c.functionName}() | ${c.filePath}:${c.lineNumber}`;
 
+interface CalleeRecord {
+  functionName: string;
+  className: string | null;
+  filePath: string;
+  lineNumber: number;
+  depth: number;
+}
+
 export async function handleGetCallees(
-  _client: Neo4jClient,
+  client: Neo4jClient,
   params: GetCalleesParams
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
-  const { function_name: _function_name, class_name: _class_name, depth: _depth = 2 } = params;
+  const { function_name, class_name, depth = 2 } = params;
 
-  // TODO: Implement Neo4j query
-  // MATCH (f:Function {name: $function_name})-[:CALLS*1..$depth]->(callee:Function)
-  // WHERE ($class_name IS NULL OR f.className = $class_name)
-  // RETURN callee.name, callee.className, callee.filePath, callee.lineNumber, length(path) as depth
+  // Traverse forward from the source function to find callees
+  const cypher = `
+    MATCH path = (source:Function)-[:CALLS*1..${depth}]->(callee:Function)
+    WHERE source.name = $function_name
+      AND ($class_name IS NULL OR source.declaringType ENDS WITH $class_name)
+      AND source <> callee
+    WITH DISTINCT callee, length(path) AS pathDepth
+    OPTIONAL MATCH (owner)-[:DECLARES]->(callee)
+    WHERE owner:Class OR owner:Interface OR owner:Object
+    RETURN
+      callee.name AS functionName,
+      owner.name AS className,
+      callee.filePath AS filePath,
+      coalesce(callee.lineNumber, 0) AS lineNumber,
+      pathDepth AS depth
+    ORDER BY pathDepth, className, functionName
+  `;
 
-  const callees: CalleeResult[] = [];
+  const records = await client.query<CalleeRecord>(cypher, {
+    function_name,
+    class_name: class_name ?? null,
+  });
+
+  const callees: CalleeResult[] = records.map((r) => ({
+    functionName: r.functionName,
+    className: r.className ?? undefined,
+    filePath: r.filePath,
+    lineNumber: r.lineNumber,
+    depth: r.depth,
+  }));
 
   const text = buildCompactOutput('CALLEES', callees, formatCallee);
 

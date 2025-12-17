@@ -7,7 +7,7 @@ export const getNeighborsDefinition = {
   inputSchema: {
     node_name: z.string().describe('Name of the class/interface to get neighbors for'),
     direction: z.enum(['outgoing', 'incoming', 'both']).optional().default('both').describe('Direction: outgoing (dependencies), incoming (dependents), or both'),
-    depth: z.number().min(1).max(5).optional().default(1).describe('Search depth (1 = direct only)'),
+    depth: z.number().int().min(1).max(5).optional().default(1).describe('Search depth (1 = direct only)'),
     include_external: z.boolean().optional().default(false).describe('Include external dependencies (npm packages)'),
   },
 };

@@ -5,20 +5,42 @@ import type { GetFileSymbolsParams, SymbolResult } from './types.js';
 const formatSymbol = (s: SymbolResult) =>
   `${s.type} | ${s.name} | ${s.visibility} | ${s.lineNumber}`;
 
+interface SymbolRecord {
+  name: string;
+  type: string;
+  visibility: string;
+  lineNumber: number;
+}
+
 export async function handleGetFileSymbols(
-  _client: Neo4jClient,
+  client: Neo4jClient,
   params: GetFileSymbolsParams
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
-  const { file_path, include_private: _include_private = true } = params;
+  const { file_path, include_private = true } = params;
 
-  // TODO: Implement Neo4j query
-  // MATCH (n)
-  // WHERE n.filePath = $file_path OR n.filePath ENDS WITH $file_path
-  // AND ($include_private OR n.visibility IN ['public', 'protected'])
-  // RETURN n.name, labels(n)[0] as type, n.visibility, n.lineNumber
-  // ORDER BY n.lineNumber
+  // Query for all symbols in a file
+  // Support both exact path and partial path (ends with)
+  const cypher = `
+    MATCH (n)
+    WHERE (n.filePath = $file_path OR n.filePath ENDS WITH $file_path)
+      AND any(label IN labels(n) WHERE label IN ['Class', 'Interface', 'Function', 'Property', 'Object'])
+      ${include_private ? '' : "AND coalesce(n.visibility, 'public') IN ['public', 'protected', 'internal']"}
+    RETURN
+      n.name AS name,
+      [label IN labels(n) WHERE label IN ['Class', 'Interface', 'Function', 'Property', 'Object']][0] AS type,
+      coalesce(n.visibility, 'public') AS visibility,
+      coalesce(n.lineNumber, 0) AS lineNumber
+    ORDER BY lineNumber, type, name
+  `;
 
-  const symbols: SymbolResult[] = [];
+  const records = await client.query<SymbolRecord>(cypher, { file_path });
+
+  const symbols: SymbolResult[] = records.map((r) => ({
+    name: r.name,
+    type: r.type.toLowerCase(),
+    visibility: r.visibility,
+    lineNumber: r.lineNumber,
+  }));
 
   const text = buildCompactOutput(`SYMBOLS in ${file_path}`, symbols, formatSymbol);
 

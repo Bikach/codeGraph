@@ -149,17 +149,17 @@ cd /path/to/kotlin/project
 - [ ] Créer `mcp-server/src/scripts/status.ts` : vérifie la connexion Neo4j
 - [ ] Sans dépendances externes (ANSI colors natifs)
 
-### Étape 6 : MCP Tools (requêtes) ⏳ TODO
+### Étape 6 : MCP Tools (requêtes) ✅ DONE
 
-- [ ] Implémenter les requêtes Cypher dans les handlers existants :
-  - `search_nodes` : Recherche de nœuds par nom/pattern
-  - `get_callers` : Fonctions qui appellent une fonction
-  - `get_callees` : Fonctions appelées par une fonction
-  - `get_neighbors` : Dépendances et dépendants d'une classe
-  - `get_implementations` : Implémentations d'une interface
-  - `get_impact` : Analyse d'impact d'une modification
-  - `find_path` : Chemin entre deux nœuds
-  - `get_file_symbols` : Symboles d'un fichier
+- [x] Implémenter les requêtes Cypher dans les handlers existants :
+  - `search_nodes` : Recherche de nœuds par nom/pattern (regex, filtrage par type)
+  - `get_callers` : Fonctions qui appellent une fonction (avec profondeur variable)
+  - `get_callees` : Fonctions appelées par une fonction (avec profondeur variable)
+  - `get_neighbors` : Dépendances et dépendants d'une classe (bidirectionnel)
+  - `get_implementations` : Implémentations d'une interface (directes et indirectes)
+  - `get_impact` : Analyse d'impact d'une modification (callers, dependents, implementors, children)
+  - `find_path` : Chemin le plus court entre deux nœuds (shortestPath)
+  - `get_file_symbols` : Symboles d'un fichier (avec filtre de visibilité)
 
 ### Étape 7 : Plugin Claude Code ⏳ TODO
 
@@ -302,7 +302,7 @@ Note : Les scripts n'utilisent pas de dépendances externes (commander, chalk, o
 1. ~~**Resolver** : Résolution des symboles et appels cross-fichiers~~ ✅ DONE
 2. ~~**Writer** : Écriture batch vers Neo4j~~ ✅ DONE
 3. **Scripts** : Scripts dédiés (setup, index, status) ⏳ TODO
-4. **MCP Tools** : Requêtes Cypher (search, callers, etc.) ⏳ TODO
+4. ~~**MCP Tools** : Requêtes Cypher (search, callers, etc.)~~ ✅ DONE
 5. **Plugin** : Structure + commandes + bundling ⏳ TODO
 
 ## Spécifications des scripts

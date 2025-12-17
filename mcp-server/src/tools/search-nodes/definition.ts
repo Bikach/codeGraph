@@ -8,6 +8,6 @@ export const searchNodesDefinition = {
     query: z.string().describe('Search query (name or pattern)'),
     node_types: z.array(z.enum(['class', 'interface', 'function', 'property', 'object'])).optional().describe('Filter by node types (all if not specified)'),
     exact_match: z.boolean().optional().default(false).describe('If true, exact match. If false, partial match (CONTAINS)'),
-    limit: z.number().min(1).max(100).optional().default(20).describe('Maximum number of results'),
+    limit: z.number().int().min(1).max(100).optional().default(20).describe('Maximum number of results'),
   },
 };

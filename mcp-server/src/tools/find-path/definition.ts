@@ -7,7 +7,7 @@ export const findPathDefinition = {
   inputSchema: {
     from_node: z.string().describe('Name of the starting node'),
     to_node: z.string().describe('Name of the target node'),
-    max_depth: z.number().min(1).max(10).optional().default(5).describe('Maximum path length to search'),
+    max_depth: z.number().int().min(1).max(10).optional().default(5).describe('Maximum path length to search'),
     relationship_types: z.array(z.string()).optional().describe('Filter by relationship types (e.g., ["CALLS", "USES"])'),
   },
 };
