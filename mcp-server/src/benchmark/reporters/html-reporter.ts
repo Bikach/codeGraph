@@ -1,5 +1,14 @@
 import type { BenchmarkReport } from '../types.js';
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export function generateHtmlReport(report: BenchmarkReport): string {
   const scenariosJson = JSON.stringify(
     report.scenarios.map((s) => ({
@@ -8,20 +17,18 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       optimized: {
         llmCalls: s.mcp.llmCalls,
         toolCalls: s.mcp.toolCalls,
-        totalTokens: s.mcp.tokenUsage.totalTokens,
-        inputTokens: s.mcp.tokenUsage.inputTokens,
-        outputTokens: s.mcp.tokenUsage.outputTokens,
         totalCost: s.mcp.cost.totalCost,
         executionTimeMs: s.mcp.executionTimeMs,
+        score: s.mcp.evaluation?.score || 0,
+        reasoning: s.mcp.evaluation?.reasoning || '',
       },
       baseline: {
         llmCalls: s.native.llmCalls,
         toolCalls: s.native.toolCalls,
-        totalTokens: s.native.tokenUsage.totalTokens,
-        inputTokens: s.native.tokenUsage.inputTokens,
-        outputTokens: s.native.tokenUsage.outputTokens,
         totalCost: s.native.cost.totalCost,
         executionTimeMs: s.native.executionTimeMs,
+        score: s.native.evaluation?.score || 0,
+        reasoning: s.native.evaluation?.reasoning || '',
       },
       savings: s.savings,
     }))
@@ -32,7 +39,7 @@ export function generateHtmlReport(report: BenchmarkReport): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LLM Tool Benchmark Report</title>
+  <title>Code Analysis Benchmark Report</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
   <style>
@@ -98,9 +105,16 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       color: var(--text);
     }
 
+    .card h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 1rem 0 0.5rem;
+      color: var(--text);
+    }
+
     .summary-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 1rem;
     }
 
@@ -116,8 +130,12 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       background: linear-gradient(135deg, var(--baseline) 0%, #dc2626 100%);
     }
 
+    .metric-card.neutral {
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    }
+
     .metric-value {
-      font-size: 2.5rem;
+      font-size: 2rem;
       font-weight: 700;
       line-height: 1.2;
     }
@@ -179,6 +197,31 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       color: #991b1b;
     }
 
+    .score-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.75rem;
+    }
+
+    .score-high { background: #dcfce7; color: #166534; }
+    .score-medium { background: #fef9c3; color: #854d0e; }
+    .score-low { background: #fee2e2; color: #991b1b; }
+
+    .tool-badge {
+      display: inline-block;
+      padding: 0.125rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      background: #e0e7ff;
+      color: #3730a3;
+      margin: 0.125rem;
+    }
+
+    .tool-badge.correct { background: #dcfce7; color: #166534; }
+    .tool-badge.wrong { background: #fee2e2; color: #991b1b; }
+
     .legend {
       display: flex;
       justify-content: center;
@@ -204,12 +247,70 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       border-radius: 4px;
     }
 
-    .legend-dot.optimized {
-      background: var(--optimized);
+    .legend-dot.optimized { background: var(--optimized); }
+    .legend-dot.baseline { background: var(--baseline); }
+
+    .response-container {
+      margin-top: 1rem;
     }
 
-    .legend-dot.baseline {
-      background: var(--baseline);
+    .response-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .response-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .response-box h4 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .response-box.mcp h4 { color: var(--optimized); }
+    .response-box.native h4 { color: var(--baseline); }
+
+    .response-text {
+      font-family: monospace;
+      font-size: 0.75rem;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow-y: auto;
+      background: white;
+      padding: 0.5rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .response-meta {
+      display: flex;
+      gap: 1rem;
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .toggle-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      font-size: 0.875rem;
+      margin-top: 1rem;
+    }
+
+    .toggle-btn:hover {
+      background: var(--border);
     }
 
     .config-info {
@@ -236,49 +337,29 @@ export function generateHtmlReport(report: BenchmarkReport): string {
     }
 
     @media (max-width: 768px) {
-      body {
-        padding: 1rem;
-      }
-
-      header h1 {
-        font-size: 1.75rem;
-      }
-
-      .charts-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .chart-container {
-        height: 300px;
-      }
-
-      table {
-        font-size: 0.75rem;
-      }
-
-      th, td {
-        padding: 0.5rem;
-      }
+      body { padding: 1rem; }
+      header h1 { font-size: 1.75rem; }
+      .charts-grid { grid-template-columns: 1fr; }
+      .chart-container { height: 300px; }
+      .response-grid { grid-template-columns: 1fr; }
+      table { font-size: 0.75rem; }
+      th, td { padding: 0.5rem; }
     }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>LLM Tool Benchmark Report</h1>
-      <p>Optimized vs Baseline Comparison - Generated: ${report.timestamp.toISOString()}</p>
+      <h1>Code Analysis Benchmark Report</h1>
+      <p>MCP vs Native Comparison - Generated: ${report.timestamp.toISOString()}</p>
     </header>
 
     <div class="card">
-      <h2>Average Savings with Optimized Approach</h2>
+      <h2>Summary</h2>
       <div class="summary-grid">
         <div class="metric-card">
           <div class="metric-value">${report.summary.avgLlmCallsSavings.toFixed(0)}%</div>
           <div class="metric-label">Fewer LLM Calls</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-value">${report.summary.avgTokenSavings.toFixed(0)}%</div>
-          <div class="metric-label">Tokens Saved</div>
         </div>
         <div class="metric-card">
           <div class="metric-value">${report.summary.avgCostSavings.toFixed(0)}%</div>
@@ -286,7 +367,15 @@ export function generateHtmlReport(report: BenchmarkReport): string {
         </div>
         <div class="metric-card">
           <div class="metric-value">${report.summary.avgTimeSavings.toFixed(0)}%</div>
-          <div class="metric-label">Faster Execution</div>
+          <div class="metric-label">Faster</div>
+        </div>
+        <div class="metric-card neutral">
+          <div class="metric-value">${report.summary.avgMcpScore.toFixed(1)}</div>
+          <div class="metric-label">MCP Quality /10</div>
+        </div>
+        <div class="metric-card neutral">
+          <div class="metric-value">${report.summary.avgNativeScore.toFixed(1)}</div>
+          <div class="metric-label">Native Quality /10</div>
         </div>
       </div>
     </div>
@@ -296,11 +385,11 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       <div class="summary-grid">
         <div class="metric-card">
           <div class="metric-value">$${report.summary.totalMcpCost.toFixed(4)}</div>
-          <div class="metric-label">Optimized Total Cost</div>
+          <div class="metric-label">MCP Total Cost</div>
         </div>
         <div class="metric-card baseline">
           <div class="metric-value">$${report.summary.totalNativeCost.toFixed(4)}</div>
-          <div class="metric-label">Baseline Total Cost</div>
+          <div class="metric-label">Native Total Cost</div>
         </div>
       </div>
     </div>
@@ -308,11 +397,11 @@ export function generateHtmlReport(report: BenchmarkReport): string {
     <div class="legend">
       <div class="legend-item">
         <span class="legend-dot optimized"></span>
-        <span>Optimized (Specialized Tools)</span>
+        <span>MCP</span>
       </div>
       <div class="legend-item">
         <span class="legend-dot baseline"></span>
-        <span>Baseline (Generic Tools)</span>
+        <span>Native</span>
       </div>
     </div>
 
@@ -325,13 +414,6 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       </div>
 
       <div class="card">
-        <h2>Token Usage per Scenario</h2>
-        <div class="chart-container">
-          <canvas id="tokensChart"></canvas>
-        </div>
-      </div>
-
-      <div class="card">
         <h2>Cost per Scenario ($)</h2>
         <div class="chart-container">
           <canvas id="costChart"></canvas>
@@ -339,7 +421,14 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       </div>
 
       <div class="card">
-        <h2>Execution Time per Scenario (seconds)</h2>
+        <h2>Quality Score per Scenario</h2>
+        <div class="chart-container">
+          <canvas id="scoreChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Execution Time (seconds)</h2>
         <div class="chart-container">
           <canvas id="timeChart"></canvas>
         </div>
@@ -353,14 +442,12 @@ export function generateHtmlReport(report: BenchmarkReport): string {
           <thead>
             <tr>
               <th>Scenario</th>
-              <th>Optimized Calls</th>
-              <th>Baseline Calls</th>
-              <th>Optimized Tokens</th>
-              <th>Baseline Tokens</th>
-              <th>Optimized Cost</th>
-              <th>Baseline Cost</th>
-              <th>Optimized Time</th>
-              <th>Baseline Time</th>
+              <th>MCP Calls</th>
+              <th>Native Calls</th>
+              <th>MCP Cost</th>
+              <th>Native Cost</th>
+              <th>MCP Score</th>
+              <th>Native Score</th>
               <th>Cost Savings</th>
             </tr>
           </thead>
@@ -369,15 +456,13 @@ export function generateHtmlReport(report: BenchmarkReport): string {
               .map(
                 (s) => `
             <tr>
-              <td><strong>${s.scenarioName}</strong><br><small style="color: var(--text-muted)">${s.description}</small></td>
+              <td><strong>${escapeHtml(s.scenarioName)}</strong><br><small style="color: var(--text-muted)">${escapeHtml(s.description)}</small></td>
               <td>${s.mcp.llmCalls}</td>
               <td>${s.native.llmCalls}</td>
-              <td>${s.mcp.tokenUsage.totalTokens.toLocaleString()}</td>
-              <td>${s.native.tokenUsage.totalTokens.toLocaleString()}</td>
               <td>$${s.mcp.cost.totalCost.toFixed(4)}</td>
               <td>$${s.native.cost.totalCost.toFixed(4)}</td>
-              <td>${(s.mcp.executionTimeMs / 1000).toFixed(1)}s</td>
-              <td>${(s.native.executionTimeMs / 1000).toFixed(1)}s</td>
+              <td><span class="score-badge ${(s.mcp.evaluation?.score || 0) >= 7 ? 'score-high' : (s.mcp.evaluation?.score || 0) >= 4 ? 'score-medium' : 'score-low'}">${s.mcp.evaluation?.score || '-'}/10</span></td>
+              <td><span class="score-badge ${(s.native.evaluation?.score || 0) >= 7 ? 'score-high' : (s.native.evaluation?.score || 0) >= 4 ? 'score-medium' : 'score-low'}">${s.native.evaluation?.score || '-'}/10</span></td>
               <td><span class="savings-badge${s.savings.cost < 0 ? ' negative' : ''}">${s.savings.cost >= 0 ? '+' : ''}${s.savings.cost.toFixed(0)}%</span></td>
             </tr>
             `
@@ -388,12 +473,45 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       </div>
     </div>
 
+    ${report.scenarios
+      .map(
+        (s) => `
+    <div class="card">
+      <h2>${escapeHtml(s.scenarioName)}</h2>
+      <p style="color: var(--text-muted); margin-bottom: 1rem;">${escapeHtml(s.description)}</p>
+
+      <h3>Quality Evaluation</h3>
+      <div class="response-grid">
+        <div class="response-box mcp">
+          <h4>
+            MCP
+            <span class="score-badge ${(s.mcp.evaluation?.score || 0) >= 7 ? 'score-high' : (s.mcp.evaluation?.score || 0) >= 4 ? 'score-medium' : 'score-low'}">${s.mcp.evaluation?.score || '-'}/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>${escapeHtml(s.mcp.evaluation?.reasoning || 'No evaluation')}</span>
+          </div>
+        </div>
+        <div class="response-box native">
+          <h4>
+            Native
+            <span class="score-badge ${(s.native.evaluation?.score || 0) >= 7 ? 'score-high' : (s.native.evaluation?.score || 0) >= 4 ? 'score-medium' : 'score-low'}">${s.native.evaluation?.score || '-'}/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>${escapeHtml(s.native.evaluation?.reasoning || 'No evaluation')}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    `
+      )
+      .join('')}
+
     <div class="card">
       <h2>Configuration</h2>
       <div class="config-info">
         <div class="config-item">
           <label>Project Path</label>
-          <span>${report.config.projectPath}</span>
+          <span>${escapeHtml(report.config.projectPath)}</span>
         </div>
         <div class="config-item">
           <label>Runs per Scenario</label>
@@ -417,7 +535,7 @@ export function generateHtmlReport(report: BenchmarkReport): string {
           anchor: 'end',
           align: 'top',
           color: '#1e293b',
-          font: { weight: 'bold', size: 12 },
+          font: { weight: 'bold', size: 11 },
           formatter: (value) => value.toLocaleString()
         }
       },
@@ -439,14 +557,14 @@ export function generateHtmlReport(report: BenchmarkReport): string {
         labels: scenarios.map(s => s.scenarioName),
         datasets: [
           {
-            label: 'Optimized',
+            label: 'MCP',
             data: scenarios.map(s => s.optimized.llmCalls),
             backgroundColor: '#22c55e',
             borderRadius: 6,
             barPercentage: 0.4
           },
           {
-            label: 'Baseline',
+            label: 'Native',
             data: scenarios.map(s => s.baseline.llmCalls),
             backgroundColor: '#ef4444',
             borderRadius: 6,
@@ -454,50 +572,7 @@ export function generateHtmlReport(report: BenchmarkReport): string {
           }
         ]
       },
-      options: {
-        ...chartOptions,
-        plugins: {
-          ...chartOptions.plugins,
-          datalabels: {
-            ...chartOptions.plugins.datalabels,
-            formatter: (value) => value + ' calls'
-          }
-        }
-      }
-    });
-
-    // Tokens Chart
-    new Chart(document.getElementById('tokensChart'), {
-      type: 'bar',
-      data: {
-        labels: scenarios.map(s => s.scenarioName),
-        datasets: [
-          {
-            label: 'Optimized',
-            data: scenarios.map(s => s.optimized.totalTokens),
-            backgroundColor: '#22c55e',
-            borderRadius: 6,
-            barPercentage: 0.4
-          },
-          {
-            label: 'Baseline',
-            data: scenarios.map(s => s.baseline.totalTokens),
-            backgroundColor: '#ef4444',
-            borderRadius: 6,
-            barPercentage: 0.4
-          }
-        ]
-      },
-      options: {
-        ...chartOptions,
-        plugins: {
-          ...chartOptions.plugins,
-          datalabels: {
-            ...chartOptions.plugins.datalabels,
-            formatter: (value) => (value / 1000).toFixed(1) + 'k'
-          }
-        }
-      }
+      options: chartOptions
     });
 
     // Cost Chart
@@ -507,14 +582,14 @@ export function generateHtmlReport(report: BenchmarkReport): string {
         labels: scenarios.map(s => s.scenarioName),
         datasets: [
           {
-            label: 'Optimized',
+            label: 'MCP',
             data: scenarios.map(s => s.optimized.totalCost),
             backgroundColor: '#22c55e',
             borderRadius: 6,
             barPercentage: 0.4
           },
           {
-            label: 'Baseline',
+            label: 'Native',
             data: scenarios.map(s => s.baseline.totalCost),
             backgroundColor: '#ef4444',
             borderRadius: 6,
@@ -534,21 +609,62 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       }
     });
 
-    // Time Chart (convert to seconds)
+    // Score Chart
+    new Chart(document.getElementById('scoreChart'), {
+      type: 'bar',
+      data: {
+        labels: scenarios.map(s => s.scenarioName),
+        datasets: [
+          {
+            label: 'MCP',
+            data: scenarios.map(s => s.optimized.score),
+            backgroundColor: '#22c55e',
+            borderRadius: 6,
+            barPercentage: 0.4
+          },
+          {
+            label: 'Native',
+            data: scenarios.map(s => s.baseline.score),
+            backgroundColor: '#ef4444',
+            borderRadius: 6,
+            barPercentage: 0.4
+          }
+        ]
+      },
+      options: {
+        ...chartOptions,
+        scales: {
+          ...chartOptions.scales,
+          y: {
+            ...chartOptions.scales.y,
+            max: 10
+          }
+        },
+        plugins: {
+          ...chartOptions.plugins,
+          datalabels: {
+            ...chartOptions.plugins.datalabels,
+            formatter: (value) => value + '/10'
+          }
+        }
+      }
+    });
+
+    // Time Chart
     new Chart(document.getElementById('timeChart'), {
       type: 'bar',
       data: {
         labels: scenarios.map(s => s.scenarioName),
         datasets: [
           {
-            label: 'Optimized',
+            label: 'MCP',
             data: scenarios.map(s => s.optimized.executionTimeMs / 1000),
             backgroundColor: '#22c55e',
             borderRadius: 6,
             barPercentage: 0.4
           },
           {
-            label: 'Baseline',
+            label: 'Native',
             data: scenarios.map(s => s.baseline.executionTimeMs / 1000),
             backgroundColor: '#ef4444',
             borderRadius: 6,

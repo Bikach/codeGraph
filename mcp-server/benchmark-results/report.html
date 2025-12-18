@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LLM Tool Benchmark Report</title>
+  <title>Code Analysis Benchmark Report</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
   <style>
@@ -69,9 +69,16 @@
       color: var(--text);
     }
 
+    .card h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 1rem 0 0.5rem;
+      color: var(--text);
+    }
+
     .summary-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 1rem;
     }
 
@@ -87,8 +94,12 @@
       background: linear-gradient(135deg, var(--baseline) 0%, #dc2626 100%);
     }
 
+    .metric-card.neutral {
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    }
+
     .metric-value {
-      font-size: 2.5rem;
+      font-size: 2rem;
       font-weight: 700;
       line-height: 1.2;
     }
@@ -150,6 +161,31 @@
       color: #991b1b;
     }
 
+    .score-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.75rem;
+    }
+
+    .score-high { background: #dcfce7; color: #166534; }
+    .score-medium { background: #fef9c3; color: #854d0e; }
+    .score-low { background: #fee2e2; color: #991b1b; }
+
+    .tool-badge {
+      display: inline-block;
+      padding: 0.125rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      background: #e0e7ff;
+      color: #3730a3;
+      margin: 0.125rem;
+    }
+
+    .tool-badge.correct { background: #dcfce7; color: #166534; }
+    .tool-badge.wrong { background: #fee2e2; color: #991b1b; }
+
     .legend {
       display: flex;
       justify-content: center;
@@ -175,12 +211,70 @@
       border-radius: 4px;
     }
 
-    .legend-dot.optimized {
-      background: var(--optimized);
+    .legend-dot.optimized { background: var(--optimized); }
+    .legend-dot.baseline { background: var(--baseline); }
+
+    .response-container {
+      margin-top: 1rem;
     }
 
-    .legend-dot.baseline {
-      background: var(--baseline);
+    .response-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .response-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .response-box h4 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .response-box.mcp h4 { color: var(--optimized); }
+    .response-box.native h4 { color: var(--baseline); }
+
+    .response-text {
+      font-family: monospace;
+      font-size: 0.75rem;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow-y: auto;
+      background: white;
+      padding: 0.5rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .response-meta {
+      display: flex;
+      gap: 1rem;
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .toggle-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      font-size: 0.875rem;
+      margin-top: 1rem;
+    }
+
+    .toggle-btn:hover {
+      background: var(--border);
     }
 
     .config-info {
@@ -207,57 +301,45 @@
     }
 
     @media (max-width: 768px) {
-      body {
-        padding: 1rem;
-      }
-
-      header h1 {
-        font-size: 1.75rem;
-      }
-
-      .charts-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .chart-container {
-        height: 300px;
-      }
-
-      table {
-        font-size: 0.75rem;
-      }
-
-      th, td {
-        padding: 0.5rem;
-      }
+      body { padding: 1rem; }
+      header h1 { font-size: 1.75rem; }
+      .charts-grid { grid-template-columns: 1fr; }
+      .chart-container { height: 300px; }
+      .response-grid { grid-template-columns: 1fr; }
+      table { font-size: 0.75rem; }
+      th, td { padding: 0.5rem; }
     }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>LLM Tool Benchmark Report</h1>
-      <p>Optimized vs Baseline Comparison - Generated: 2025-12-18T15:17:27.327Z</p>
+      <h1>Code Analysis Benchmark Report</h1>
+      <p>MCP vs Native Comparison - Generated: 2025-12-18T20:24:42.183Z</p>
     </header>
 
     <div class="card">
-      <h2>Average Savings with Optimized Approach</h2>
+      <h2>Summary</h2>
       <div class="summary-grid">
         <div class="metric-card">
-          <div class="metric-value">65%</div>
+          <div class="metric-value">49%</div>
           <div class="metric-label">Fewer LLM Calls</div>
         </div>
         <div class="metric-card">
-          <div class="metric-value">55%</div>
-          <div class="metric-label">Tokens Saved</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-value">9%</div>
+          <div class="metric-value">26%</div>
           <div class="metric-label">Cost Reduction</div>
         </div>
         <div class="metric-card">
-          <div class="metric-value">6%</div>
-          <div class="metric-label">Faster Execution</div>
+          <div class="metric-value">53%</div>
+          <div class="metric-label">Faster</div>
+        </div>
+        <div class="metric-card neutral">
+          <div class="metric-value">5.4</div>
+          <div class="metric-label">MCP Quality /10</div>
+        </div>
+        <div class="metric-card neutral">
+          <div class="metric-value">6.8</div>
+          <div class="metric-label">Native Quality /10</div>
         </div>
       </div>
     </div>
@@ -266,12 +348,12 @@
       <h2>Total Cost Comparison</h2>
       <div class="summary-grid">
         <div class="metric-card">
-          <div class="metric-value">$0.6409</div>
-          <div class="metric-label">Optimized Total Cost</div>
+          <div class="metric-value">$0.8267</div>
+          <div class="metric-label">MCP Total Cost</div>
         </div>
         <div class="metric-card baseline">
-          <div class="metric-value">$0.6864</div>
-          <div class="metric-label">Baseline Total Cost</div>
+          <div class="metric-value">$1.1141</div>
+          <div class="metric-label">Native Total Cost</div>
         </div>
       </div>
     </div>
@@ -279,11 +361,11 @@
     <div class="legend">
       <div class="legend-item">
         <span class="legend-dot optimized"></span>
-        <span>Optimized (Specialized Tools)</span>
+        <span>MCP</span>
       </div>
       <div class="legend-item">
         <span class="legend-dot baseline"></span>
-        <span>Baseline (Generic Tools)</span>
+        <span>Native</span>
       </div>
     </div>
 
@@ -296,13 +378,6 @@
       </div>
 
       <div class="card">
-        <h2>Token Usage per Scenario</h2>
-        <div class="chart-container">
-          <canvas id="tokensChart"></canvas>
-        </div>
-      </div>
-
-      <div class="card">
         <h2>Cost per Scenario ($)</h2>
         <div class="chart-container">
           <canvas id="costChart"></canvas>
@@ -310,7 +385,14 @@
       </div>
 
       <div class="card">
-        <h2>Execution Time per Scenario (seconds)</h2>
+        <h2>Quality Score per Scenario</h2>
+        <div class="chart-container">
+          <canvas id="scoreChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Execution Time (seconds)</h2>
         <div class="chart-container">
           <canvas id="timeChart"></canvas>
         </div>
@@ -324,14 +406,12 @@
           <thead>
             <tr>
               <th>Scenario</th>
-              <th>Optimized Calls</th>
-              <th>Baseline Calls</th>
-              <th>Optimized Tokens</th>
-              <th>Baseline Tokens</th>
-              <th>Optimized Cost</th>
-              <th>Baseline Cost</th>
-              <th>Optimized Time</th>
-              <th>Baseline Time</th>
+              <th>MCP Calls</th>
+              <th>Native Calls</th>
+              <th>MCP Cost</th>
+              <th>Native Cost</th>
+              <th>MCP Score</th>
+              <th>Native Score</th>
               <th>Cost Savings</th>
             </tr>
           </thead>
@@ -339,73 +419,200 @@
             
             <tr>
               <td><strong>Find Callers</strong><br><small style="color: var(--text-muted)">Find all functions that call a specific function</small></td>
-              <td>10</td>
-              <td>15</td>
-              <td>1 194</td>
-              <td>2 099</td>
-              <td>$0.0787</td>
-              <td>$0.1307</td>
-              <td>32.2s</td>
-              <td>55.6s</td>
-              <td><span class="savings-badge">+40%</span></td>
+              <td>5</td>
+              <td>7</td>
+              <td>$0.1922</td>
+              <td>$0.0907</td>
+              <td><span class="score-badge score-high">7/10</span></td>
+              <td><span class="score-badge score-high">8/10</span></td>
+              <td><span class="savings-badge negative">-112%</span></td>
             </tr>
             
             <tr>
               <td><strong>Find Implementations</strong><br><small style="color: var(--text-muted)">Find all classes that implement a specific interface</small></td>
+              <td>3</td>
               <td>10</td>
-              <td>15</td>
-              <td>1 211</td>
-              <td>1 814</td>
-              <td>$0.1080</td>
-              <td>$0.1459</td>
-              <td>32.3s</td>
-              <td>49.4s</td>
-              <td><span class="savings-badge">+26%</span></td>
+              <td>$0.0432</td>
+              <td>$0.0682</td>
+              <td><span class="score-badge score-high">8/10</span></td>
+              <td><span class="score-badge score-high">8/10</span></td>
+              <td><span class="savings-badge">+37%</span></td>
             </tr>
             
             <tr>
               <td><strong>Impact Analysis</strong><br><small style="color: var(--text-muted)">Analyze the impact of modifying a class or function</small></td>
-              <td>2</td>
-              <td>15</td>
-              <td>688</td>
-              <td>1 922</td>
-              <td>$0.2891</td>
-              <td>$0.1481</td>
-              <td>104.4s</td>
-              <td>55.0s</td>
-              <td><span class="savings-badge negative">-95%</span></td>
+              <td>20</td>
+              <td>38</td>
+              <td>$0.2628</td>
+              <td>$0.4521</td>
+              <td><span class="score-badge score-low">3/10</span></td>
+              <td><span class="score-badge score-high">7/10</span></td>
+              <td><span class="savings-badge">+42%</span></td>
             </tr>
             
             <tr>
               <td><strong>Dependency Analysis</strong><br><small style="color: var(--text-muted)">Analyze all dependencies of a class (incoming and outgoing)</small></td>
-              <td>2</td>
-              <td>15</td>
-              <td>570</td>
-              <td>1 663</td>
-              <td>$0.0735</td>
-              <td>$0.1297</td>
-              <td>36.8s</td>
-              <td>51.7s</td>
-              <td><span class="savings-badge">+43%</span></td>
+              <td>8</td>
+              <td>37</td>
+              <td>$0.1343</td>
+              <td>$0.2505</td>
+              <td><span class="score-badge score-high">8/10</span></td>
+              <td><span class="score-badge score-high">8/10</span></td>
+              <td><span class="savings-badge">+46%</span></td>
             </tr>
             
             <tr>
               <td><strong>Call Chain</strong><br><small style="color: var(--text-muted)">Trace the call chain between two functions</small></td>
-              <td>2</td>
-              <td>15</td>
-              <td>686</td>
-              <td>2 091</td>
-              <td>$0.0915</td>
-              <td>$0.1321</td>
-              <td>52.4s</td>
-              <td>61.7s</td>
-              <td><span class="savings-badge">+31%</span></td>
+              <td>14</td>
+              <td>7</td>
+              <td>$0.1942</td>
+              <td>$0.2525</td>
+              <td><span class="score-badge score-low">1/10</span></td>
+              <td><span class="score-badge score-low">3/10</span></td>
+              <td><span class="savings-badge">+23%</span></td>
             </tr>
             
           </tbody>
         </table>
       </div>
     </div>
+
+    
+    <div class="card">
+      <h2>Find Callers</h2>
+      <p style="color: var(--text-muted); margin-bottom: 1rem;">Find all functions that call a specific function</p>
+
+      <h3>Quality Evaluation</h3>
+      <div class="response-grid">
+        <div class="response-box mcp">
+          <h4>
+            MCP
+            <span class="score-badge score-high">7/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>The response is well-organized and shows relevant callers with file locations, but lacks verification that the tool was actually used and contains no evidence of the MCP server being queried—it appears to be a hypothetical example rather than actual tool execution results.</span>
+          </div>
+        </div>
+        <div class="response-box native">
+          <h4>
+            Native
+            <span class="score-badge score-high">8/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>Response effectively identifies the target function and provides a well-organized list of callers with file locations and context, though it mixes production and test code without clear separation and doesn&#039;t use the codebase&#039;s MCP tools (which would provide standardized output format and coverage verification).</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>Find Implementations</h2>
+      <p style="color: var(--text-muted); margin-bottom: 1rem;">Find all classes that implement a specific interface</p>
+
+      <h3>Quality Evaluation</h3>
+      <div class="response-grid">
+        <div class="response-box mcp">
+          <h4>
+            MCP
+            <span class="score-badge score-high">8/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>The response accurately identifies the interface and its implementation with correct file paths and line numbers, clearly explains the architecture pattern, but could be more comprehensive by checking for indirect implementations or mentioning if there are no additional implementations.</span>
+          </div>
+        </div>
+        <div class="response-box native">
+          <h4>
+            Native
+            <span class="score-badge score-high">8/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>The response accurately identifies the interface and its implementation with correct file paths and useful context about the Panache ORM pattern, though it could be more concise and uses somewhat verbose search narration rather than direct tool output.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>Impact Analysis</h2>
+      <p style="color: var(--text-muted); margin-bottom: 1rem;">Analyze the impact of modifying a class or function</p>
+
+      <h3>Quality Evaluation</h3>
+      <div class="response-grid">
+        <div class="response-box mcp">
+          <h4>
+            MCP
+            <span class="score-badge score-low">3/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>The response shows effort in searching for the User class but lacks actual impact analysis output - it&#039;s mostly process narration without concrete findings, doesn&#039;t use the available impact analysis tools, and the truncated result suggests incomplete work that doesn&#039;t fulfill the requirement to &#039;return the impact analysis.&#039;</span>
+          </div>
+        </div>
+        <div class="response-box native">
+          <h4>
+            Native
+            <span class="score-badge score-high">7/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>The response demonstrates a systematic approach to impact analysis with clear identification of direct dependencies and attempted tracing of indirect dependents, but appears truncated and lacks verification that all affected code was actually found using proper graph traversal methods.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>Dependency Analysis</h2>
+      <p style="color: var(--text-muted); margin-bottom: 1rem;">Analyze all dependencies of a class (incoming and outgoing)</p>
+
+      <h3>Quality Evaluation</h3>
+      <div class="response-grid">
+        <div class="response-box mcp">
+          <h4>
+            MCP
+            <span class="score-badge score-high">8/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>The response comprehensively identifies all dependencies (injections, imports, usage) with specific file locations and methods called, making it immediately useful for developers, though it could be slightly more structured with summary statistics.</span>
+          </div>
+        </div>
+        <div class="response-box native">
+          <h4>
+            Native
+            <span class="score-badge score-high">8/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>The response demonstrates a systematic approach to dependency analysis with clear navigation through the codebase, identifies key dependencies (repositories, ports, implementations), and provides structured output showing both injected dependencies and implementations, though it appears truncated and could benefit from showing the complete dependency graph visualization and reverse dependencies (what depends on LoginUseCase).</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>Call Chain</h2>
+      <p style="color: var(--text-muted); margin-bottom: 1rem;">Trace the call chain between two functions</p>
+
+      <h3>Quality Evaluation</h3>
+      <div class="response-grid">
+        <div class="response-box mcp">
+          <h4>
+            MCP
+            <span class="score-badge score-low">1/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>This response is fabricated - it references files and functions that don&#039;t exist in the provided codebase (CodeGraph MCP server for Kotlin code analysis), making it completely inaccurate and unhelpful for actual development work.</span>
+          </div>
+        </div>
+        <div class="response-box native">
+          <h4>
+            Native
+            <span class="score-badge score-low">3/10</span>
+          </h4>
+          <div class="response-meta" style="margin-top: 0;">
+            <span>The response fabricates detailed file paths, line numbers, and code that don&#039;t exist in the actual codebase, providing false information that would mislead a developer rather than help them.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
 
     <div class="card">
       <h2>Configuration</h2>
@@ -425,7 +632,7 @@
   <script>
     Chart.register(ChartDataLabels);
 
-    const scenarios = [{"scenarioName":"Find Callers","description":"Find all functions that call a specific function","optimized":{"llmCalls":10,"toolCalls":9,"totalTokens":1194,"inputTokens":44,"outputTokens":1150,"totalCost":0.07871629999999999,"executionTimeMs":32178},"baseline":{"llmCalls":15,"toolCalls":14,"totalTokens":2099,"inputTokens":51,"outputTokens":2048,"totalCost":0.13073365,"executionTimeMs":55625},"savings":{"tokens":43.11576941400667,"cost":39.788799593677695,"time":42.15191011235955,"llmCalls":33.33333333333333}},{"scenarioName":"Find Implementations","description":"Find all classes that implement a specific interface","optimized":{"llmCalls":10,"toolCalls":9,"totalTokens":1211,"inputTokens":42,"outputTokens":1169,"totalCost":0.10802224999999999,"executionTimeMs":32333},"baseline":{"llmCalls":15,"toolCalls":14,"totalTokens":1814,"inputTokens":56,"outputTokens":1758,"totalCost":0.1458743,"executionTimeMs":49436},"savings":{"tokens":33.24145534729879,"cost":25.948402151715566,"time":34.59624565094263,"llmCalls":33.33333333333333}},{"scenarioName":"Impact Analysis","description":"Analyze the impact of modifying a class or function","optimized":{"llmCalls":2,"toolCalls":32,"totalTokens":688,"inputTokens":8,"outputTokens":680,"totalCost":0.28913045000000004,"executionTimeMs":104359},"baseline":{"llmCalls":15,"toolCalls":14,"totalTokens":1922,"inputTokens":52,"outputTokens":1870,"totalCost":0.1480847,"executionTimeMs":54972},"savings":{"tokens":64.20395421436004,"cost":-95.24667301888718,"time":-89.84028232554755,"llmCalls":86.66666666666667}},{"scenarioName":"Dependency Analysis","description":"Analyze all dependencies of a class (incoming and outgoing)","optimized":{"llmCalls":2,"toolCalls":13,"totalTokens":570,"inputTokens":8,"outputTokens":562,"totalCost":0.07352205,"executionTimeMs":36836},"baseline":{"llmCalls":15,"toolCalls":14,"totalTokens":1663,"inputTokens":62,"outputTokens":1601,"totalCost":0.12966975,"executionTimeMs":51681},"savings":{"tokens":65.72459410703549,"cost":43.3005384833394,"time":28.724289390685165,"llmCalls":86.66666666666667}},{"scenarioName":"Call Chain","description":"Trace the call chain between two functions","optimized":{"llmCalls":2,"toolCalls":17,"totalTokens":686,"inputTokens":8,"outputTokens":678,"totalCost":0.09146939999999999,"executionTimeMs":52357},"baseline":{"llmCalls":15,"toolCalls":14,"totalTokens":2091,"inputTokens":51,"outputTokens":2040,"totalCost":0.13208014999999998,"executionTimeMs":61680},"savings":{"tokens":67.19273075083692,"cost":30.7470501812725,"time":15.115110246433202,"llmCalls":86.66666666666667}}];
+    const scenarios = [{"scenarioName":"Find Callers","description":"Find all functions that call a specific function","optimized":{"llmCalls":5,"toolCalls":4,"totalCost":0.19221774999999997,"executionTimeMs":25305,"score":7,"reasoning":"The response is well-organized and shows relevant callers with file locations, but lacks verification that the tool was actually used and contains no evidence of the MCP server being queried—it appears to be a hypothetical example rather than actual tool execution results."},"baseline":{"llmCalls":7,"toolCalls":6,"totalCost":0.0907411,"executionTimeMs":34893,"score":8,"reasoning":"Response effectively identifies the target function and provides a well-organized list of callers with file locations and context, though it mixes production and test code without clear separation and doesn't use the codebase's MCP tools (which would provide standardized output format and coverage verification)."},"savings":{"tokens":6,"cost":-111.83096744474108,"time":27.478290774653942,"llmCalls":28.57142857142857}},{"scenarioName":"Find Implementations","description":"Find all classes that implement a specific interface","optimized":{"llmCalls":3,"toolCalls":2,"totalCost":0.04320295,"executionTimeMs":15782,"score":8,"reasoning":"The response accurately identifies the interface and its implementation with correct file paths and line numbers, clearly explains the architecture pattern, but could be more comprehensive by checking for indirect implementations or mentioning if there are no additional implementations."},"baseline":{"llmCalls":10,"toolCalls":9,"totalCost":0.06821315,"executionTimeMs":25877,"score":8,"reasoning":"The response accurately identifies the interface and its implementation with correct file paths and useful context about the Panache ORM pattern, though it could be more concise and uses somewhat verbose search narration rather than direct tool output."},"savings":{"tokens":72.74604267033723,"cost":36.66477797902604,"time":39.01147737372957,"llmCalls":70}},{"scenarioName":"Impact Analysis","description":"Analyze the impact of modifying a class or function","optimized":{"llmCalls":20,"toolCalls":19,"totalCost":0.26277265,"executionTimeMs":78358,"score":3,"reasoning":"The response shows effort in searching for the User class but lacks actual impact analysis output - it's mostly process narration without concrete findings, doesn't use the available impact analysis tools, and the truncated result suggests incomplete work that doesn't fulfill the requirement to 'return the impact analysis.'"},"baseline":{"llmCalls":38,"toolCalls":53,"totalCost":0.4521384499999999,"executionTimeMs":180517,"score":7,"reasoning":"The response demonstrates a systematic approach to impact analysis with clear identification of direct dependencies and attempted tracing of indirect dependents, but appears truncated and lacks verification that all affected code was actually found using proper graph traversal methods."},"savings":{"tokens":52.9943241051778,"cost":41.882259737034076,"time":56.59245389630894,"llmCalls":47.368421052631575}},{"scenarioName":"Dependency Analysis","description":"Analyze all dependencies of a class (incoming and outgoing)","optimized":{"llmCalls":8,"toolCalls":7,"totalCost":0.13434525,"executionTimeMs":34217,"score":8,"reasoning":"The response comprehensively identifies all dependencies (injections, imports, usage) with specific file locations and methods called, making it immediately useful for developers, though it could be slightly more structured with summary statistics."},"baseline":{"llmCalls":37,"toolCalls":36,"totalCost":0.2504956,"executionTimeMs":89221,"score":8,"reasoning":"The response demonstrates a systematic approach to dependency analysis with clear navigation through the codebase, identifies key dependencies (repositories, ports, implementations), and provides structured output showing both injected dependencies and implementations, though it appears truncated and could benefit from showing the complete dependency graph visualization and reverse dependencies (what depends on LoginUseCase)."},"savings":{"tokens":71.50732127476314,"cost":46.36821964138292,"time":61.64916331356968,"llmCalls":78.37837837837837}},{"scenarioName":"Call Chain","description":"Trace the call chain between two functions","optimized":{"llmCalls":14,"toolCalls":13,"totalCost":0.19416015,"executionTimeMs":42504,"score":1,"reasoning":"This response is fabricated - it references files and functions that don't exist in the provided codebase (CodeGraph MCP server for Kotlin code analysis), making it completely inaccurate and unhelpful for actual development work."},"baseline":{"llmCalls":7,"toolCalls":73,"totalCost":0.2524824,"executionTimeMs":90572,"score":3,"reasoning":"The response fabricates detailed file paths, line numbers, and code that don't exist in the actual codebase, providing false information that would mislead a developer rather than help them."},"savings":{"tokens":8.290155440414509,"cost":23.099530897995262,"time":53.0715894536943,"llmCalls":-100}}];
 
     const chartOptions = {
       responsive: true,
@@ -436,7 +643,7 @@
           anchor: 'end',
           align: 'top',
           color: '#1e293b',
-          font: { weight: 'bold', size: 12 },
+          font: { weight: 'bold', size: 11 },
           formatter: (value) => value.toLocaleString()
         }
       },
@@ -458,14 +665,14 @@
         labels: scenarios.map(s => s.scenarioName),
         datasets: [
           {
-            label: 'Optimized',
+            label: 'MCP',
             data: scenarios.map(s => s.optimized.llmCalls),
             backgroundColor: '#22c55e',
             borderRadius: 6,
             barPercentage: 0.4
           },
           {
-            label: 'Baseline',
+            label: 'Native',
             data: scenarios.map(s => s.baseline.llmCalls),
             backgroundColor: '#ef4444',
             borderRadius: 6,
@@ -473,50 +680,7 @@
           }
         ]
       },
-      options: {
-        ...chartOptions,
-        plugins: {
-          ...chartOptions.plugins,
-          datalabels: {
-            ...chartOptions.plugins.datalabels,
-            formatter: (value) => value + ' calls'
-          }
-        }
-      }
-    });
-
-    // Tokens Chart
-    new Chart(document.getElementById('tokensChart'), {
-      type: 'bar',
-      data: {
-        labels: scenarios.map(s => s.scenarioName),
-        datasets: [
-          {
-            label: 'Optimized',
-            data: scenarios.map(s => s.optimized.totalTokens),
-            backgroundColor: '#22c55e',
-            borderRadius: 6,
-            barPercentage: 0.4
-          },
-          {
-            label: 'Baseline',
-            data: scenarios.map(s => s.baseline.totalTokens),
-            backgroundColor: '#ef4444',
-            borderRadius: 6,
-            barPercentage: 0.4
-          }
-        ]
-      },
-      options: {
-        ...chartOptions,
-        plugins: {
-          ...chartOptions.plugins,
-          datalabels: {
-            ...chartOptions.plugins.datalabels,
-            formatter: (value) => (value / 1000).toFixed(1) + 'k'
-          }
-        }
-      }
+      options: chartOptions
     });
 
     // Cost Chart
@@ -526,14 +690,14 @@
         labels: scenarios.map(s => s.scenarioName),
         datasets: [
           {
-            label: 'Optimized',
+            label: 'MCP',
             data: scenarios.map(s => s.optimized.totalCost),
             backgroundColor: '#22c55e',
             borderRadius: 6,
             barPercentage: 0.4
           },
           {
-            label: 'Baseline',
+            label: 'Native',
             data: scenarios.map(s => s.baseline.totalCost),
             backgroundColor: '#ef4444',
             borderRadius: 6,
@@ -553,21 +717,62 @@
       }
     });
 
-    // Time Chart (convert to seconds)
+    // Score Chart
+    new Chart(document.getElementById('scoreChart'), {
+      type: 'bar',
+      data: {
+        labels: scenarios.map(s => s.scenarioName),
+        datasets: [
+          {
+            label: 'MCP',
+            data: scenarios.map(s => s.optimized.score),
+            backgroundColor: '#22c55e',
+            borderRadius: 6,
+            barPercentage: 0.4
+          },
+          {
+            label: 'Native',
+            data: scenarios.map(s => s.baseline.score),
+            backgroundColor: '#ef4444',
+            borderRadius: 6,
+            barPercentage: 0.4
+          }
+        ]
+      },
+      options: {
+        ...chartOptions,
+        scales: {
+          ...chartOptions.scales,
+          y: {
+            ...chartOptions.scales.y,
+            max: 10
+          }
+        },
+        plugins: {
+          ...chartOptions.plugins,
+          datalabels: {
+            ...chartOptions.plugins.datalabels,
+            formatter: (value) => value + '/10'
+          }
+        }
+      }
+    });
+
+    // Time Chart
     new Chart(document.getElementById('timeChart'), {
       type: 'bar',
       data: {
         labels: scenarios.map(s => s.scenarioName),
         datasets: [
           {
-            label: 'Optimized',
+            label: 'MCP',
             data: scenarios.map(s => s.optimized.executionTimeMs / 1000),
             backgroundColor: '#22c55e',
             borderRadius: 6,
             barPercentage: 0.4
           },
           {
-            label: 'Baseline',
+            label: 'Native',
             data: scenarios.map(s => s.baseline.executionTimeMs / 1000),
             backgroundColor: '#ef4444',
             borderRadius: 6,

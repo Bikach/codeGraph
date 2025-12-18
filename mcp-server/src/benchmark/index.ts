@@ -3,233 +3,232 @@
 /**
  * CodeGraph Benchmark CLI
  *
- * Compares MCP CodeGraph tools vs native Glob/Grep/Read operations
- * to measure token savings, cost reduction, and performance improvements.
+ * Compares MCP CodeGraph tools vs native Glob/Grep/Read operations.
  *
  * Usage:
- *   npm run benchmark <project-path>
- *
- * Example:
- *   npm run benchmark /path/to/kotlin-project
- *
- * Environment variables:
- *   ANTHROPIC_API_KEY   - Required: Anthropic API key
- *   BENCHMARK_MODEL     - Model to use (default: claude-sonnet-4-20250514)
- *   NEO4J_URI          - Neo4j connection URI
- *   NEO4J_USER         - Neo4j username
- *   NEO4J_PASSWORD     - Neo4j password
+ *   npm run benchmark:mcp <project-path>     # Run with MCP tools
+ *   npm run benchmark:native <project-path>  # Run with native tools
+ *   npm run benchmark:report                 # Generate HTML report from JSON files
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { loadConfig } from './config.js';
+import { scenarios } from './scenarios/index.js';
+import { BenchmarkRunner, type RunnerMode } from './runners/index.js';
+import { evaluateResponse } from './evaluator.js';
+import type { BenchmarkRunResult, ScenarioResult, ResponseEvaluation } from './types.js';
+import type { ScenarioContext } from './scenarios/types.js';
+
+const OUTPUT_DIR = path.join(process.cwd(), 'benchmark-results');
 
 function printUsage(): void {
   console.log(`
-Usage: npm run benchmark <project-path>
+Usage:
+  npm run benchmark:mcp <project-path>     Run benchmark with MCP tools
+  npm run benchmark:native <project-path>  Run benchmark with native tools
+  npm run benchmark:report                 Generate HTML report from results
 
 Arguments:
-  project-path    Path to the Kotlin project to analyze (required)
+  project-path    Path to the project to analyze (required for mcp/native)
 
 Example:
-  npm run benchmark /Users/me/my-kotlin-project
-
-Environment variables:
-  ANTHROPIC_API_KEY   Anthropic API key (required)
-  BENCHMARK_MODEL     Model: claude-sonnet-4-20250514 or claude-opus-4-20250514
-  NEO4J_URI           Neo4j URI (default: bolt://localhost:7687)
+  npm run benchmark:mcp /Users/me/my-kotlin-project
+  npm run benchmark:native /Users/me/my-kotlin-project
+  npm run benchmark:report
 `);
 }
-import { scenarios } from './scenarios/index.js';
-import type { ScenarioContext } from './scenarios/types.js';
-import { McpRunner } from './runners/index.js';
-import { NativeRunner } from './runners/index.js';
-import { generateHtmlReport } from './reporters/index.js';
-import type { BenchmarkReport, ComparisonResult, BenchmarkMetrics } from './types.js';
 
-function calculateSavings(
-  mcp: BenchmarkMetrics,
-  native: BenchmarkMetrics
-): { tokens: number; cost: number; time: number; llmCalls: number } {
-  const tokenSavings = native.tokenUsage.totalTokens > 0
-    ? ((native.tokenUsage.totalTokens - mcp.tokenUsage.totalTokens) / native.tokenUsage.totalTokens) * 100
-    : 0;
-
-  const costSavings = native.cost.totalCost > 0
-    ? ((native.cost.totalCost - mcp.cost.totalCost) / native.cost.totalCost) * 100
-    : 0;
-
-  const timeSavings = native.executionTimeMs > 0
-    ? ((native.executionTimeMs - mcp.executionTimeMs) / native.executionTimeMs) * 100
-    : 0;
-
-  const llmCallsSavings = native.llmCalls > 0
-    ? ((native.llmCalls - mcp.llmCalls) / native.llmCalls) * 100
-    : 0;
-
-  return { tokens: tokenSavings, cost: costSavings, time: timeSavings, llmCalls: llmCallsSavings };
+/**
+ * Hardcoded context for h-backend project benchmark
+ * Uses functional descriptions instead of exact class/function names
+ */
+function getHBackendContext(): Omit<ScenarioContext, 'projectPath'> {
+  return {
+    targetFunctionDesc: 'the function that finds a user by their ID',
+    targetClassDesc: 'the use case that handles user login',
+    targetInterfaceDesc: 'the repository interface for managing users',
+    impactTargetClassDesc: 'the domain model representing a user',
+    callChainFromDesc: 'the function that retrieves a user by ID',
+    callChainToDesc: 'the function that saves data to the database',
+  };
 }
 
-async function runBenchmarks(): Promise<void> {
-  // Parse CLI argument for project path
-  const args = process.argv.slice(2);
-
-  if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
-    printUsage();
-    process.exit(args.length === 0 ? 1 : 0);
-  }
-
-  const projectPath = path.resolve(args[0]!);
-
-  // Validate project path exists
-  if (!fs.existsSync(projectPath)) {
-    console.error(`❌ Error: Project path does not exist: ${projectPath}`);
-    process.exit(1);
-  }
-
-  if (!fs.statSync(projectPath).isDirectory()) {
-    console.error(`❌ Error: Project path is not a directory: ${projectPath}`);
-    process.exit(1);
-  }
-
-  console.log('🚀 Benchmark Suite\n');
-
-  // Load configuration with CLI project path
-  const config = { ...loadConfig(), projectPath };
-  console.log(`📁 Project: ${config.projectPath}`);
-  console.log(`🔄 Runs per scenario: ${config.runsPerScenario}`);
+async function runBenchmark(mode: RunnerMode, projectPath: string): Promise<void> {
+  console.log(`\n🚀 Benchmark Suite - ${mode.toUpperCase()} Mode\n`);
+  console.log(`📁 Project: ${projectPath}`);
   console.log(`📊 Scenarios: ${scenarios.length}\n`);
 
-  // Initialize runners
-  const mcpRunner = new McpRunner();
-  const nativeRunner = new NativeRunner();
-
-  await mcpRunner.initialize();
-  console.log('✅ Runners initialized\n');
-
   const context: ScenarioContext = {
-    projectPath: config.projectPath,
-    targetFunction: 'handleSearchNodes',
-    targetClass: 'Neo4jClient',
-    targetInterface: 'LanguageParser',
+    ...getHBackendContext(),
+    projectPath,
   };
 
-  const results: ComparisonResult[] = [];
+  console.log('📌 Benchmark targets (functional descriptions):');
+  console.log(`   • ${context.targetFunctionDesc}`);
+  console.log(`   • ${context.targetClassDesc}`);
+  console.log(`   • ${context.targetInterfaceDesc}`);
+  console.log(`   • ${context.impactTargetClassDesc}\n`);
 
-  // Run each scenario
+  const runner = new BenchmarkRunner(mode);
+  const results: ScenarioResult[] = [];
+
   for (const scenario of scenarios) {
-    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     console.log(`📋 ${scenario.name}`);
     console.log(`   ${scenario.description}`);
+    if (mode === 'mcp') {
+      console.log(`   Expected tool: ${scenario.expectedMcpTool}`);
+    }
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
-    // Run MCP version
-    console.log('🔷 Running MCP version...');
-    let mcpMetrics: BenchmarkMetrics;
+    const prompt = scenario.getPrompt(context);
+    console.log(`💬 Prompt: "${prompt.substring(0, 80)}..."\n`);
+
     try {
-      mcpMetrics = await mcpRunner.runScenario(scenario, context);
-      console.log(`   ✅ LLM calls: ${mcpMetrics.llmCalls}, Tool calls: ${mcpMetrics.toolCalls}`);
-      console.log(`   📊 Tokens: ${mcpMetrics.tokenUsage.totalTokens.toLocaleString()}`);
-      console.log(`   💰 Cost: $${mcpMetrics.cost.totalCost.toFixed(4)}`);
-      console.log(`   ⏱️  Time: ${(mcpMetrics.executionTimeMs / 1000).toFixed(1)}s`);
+      const metrics = await runner.runScenario(scenario, context);
+      console.log(`   ✅ LLM calls: ${metrics.llmCalls}, Tool calls: ${metrics.toolCalls}`);
+      console.log(`   📊 Tokens: ${metrics.tokenUsage.totalTokens.toLocaleString()}`);
+      console.log(`   💰 Cost: $${metrics.cost.totalCost.toFixed(4)}`);
+      console.log(`   ⏱️  Time: ${(metrics.executionTimeMs / 1000).toFixed(1)}s`);
+      if (metrics.toolsUsed?.length) {
+        console.log(`   🔧 Tools: ${metrics.toolsUsed.join(', ')}`);
+        // Check if expected tool was used
+        if (mode === 'mcp') {
+          const usedExpected = metrics.toolsUsed.some(t => t === scenario.expectedMcpTool);
+          console.log(`   ${usedExpected ? '✅' : '❌'} Expected tool: ${usedExpected ? 'YES' : 'NO'}`);
+        }
+      }
+      console.log(`   📝 Response: ${metrics.response.substring(0, 100)}...`);
+
+      // Evaluate response
+      console.log(`\n   🔍 Evaluating response...`);
+      let evaluation: ResponseEvaluation | undefined;
+      try {
+        evaluation = await evaluateResponse(
+          scenario,
+          prompt,
+          metrics.response,
+          metrics.toolsUsed || [],
+          mode === 'mcp' ? scenario.expectedMcpTool : undefined
+        );
+        console.log(`   📊 Score: ${evaluation.score}/10`);
+        console.log(`   💭 ${evaluation.reasoning}`);
+        console.log(`   🔧 Correct tool: ${evaluation.usedCorrectTool ? 'YES' : 'NO'}`);
+      } catch {
+        console.log(`   ⚠️ Could not evaluate response`);
+      }
+
+      results.push({
+        scenarioId: scenario.id,
+        scenarioName: scenario.name,
+        description: scenario.description,
+        prompt,
+        expectedMcpTool: mode === 'mcp' ? scenario.expectedMcpTool : undefined,
+        metrics,
+        evaluation,
+      });
     } catch (error) {
       console.log(`   ❌ Error: ${error instanceof Error ? error.message : String(error)}`);
-      mcpMetrics = {
-        llmCalls: 0,
-        toolCalls: 0,
-        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-        cost: { totalCost: 0 },
-        executionTimeMs: 0,
-      };
+      results.push({
+        scenarioId: scenario.id,
+        scenarioName: scenario.name,
+        description: scenario.description,
+        prompt,
+        expectedMcpTool: mode === 'mcp' ? scenario.expectedMcpTool : undefined,
+        metrics: {
+          llmCalls: 0,
+          toolCalls: 0,
+          tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          cost: { totalCost: 0 },
+          executionTimeMs: 0,
+          response: `Error: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      });
     }
 
-    // Run Native version
-    console.log('\n🔶 Running Native version...');
-    let nativeMetrics: BenchmarkMetrics;
-    try {
-      nativeMetrics = await nativeRunner.runScenario(scenario, context);
-      console.log(`   ✅ LLM calls: ${nativeMetrics.llmCalls}, Tool calls: ${nativeMetrics.toolCalls}`);
-      console.log(`   📊 Tokens: ${nativeMetrics.tokenUsage.totalTokens.toLocaleString()}`);
-      console.log(`   💰 Cost: $${nativeMetrics.cost.totalCost.toFixed(4)}`);
-      console.log(`   ⏱️  Time: ${(nativeMetrics.executionTimeMs / 1000).toFixed(1)}s`);
-    } catch (error) {
-      console.log(`   ❌ Error: ${error instanceof Error ? error.message : String(error)}`);
-      nativeMetrics = {
-        llmCalls: 0,
-        toolCalls: 0,
-        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-        cost: { totalCost: 0 },
-        executionTimeMs: 0,
-      };
-    }
-
-    const savings = calculateSavings(mcpMetrics, nativeMetrics);
-    console.log(`\n📈 Savings: ${savings.cost.toFixed(0)}% cost, ${savings.tokens.toFixed(0)}% tokens, ${savings.llmCalls.toFixed(0)}% LLM calls`);
-
-    results.push({
-      scenarioId: scenario.id,
-      scenarioName: scenario.name,
-      description: scenario.description,
-      mcp: mcpMetrics,
-      native: nativeMetrics,
-      savings,
-    });
-
+    console.log('');
   }
 
-  // Calculate summary
-  const avgTokenSavings = results.reduce((sum, r) => sum + r.savings.tokens, 0) / results.length;
-  const avgCostSavings = results.reduce((sum, r) => sum + r.savings.cost, 0) / results.length;
-  const avgTimeSavings = results.reduce((sum, r) => sum + r.savings.time, 0) / results.length;
-  const avgLlmCallsSavings = results.reduce((sum, r) => sum + r.savings.llmCalls, 0) / results.length;
-  const totalMcpCost = results.reduce((sum, r) => sum + r.mcp.cost.totalCost, 0);
-  const totalNativeCost = results.reduce((sum, r) => sum + r.native.cost.totalCost, 0);
-
-  const report: BenchmarkReport = {
-    timestamp: new Date(),
-    config,
-    scenarios: results,
-    summary: {
-      avgTokenSavings,
-      avgCostSavings,
-      avgTimeSavings,
-      avgLlmCallsSavings,
-      totalMcpCost,
-      totalNativeCost,
-    },
+  // Calculate totals
+  const totals = {
+    cost: results.reduce((sum, r) => sum + r.metrics.cost.totalCost, 0),
+    tokens: results.reduce((sum, r) => sum + r.metrics.tokenUsage.totalTokens, 0),
+    time: results.reduce((sum, r) => sum + r.metrics.executionTimeMs, 0),
+    llmCalls: results.reduce((sum, r) => sum + r.metrics.llmCalls, 0),
+    toolCalls: results.reduce((sum, r) => sum + r.metrics.toolCalls, 0),
   };
 
-  // Generate HTML report
-  const outputDir = path.join(process.cwd(), 'benchmark-results');
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
+  // Calculate average score
+  const scoredResults = results.filter(r => r.evaluation?.score);
+  const avgScore = scoredResults.length > 0
+    ? scoredResults.reduce((sum, r) => sum + (r.evaluation?.score || 0), 0) / scoredResults.length
+    : 0;
+
+  const runResult: BenchmarkRunResult = {
+    mode,
+    timestamp: new Date().toISOString(),
+    projectPath,
+    scenarios: results,
+    totals,
+  };
+
+  // Save results
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   }
 
-  const htmlPath = path.join(outputDir, 'report.html');
-  fs.writeFileSync(htmlPath, generateHtmlReport(report));
-
-  // Cleanup
-  await mcpRunner.cleanup();
+  const outputPath = path.join(OUTPUT_DIR, `${mode}-results.json`);
+  fs.writeFileSync(outputPath, JSON.stringify(runResult, null, 2));
 
   // Print summary
-  console.log('\n\n════════════════════════════════════════════════════════════');
-  console.log('                    BENCHMARK SUMMARY');
+  console.log('\n════════════════════════════════════════════════════════════');
+  console.log(`                    ${mode.toUpperCase()} BENCHMARK COMPLETE`);
   console.log('════════════════════════════════════════════════════════════\n');
-  console.log(`📊 Average Savings with Optimized Approach:`);
-  console.log(`   • LLM Calls:  ${avgLlmCallsSavings.toFixed(0)}% fewer`);
-  console.log(`   • Tokens:     ${avgTokenSavings.toFixed(0)}% saved`);
-  console.log(`   • Cost:       ${avgCostSavings.toFixed(0)}% saved`);
-  console.log(`   • Time:       ${avgTimeSavings.toFixed(0)}% faster`);
-  console.log(`\n💰 Total Costs:`);
-  console.log(`   • MCP:    $${totalMcpCost.toFixed(4)}`);
-  console.log(`   • Native: $${totalNativeCost.toFixed(4)}`);
-  console.log(`   • Saved:  $${(totalNativeCost - totalMcpCost).toFixed(4)}`);
-  console.log(`\n📄 Report saved to: ${htmlPath}`);
+  console.log(`📊 Totals:`);
+  console.log(`   • LLM Calls:  ${totals.llmCalls}`);
+  console.log(`   • Tool Calls: ${totals.toolCalls}`);
+  console.log(`   • Tokens:     ${totals.tokens.toLocaleString()}`);
+  console.log(`   • Cost:       $${totals.cost.toFixed(4)}`);
+  console.log(`   • Time:       ${(totals.time / 1000).toFixed(1)}s`);
+  console.log(`   • Avg Score:  ${avgScore.toFixed(1)}/10`);
+  console.log(`\n📄 Results saved to: ${outputPath}`);
   console.log('\n════════════════════════════════════════════════════════════\n');
 }
 
 // Main entry point
-runBenchmarks().catch((error) => {
+const args = process.argv.slice(2);
+
+if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
+  printUsage();
+  process.exit(args.length === 0 ? 1 : 0);
+}
+
+const mode = args[0] as RunnerMode;
+const projectPath = args[1] ? path.resolve(args[1]) : undefined;
+
+if (mode !== 'mcp' && mode !== 'native') {
+  console.error(`❌ Error: Invalid mode "${mode}". Use "mcp" or "native".`);
+  printUsage();
+  process.exit(1);
+}
+
+if (!projectPath) {
+  console.error(`❌ Error: Project path is required.`);
+  printUsage();
+  process.exit(1);
+}
+
+if (!fs.existsSync(projectPath)) {
+  console.error(`❌ Error: Project path does not exist: ${projectPath}`);
+  process.exit(1);
+}
+
+if (!fs.statSync(projectPath).isDirectory()) {
+  console.error(`❌ Error: Project path is not a directory: ${projectPath}`);
+  process.exit(1);
+}
+
+runBenchmark(mode, projectPath).catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });

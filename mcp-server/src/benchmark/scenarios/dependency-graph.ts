@@ -4,14 +4,10 @@ export const dependencyGraphScenario: BenchmarkScenario = {
   id: 'dependency-analysis',
   name: 'Dependency Analysis',
   description: 'Analyze all dependencies of a class (incoming and outgoing)',
+  expectedMcpTool: 'mcp__codegraph__get_neighbors',
 
   getPrompt(context: ScenarioContext): string {
-    const className = context.targetClass || 'DataProcessor';
-    return `What are all the dependencies of the class "${className}"?
-Project path: ${context.projectPath}`;
-  },
-
-  validateOutput(output: string): boolean {
-    return output.toLowerCase().includes('depend') || output.includes('→') || output.includes('->');
+    const classDesc = context.targetClassDesc || 'the use case that handles user authentication';
+    return `Analyze all dependencies of ${classDesc}. Find what it depends on (imports, injections) and what depends on it (usages). Return the dependency graph.`;
   },
 };

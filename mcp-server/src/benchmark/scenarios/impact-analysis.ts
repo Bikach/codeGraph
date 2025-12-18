@@ -4,15 +4,10 @@ export const impactAnalysisScenario: BenchmarkScenario = {
   id: 'impact-analysis',
   name: 'Impact Analysis',
   description: 'Analyze the impact of modifying a class or function',
+  expectedMcpTool: 'mcp__codegraph__get_impact',
 
   getPrompt(context: ScenarioContext): string {
-    const className = context.targetClass || 'UserService';
-    return `Analyze the impact of modifying the class "${className}".
-What code would be affected if this class changes?
-Project path: ${context.projectPath}`;
-  },
-
-  validateOutput(output: string): boolean {
-    return output.toLowerCase().includes('impact') || output.toLowerCase().includes('dependent');
+    const classDesc = context.impactTargetClassDesc || 'the domain model representing a user';
+    return `Analyze the impact of modifying ${classDesc}. Find all code that would be affected by changes to this class, including direct and indirect dependents. Return the impact analysis.`;
   },
 };
