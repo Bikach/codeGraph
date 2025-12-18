@@ -13,7 +13,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "benchmark": "tsx src/benchmark/index.ts"
   },
   "keywords": [
     "mcp",
@@ -32,8 +33,10 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.72",
     "@testcontainers/neo4j": "^11.10.0",
     "@types/node": "^22.15.30",
+    "glob": "^11.0.0",
     "testcontainers": "^11.10.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
