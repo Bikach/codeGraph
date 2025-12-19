@@ -12,6 +12,16 @@ CodeGraph gives LLMs **structural understanding** of your code through a graph d
 - **Dependency mapping** - Visualize class dependencies
 - **Symbol search** - Find classes, functions, interfaces by name
 
+## Supported Languages
+
+| Language | Status |
+|----------|--------|
+| **Kotlin** | ✅ Available |
+| Java | 🔜 Coming soon |
+| TypeScript/Node.js | 🔜 Coming soon |
+
+> 📢 Follow me on [LinkedIn](https://www.linkedin.com/in/chakib-houd-io/) to get notified when new languages are available!
+
 ### Benchmark Results
 
 Tested on a Kotlin/Quarkus backend, CodeGraph reduces LLM calls, token usage, and costs by 40-50% compared to native file search tools (Glob/Grep/Read).
