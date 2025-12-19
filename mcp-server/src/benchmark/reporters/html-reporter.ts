@@ -17,18 +17,16 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       optimized: {
         llmCalls: s.mcp.llmCalls,
         toolCalls: s.mcp.toolCalls,
+        tokens: s.mcp.tokenUsage.totalTokens,
         totalCost: s.mcp.cost.totalCost,
         executionTimeMs: s.mcp.executionTimeMs,
-        score: s.mcp.evaluation?.score || 0,
-        reasoning: s.mcp.evaluation?.reasoning || '',
       },
       baseline: {
         llmCalls: s.native.llmCalls,
         toolCalls: s.native.toolCalls,
+        tokens: s.native.tokenUsage.totalTokens,
         totalCost: s.native.cost.totalCost,
         executionTimeMs: s.native.executionTimeMs,
-        score: s.native.evaluation?.score || 0,
-        reasoning: s.native.evaluation?.reasoning || '',
       },
       savings: s.savings,
     }))
@@ -197,31 +195,6 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       color: #991b1b;
     }
 
-    .score-badge {
-      display: inline-block;
-      padding: 0.25rem 0.5rem;
-      border-radius: 6px;
-      font-weight: 600;
-      font-size: 0.75rem;
-    }
-
-    .score-high { background: #dcfce7; color: #166534; }
-    .score-medium { background: #fef9c3; color: #854d0e; }
-    .score-low { background: #fee2e2; color: #991b1b; }
-
-    .tool-badge {
-      display: inline-block;
-      padding: 0.125rem 0.5rem;
-      border-radius: 4px;
-      font-size: 0.7rem;
-      background: #e0e7ff;
-      color: #3730a3;
-      margin: 0.125rem;
-    }
-
-    .tool-badge.correct { background: #dcfce7; color: #166534; }
-    .tool-badge.wrong { background: #fee2e2; color: #991b1b; }
-
     .legend {
       display: flex;
       justify-content: center;
@@ -249,69 +222,6 @@ export function generateHtmlReport(report: BenchmarkReport): string {
 
     .legend-dot.optimized { background: var(--optimized); }
     .legend-dot.baseline { background: var(--baseline); }
-
-    .response-container {
-      margin-top: 1rem;
-    }
-
-    .response-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-    }
-
-    .response-box {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1rem;
-    }
-
-    .response-box h4 {
-      font-size: 0.875rem;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .response-box.mcp h4 { color: var(--optimized); }
-    .response-box.native h4 { color: var(--baseline); }
-
-    .response-text {
-      font-family: monospace;
-      font-size: 0.75rem;
-      white-space: pre-wrap;
-      max-height: 200px;
-      overflow-y: auto;
-      background: white;
-      padding: 0.5rem;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-    }
-
-    .response-meta {
-      display: flex;
-      gap: 1rem;
-      margin-top: 0.5rem;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-    }
-
-    .toggle-btn {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.5rem 1rem;
-      cursor: pointer;
-      font-size: 0.875rem;
-      margin-top: 1rem;
-    }
-
-    .toggle-btn:hover {
-      background: var(--border);
-    }
 
     .config-info {
       display: grid;
@@ -341,7 +251,6 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       header h1 { font-size: 1.75rem; }
       .charts-grid { grid-template-columns: 1fr; }
       .chart-container { height: 300px; }
-      .response-grid { grid-template-columns: 1fr; }
       table { font-size: 0.75rem; }
       th, td { padding: 0.5rem; }
     }
@@ -362,20 +271,16 @@ export function generateHtmlReport(report: BenchmarkReport): string {
           <div class="metric-label">Fewer LLM Calls</div>
         </div>
         <div class="metric-card">
+          <div class="metric-value">${report.summary.avgTokenSavings.toFixed(0)}%</div>
+          <div class="metric-label">Fewer Tokens</div>
+        </div>
+        <div class="metric-card">
           <div class="metric-value">${report.summary.avgCostSavings.toFixed(0)}%</div>
           <div class="metric-label">Cost Reduction</div>
         </div>
         <div class="metric-card">
           <div class="metric-value">${report.summary.avgTimeSavings.toFixed(0)}%</div>
           <div class="metric-label">Faster</div>
-        </div>
-        <div class="metric-card neutral">
-          <div class="metric-value">${report.summary.avgMcpScore.toFixed(1)}</div>
-          <div class="metric-label">MCP Quality /10</div>
-        </div>
-        <div class="metric-card neutral">
-          <div class="metric-value">${report.summary.avgNativeScore.toFixed(1)}</div>
-          <div class="metric-label">Native Quality /10</div>
         </div>
       </div>
     </div>
@@ -414,16 +319,16 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       </div>
 
       <div class="card">
-        <h2>Cost per Scenario ($)</h2>
+        <h2>Tokens per Scenario</h2>
         <div class="chart-container">
-          <canvas id="costChart"></canvas>
+          <canvas id="tokensChart"></canvas>
         </div>
       </div>
 
       <div class="card">
-        <h2>Quality Score per Scenario</h2>
+        <h2>Cost per Scenario ($)</h2>
         <div class="chart-container">
-          <canvas id="scoreChart"></canvas>
+          <canvas id="costChart"></canvas>
         </div>
       </div>
 
@@ -444,10 +349,10 @@ export function generateHtmlReport(report: BenchmarkReport): string {
               <th>Scenario</th>
               <th>MCP Calls</th>
               <th>Native Calls</th>
+              <th>MCP Tokens</th>
+              <th>Native Tokens</th>
               <th>MCP Cost</th>
               <th>Native Cost</th>
-              <th>MCP Score</th>
-              <th>Native Score</th>
               <th>Cost Savings</th>
             </tr>
           </thead>
@@ -457,12 +362,12 @@ export function generateHtmlReport(report: BenchmarkReport): string {
                 (s) => `
             <tr>
               <td><strong>${escapeHtml(s.scenarioName)}</strong><br><small style="color: var(--text-muted)">${escapeHtml(s.description)}</small></td>
-              <td>${s.mcp.llmCalls}</td>
-              <td>${s.native.llmCalls}</td>
+              <td>${s.mcp.llmCalls.toFixed(1)}</td>
+              <td>${s.native.llmCalls.toFixed(1)}</td>
+              <td>${Math.round(s.mcp.tokenUsage.totalTokens).toLocaleString()}</td>
+              <td>${Math.round(s.native.tokenUsage.totalTokens).toLocaleString()}</td>
               <td>$${s.mcp.cost.totalCost.toFixed(4)}</td>
               <td>$${s.native.cost.totalCost.toFixed(4)}</td>
-              <td><span class="score-badge ${(s.mcp.evaluation?.score || 0) >= 7 ? 'score-high' : (s.mcp.evaluation?.score || 0) >= 4 ? 'score-medium' : 'score-low'}">${s.mcp.evaluation?.score || '-'}/10</span></td>
-              <td><span class="score-badge ${(s.native.evaluation?.score || 0) >= 7 ? 'score-high' : (s.native.evaluation?.score || 0) >= 4 ? 'score-medium' : 'score-low'}">${s.native.evaluation?.score || '-'}/10</span></td>
               <td><span class="savings-badge${s.savings.cost < 0 ? ' negative' : ''}">${s.savings.cost >= 0 ? '+' : ''}${s.savings.cost.toFixed(0)}%</span></td>
             </tr>
             `
@@ -473,39 +378,6 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       </div>
     </div>
 
-    ${report.scenarios
-      .map(
-        (s) => `
-    <div class="card">
-      <h2>${escapeHtml(s.scenarioName)}</h2>
-      <p style="color: var(--text-muted); margin-bottom: 1rem;">${escapeHtml(s.description)}</p>
-
-      <h3>Quality Evaluation</h3>
-      <div class="response-grid">
-        <div class="response-box mcp">
-          <h4>
-            MCP
-            <span class="score-badge ${(s.mcp.evaluation?.score || 0) >= 7 ? 'score-high' : (s.mcp.evaluation?.score || 0) >= 4 ? 'score-medium' : 'score-low'}">${s.mcp.evaluation?.score || '-'}/10</span>
-          </h4>
-          <div class="response-meta" style="margin-top: 0;">
-            <span>${escapeHtml(s.mcp.evaluation?.reasoning || 'No evaluation')}</span>
-          </div>
-        </div>
-        <div class="response-box native">
-          <h4>
-            Native
-            <span class="score-badge ${(s.native.evaluation?.score || 0) >= 7 ? 'score-high' : (s.native.evaluation?.score || 0) >= 4 ? 'score-medium' : 'score-low'}">${s.native.evaluation?.score || '-'}/10</span>
-          </h4>
-          <div class="response-meta" style="margin-top: 0;">
-            <span>${escapeHtml(s.native.evaluation?.reasoning || 'No evaluation')}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    `
-      )
-      .join('')}
-
     <div class="card">
       <h2>Configuration</h2>
       <div class="config-info">
@@ -514,8 +386,12 @@ export function generateHtmlReport(report: BenchmarkReport): string {
           <span>${escapeHtml(report.config.projectPath)}</span>
         </div>
         <div class="config-item">
-          <label>Runs per Scenario</label>
-          <span>${report.config.runsPerScenario}</span>
+          <label>MCP Runs</label>
+          <span>${report.config.mcpRuns}</span>
+        </div>
+        <div class="config-item">
+          <label>Native Runs</label>
+          <span>${report.config.nativeRuns}</span>
         </div>
       </div>
     </div>
@@ -575,6 +451,40 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       options: chartOptions
     });
 
+    // Tokens Chart
+    new Chart(document.getElementById('tokensChart'), {
+      type: 'bar',
+      data: {
+        labels: scenarios.map(s => s.scenarioName),
+        datasets: [
+          {
+            label: 'MCP',
+            data: scenarios.map(s => s.optimized.tokens),
+            backgroundColor: '#22c55e',
+            borderRadius: 6,
+            barPercentage: 0.4
+          },
+          {
+            label: 'Native',
+            data: scenarios.map(s => s.baseline.tokens),
+            backgroundColor: '#ef4444',
+            borderRadius: 6,
+            barPercentage: 0.4
+          }
+        ]
+      },
+      options: {
+        ...chartOptions,
+        plugins: {
+          ...chartOptions.plugins,
+          datalabels: {
+            ...chartOptions.plugins.datalabels,
+            formatter: (value) => (value / 1000).toFixed(0) + 'k'
+          }
+        }
+      }
+    });
+
     // Cost Chart
     new Chart(document.getElementById('costChart'), {
       type: 'bar',
@@ -604,47 +514,6 @@ export function generateHtmlReport(report: BenchmarkReport): string {
           datalabels: {
             ...chartOptions.plugins.datalabels,
             formatter: (value) => '$' + value.toFixed(2)
-          }
-        }
-      }
-    });
-
-    // Score Chart
-    new Chart(document.getElementById('scoreChart'), {
-      type: 'bar',
-      data: {
-        labels: scenarios.map(s => s.scenarioName),
-        datasets: [
-          {
-            label: 'MCP',
-            data: scenarios.map(s => s.optimized.score),
-            backgroundColor: '#22c55e',
-            borderRadius: 6,
-            barPercentage: 0.4
-          },
-          {
-            label: 'Native',
-            data: scenarios.map(s => s.baseline.score),
-            backgroundColor: '#ef4444',
-            borderRadius: 6,
-            barPercentage: 0.4
-          }
-        ]
-      },
-      options: {
-        ...chartOptions,
-        scales: {
-          ...chartOptions.scales,
-          y: {
-            ...chartOptions.scales.y,
-            max: 10
-          }
-        },
-        plugins: {
-          ...chartOptions.plugins,
-          datalabels: {
-            ...chartOptions.plugins.datalabels,
-            formatter: (value) => value + '/10'
           }
         }
       }

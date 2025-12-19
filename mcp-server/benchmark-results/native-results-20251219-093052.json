@@ -1,0 +1,135 @@
+{
+  "mode": "native",
+  "timestamp": "2025-12-19T09:30:52.272Z",
+  "projectPath": "/Users/bikach/workspace/h-backend",
+  "scenarios": [
+    {
+      "scenarioId": "find-callers",
+      "scenarioName": "Find Callers",
+      "description": "Find all functions that call a specific function",
+      "prompt": "Find all functions that call the function that finds a user by their ID in this codebase. Return the list of callers with their file locations.",
+      "metrics": {
+        "llmCalls": 5,
+        "toolCalls": 4,
+        "toolsUsed": [
+          "Grep",
+          "Read"
+        ],
+        "tokenUsage": {
+          "inputTokens": 17,
+          "outputTokens": 899,
+          "totalTokens": 916
+        },
+        "cost": {
+          "totalCost": 0.04496955
+        },
+        "executionTimeMs": 20547
+      }
+    },
+    {
+      "scenarioId": "find-implementations",
+      "scenarioName": "Find Implementations",
+      "description": "Find all classes that implement a specific interface",
+      "prompt": "Find all classes that implement the repository interface for managing users. Return the list with file paths.",
+      "metrics": {
+        "llmCalls": 6,
+        "toolCalls": 5,
+        "toolsUsed": [
+          "Grep",
+          "Read"
+        ],
+        "tokenUsage": {
+          "inputTokens": 365,
+          "outputTokens": 665,
+          "totalTokens": 1030
+        },
+        "cost": {
+          "totalCost": 0.051044400000000004
+        },
+        "executionTimeMs": 20689
+      }
+    },
+    {
+      "scenarioId": "impact-analysis",
+      "scenarioName": "Impact Analysis",
+      "description": "Analyze the impact of modifying a class or function",
+      "prompt": "Analyze the impact of modifying the domain model representing a user. Find all code that would be affected by changes to this class, including direct and indirect dependents. Return the impact analysis.",
+      "metrics": {
+        "llmCalls": 31,
+        "toolCalls": 35,
+        "toolsUsed": [
+          "Task",
+          "Glob",
+          "Read",
+          "Grep"
+        ],
+        "tokenUsage": {
+          "inputTokens": 72,
+          "outputTokens": 6077,
+          "totalTokens": 6149
+        },
+        "cost": {
+          "totalCost": 0.4422485
+        },
+        "executionTimeMs": 147251
+      }
+    },
+    {
+      "scenarioId": "dependency-analysis",
+      "scenarioName": "Dependency Analysis",
+      "description": "Analyze all dependencies of a class (incoming and outgoing)",
+      "prompt": "Analyze all dependencies of the use case that handles user login. Find what it depends on (imports, injections) and what depends on it (usages). Return the dependency graph.",
+      "metrics": {
+        "llmCalls": 34,
+        "toolCalls": 33,
+        "toolsUsed": [
+          "Glob",
+          "Read",
+          "Grep"
+        ],
+        "tokenUsage": {
+          "inputTokens": 52,
+          "outputTokens": 4105,
+          "totalTokens": 4157
+        },
+        "cost": {
+          "totalCost": 0.1761896
+        },
+        "executionTimeMs": 72485
+      }
+    },
+    {
+      "scenarioId": "call-chain",
+      "scenarioName": "Call Chain",
+      "description": "Trace the call chain between two functions",
+      "prompt": "Trace the call chain from the function that retrieves a user by ID to the function that saves data to the database. Find if there's a path of function calls connecting these two functions. Return the call chain if it exists.",
+      "metrics": {
+        "llmCalls": 6,
+        "toolCalls": 57,
+        "toolsUsed": [
+          "Task",
+          "Bash",
+          "Glob",
+          "Grep",
+          "Read"
+        ],
+        "tokenUsage": {
+          "inputTokens": 1916,
+          "outputTokens": 1636,
+          "totalTokens": 3552
+        },
+        "cost": {
+          "totalCost": 0.23025250000000008
+        },
+        "executionTimeMs": 71649
+      }
+    }
+  ],
+  "totals": {
+    "cost": 0.9447045500000001,
+    "tokens": 15804,
+    "time": 332621,
+    "llmCalls": 82,
+    "toolCalls": 134
+  }
+}

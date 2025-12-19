@@ -71,7 +71,6 @@ export class BenchmarkRunner {
 
     let toolCalls = 0;
     const toolsUsed: string[] = [];
-    let response = '';
 
     for (const message of messages) {
       if (message.type === 'assistant') {
@@ -83,11 +82,6 @@ export class BenchmarkRunner {
               if (content.name && !toolsUsed.includes(content.name)) {
                 toolsUsed.push(content.name);
               }
-            }
-            // Capture text response
-            if (content.type === 'text' && content.text) {
-              if (response) response += '\n';
-              response += content.text;
             }
           }
         }
@@ -108,7 +102,6 @@ export class BenchmarkRunner {
         },
         cost: { totalCost: resultMessage.total_cost_usd },
         executionTimeMs: resultMessage.duration_ms,
-        response,
       };
     }
 
@@ -119,7 +112,6 @@ export class BenchmarkRunner {
       tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
       cost: { totalCost: 0 },
       executionTimeMs: 0,
-      response,
     };
   }
 }

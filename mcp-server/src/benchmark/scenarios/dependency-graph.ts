@@ -7,7 +7,7 @@ export const dependencyGraphScenario: BenchmarkScenario = {
   expectedMcpTool: 'mcp__codegraph__get_neighbors',
 
   getPrompt(context: ScenarioContext): string {
-    const classDesc = context.targetClassDesc || 'the use case that handles user authentication';
+    const classDesc = context.targetClassDesc || 'the use case that handles user login';
     return `Analyze all dependencies of ${classDesc}. Find what it depends on (imports, injections) and what depends on it (usages). Return the dependency graph.`;
   },
 };

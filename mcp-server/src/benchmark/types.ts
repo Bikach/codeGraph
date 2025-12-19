@@ -1,11 +1,11 @@
+export interface CostBreakdown {
+  totalCost: number;
+}
+
 export interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
-}
-
-export interface CostBreakdown {
-  totalCost: number;
 }
 
 export interface BenchmarkMetrics {
@@ -15,17 +15,6 @@ export interface BenchmarkMetrics {
   tokenUsage: TokenUsage;
   cost: CostBreakdown;
   executionTimeMs: number;
-  /** The actual response text from the LLM */
-  response: string;
-}
-
-export interface ResponseEvaluation {
-  /** Score from 1-10 */
-  score: number;
-  /** Explanation of the score */
-  reasoning: string;
-  /** Whether the expected tool was used */
-  usedCorrectTool: boolean;
 }
 
 export interface ScenarioResult {
@@ -33,10 +22,7 @@ export interface ScenarioResult {
   scenarioName: string;
   description: string;
   prompt: string;
-  /** Expected tool for MCP mode */
-  expectedMcpTool?: string;
   metrics: BenchmarkMetrics;
-  evaluation?: ResponseEvaluation;
 }
 
 export interface BenchmarkRunResult {
@@ -57,8 +43,9 @@ export interface ComparisonResult {
   scenarioId: string;
   scenarioName: string;
   description: string;
-  mcp: BenchmarkMetrics & { evaluation?: ResponseEvaluation };
-  native: BenchmarkMetrics & { evaluation?: ResponseEvaluation };
+  prompt: string;
+  mcp: BenchmarkMetrics;
+  native: BenchmarkMetrics;
   savings: {
     tokens: number;
     cost: number;
@@ -78,12 +65,11 @@ export interface BenchmarkReport {
     avgLlmCallsSavings: number;
     totalMcpCost: number;
     totalNativeCost: number;
-    avgMcpScore: number;
-    avgNativeScore: number;
   };
 }
 
 export interface BenchmarkConfig {
   projectPath: string;
-  runsPerScenario: number;
+  mcpRuns: number;
+  nativeRuns: number;
 }

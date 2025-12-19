@@ -46,13 +46,14 @@ export async function handleGetImpact(
     impacts.push(...callers);
   }
 
-  // 2. Find dependents (classes/interfaces that use this node)
+  // 2. Find dependents (classes/interfaces whose functions use this node)
   if (!node_type || node_type === 'class' || node_type === 'interface') {
     const dependentsCypher = `
-      MATCH (dependent)-[:USES]->(target)
+      MATCH (dependent)-[:DECLARES]->(f:Function)-[:USES]->(target)
       WHERE target.name = $node_name
         ${labelFilter ? `AND target:${labelFilter}` : 'AND (target:Class OR target:Interface)'}
         AND (dependent:Class OR dependent:Interface OR dependent:Object)
+        AND dependent <> target
       RETURN DISTINCT
         dependent.name AS name,
         [label IN labels(dependent) WHERE label IN ['Class', 'Interface', 'Object']][0] AS type,

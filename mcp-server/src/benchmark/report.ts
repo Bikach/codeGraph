@@ -2,129 +2,171 @@
 
 /**
  * Generate HTML report from MCP and Native benchmark results
+ *
+ * Reads all mcp-results-*.json and native-results-*.json files,
+ * calculates averages across runs, and generates a comparison report.
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { BenchmarkRunResult, BenchmarkReport, ComparisonResult, BenchmarkConfig } from './types.js';
+import type { BenchmarkRunResult, BenchmarkReport, ComparisonResult, BenchmarkConfig, BenchmarkMetrics } from './types.js';
 import { generateHtmlReport } from './reporters/index.js';
 
 const OUTPUT_DIR = path.join(process.cwd(), 'benchmark-results');
-const MCP_RESULTS_PATH = path.join(OUTPUT_DIR, 'mcp-results.json');
-const NATIVE_RESULTS_PATH = path.join(OUTPUT_DIR, 'native-results.json');
 const REPORT_PATH = path.join(OUTPUT_DIR, 'report.html');
 
-function calculateSavings(
-  mcpTokens: number,
-  nativeTokens: number,
-  mcpCost: number,
-  nativeCost: number,
-  mcpTime: number,
-  nativeTime: number,
-  mcpLlmCalls: number,
-  nativeLlmCalls: number
-): { tokens: number; cost: number; time: number; llmCalls: number } {
+/**
+ * Find all result files matching the pattern
+ */
+function findResultFiles(mode: 'mcp' | 'native'): string[] {
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    return [];
+  }
+
+  const files = fs.readdirSync(OUTPUT_DIR);
+  const pattern = new RegExp(`^${mode}-results-\\d{8}-\\d{6}\\.json$`);
+
+  return files
+    .filter(f => pattern.test(f))
+    .map(f => path.join(OUTPUT_DIR, f))
+    .sort();
+}
+
+/**
+ * Load all result files for a mode
+ */
+function loadResults(mode: 'mcp' | 'native'): BenchmarkRunResult[] {
+  const files = findResultFiles(mode);
+  return files.map(f => JSON.parse(fs.readFileSync(f, 'utf-8')) as BenchmarkRunResult);
+}
+
+/**
+ * Average metrics across multiple runs for a scenario
+ */
+function averageMetrics(
+  scenarioId: string,
+  runs: BenchmarkRunResult[]
+): BenchmarkMetrics {
+  const scenarioResults = runs
+    .map(r => r.scenarios.find(s => s.scenarioId === scenarioId))
+    .filter((s): s is NonNullable<typeof s> => s !== undefined);
+
+  if (scenarioResults.length === 0) {
+    return {
+      llmCalls: 0,
+      toolCalls: 0,
+      toolsUsed: [],
+      tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      cost: { totalCost: 0 },
+      executionTimeMs: 0,
+    };
+  }
+
+  const count = scenarioResults.length;
+
+  // Collect all unique tools used across runs
+  const allToolsUsed = new Set<string>();
+  for (const s of scenarioResults) {
+    for (const tool of s.metrics.toolsUsed || []) {
+      allToolsUsed.add(tool);
+    }
+  }
+
   return {
-    tokens: nativeTokens > 0 ? ((nativeTokens - mcpTokens) / nativeTokens) * 100 : 0,
-    cost: nativeCost > 0 ? ((nativeCost - mcpCost) / nativeCost) * 100 : 0,
-    time: nativeTime > 0 ? ((nativeTime - mcpTime) / nativeTime) * 100 : 0,
-    llmCalls: nativeLlmCalls > 0 ? ((nativeLlmCalls - mcpLlmCalls) / nativeLlmCalls) * 100 : 0,
+    llmCalls: scenarioResults.reduce((sum, s) => sum + s.metrics.llmCalls, 0) / count,
+    toolCalls: scenarioResults.reduce((sum, s) => sum + s.metrics.toolCalls, 0) / count,
+    toolsUsed: Array.from(allToolsUsed),
+    tokenUsage: {
+      inputTokens: scenarioResults.reduce((sum, s) => sum + s.metrics.tokenUsage.inputTokens, 0) / count,
+      outputTokens: scenarioResults.reduce((sum, s) => sum + s.metrics.tokenUsage.outputTokens, 0) / count,
+      totalTokens: scenarioResults.reduce((sum, s) => sum + s.metrics.tokenUsage.totalTokens, 0) / count,
+    },
+    cost: {
+      totalCost: scenarioResults.reduce((sum, s) => sum + s.metrics.cost.totalCost, 0) / count,
+    },
+    executionTimeMs: scenarioResults.reduce((sum, s) => sum + s.metrics.executionTimeMs, 0) / count,
   };
+}
+
+function calculateSavings(
+  mcpValue: number,
+  nativeValue: number
+): number {
+  if (nativeValue === 0) return 0;
+  return ((nativeValue - mcpValue) / nativeValue) * 100;
 }
 
 function generateReport(): void {
   console.log('\n📊 Generating Benchmark Report\n');
 
-  // Check if result files exist
-  if (!fs.existsSync(MCP_RESULTS_PATH)) {
-    console.error(`❌ Error: MCP results not found: ${MCP_RESULTS_PATH}`);
+  // Load all result files
+  const mcpRuns = loadResults('mcp');
+  const nativeRuns = loadResults('native');
+
+  console.log(`📁 Found ${mcpRuns.length} MCP run(s)`);
+  console.log(`📁 Found ${nativeRuns.length} Native run(s)\n`);
+
+  if (mcpRuns.length === 0) {
+    console.error('❌ Error: No MCP results found.');
     console.error('   Run "npm run benchmark:mcp <project-path>" first.');
     process.exit(1);
   }
 
-  if (!fs.existsSync(NATIVE_RESULTS_PATH)) {
-    console.error(`❌ Error: Native results not found: ${NATIVE_RESULTS_PATH}`);
+  if (nativeRuns.length === 0) {
+    console.error('❌ Error: No Native results found.');
     console.error('   Run "npm run benchmark:native <project-path>" first.');
     process.exit(1);
   }
 
-  // Load results
-  const mcpResults: BenchmarkRunResult = JSON.parse(fs.readFileSync(MCP_RESULTS_PATH, 'utf-8'));
-  const nativeResults: BenchmarkRunResult = JSON.parse(fs.readFileSync(NATIVE_RESULTS_PATH, 'utf-8'));
+  const firstMcpRun = mcpRuns[0]!;
 
-  console.log(`📁 MCP Results:    ${MCP_RESULTS_PATH}`);
-  console.log(`   Timestamp: ${mcpResults.timestamp}`);
-  console.log(`📁 Native Results: ${NATIVE_RESULTS_PATH}`);
-  console.log(`   Timestamp: ${nativeResults.timestamp}\n`);
+  // Get all unique scenario IDs from the first run
+  const scenarioIds = firstMcpRun.scenarios.map(s => s.scenarioId);
 
-  // Validate that scenarios match
-  if (mcpResults.scenarios.length !== nativeResults.scenarios.length) {
-    console.error(`❌ Error: Scenario count mismatch (MCP: ${mcpResults.scenarios.length}, Native: ${nativeResults.scenarios.length})`);
-    process.exit(1);
-  }
-
-  // Build comparison results
+  // Build comparison results with averaged metrics
   const comparisons: ComparisonResult[] = [];
 
-  for (const mcpScenario of mcpResults.scenarios) {
-    const nativeScenario = nativeResults.scenarios.find((s) => s.scenarioId === mcpScenario.scenarioId);
+  for (const scenarioId of scenarioIds) {
+    const mcpScenario = firstMcpRun.scenarios.find(s => s.scenarioId === scenarioId);
+    if (!mcpScenario) continue;
 
-    if (!nativeScenario) {
-      console.error(`❌ Error: Scenario "${mcpScenario.scenarioId}" not found in native results`);
-      process.exit(1);
-    }
+    const mcpAvg = averageMetrics(scenarioId, mcpRuns);
+    const nativeAvg = averageMetrics(scenarioId, nativeRuns);
 
-    const savings = calculateSavings(
-      mcpScenario.metrics.tokenUsage.totalTokens,
-      nativeScenario.metrics.tokenUsage.totalTokens,
-      mcpScenario.metrics.cost.totalCost,
-      nativeScenario.metrics.cost.totalCost,
-      mcpScenario.metrics.executionTimeMs,
-      nativeScenario.metrics.executionTimeMs,
-      mcpScenario.metrics.llmCalls,
-      nativeScenario.metrics.llmCalls
-    );
+    const savings = {
+      tokens: calculateSavings(mcpAvg.tokenUsage.totalTokens, nativeAvg.tokenUsage.totalTokens),
+      cost: calculateSavings(mcpAvg.cost.totalCost, nativeAvg.cost.totalCost),
+      time: calculateSavings(mcpAvg.executionTimeMs, nativeAvg.executionTimeMs),
+      llmCalls: calculateSavings(mcpAvg.llmCalls, nativeAvg.llmCalls),
+    };
 
     comparisons.push({
-      scenarioId: mcpScenario.scenarioId,
+      scenarioId,
       scenarioName: mcpScenario.scenarioName,
       description: mcpScenario.description,
-      mcp: {
-        ...mcpScenario.metrics,
-        evaluation: mcpScenario.evaluation,
-      },
-      native: {
-        ...nativeScenario.metrics,
-        evaluation: nativeScenario.evaluation,
-      },
+      prompt: mcpScenario.prompt,
+      mcp: mcpAvg,
+      native: nativeAvg,
       savings,
     });
 
-    const mcpScore = mcpScenario.evaluation?.score || 0;
-    const nativeScore = nativeScenario.evaluation?.score || 0;
-    console.log(`✅ ${mcpScenario.scenarioName}: ${savings.cost.toFixed(0)}% cost savings | MCP: ${mcpScore}/10, Native: ${nativeScore}/10`);
+    console.log(`✅ ${mcpScenario.scenarioName}: ${savings.cost >= 0 ? '+' : ''}${savings.cost.toFixed(0)}% cost savings`);
   }
 
-  // Calculate summary based on totals (not average of percentages)
-  const totalMcpTime = comparisons.reduce((sum, r) => sum + r.mcp.executionTimeMs, 0);
-  const totalNativeTime = comparisons.reduce((sum, r) => sum + r.native.executionTimeMs, 0);
-  const totalMcpLlmCalls = comparisons.reduce((sum, r) => sum + r.mcp.llmCalls, 0);
-  const totalNativeLlmCalls = comparisons.reduce((sum, r) => sum + r.native.llmCalls, 0);
-
-  const avgTokenSavings = 0; // Token metrics not reliable from CLI
-  const avgCostSavings = nativeResults.totals.cost > 0 ? ((nativeResults.totals.cost - mcpResults.totals.cost) / nativeResults.totals.cost) * 100 : 0;
-  const avgTimeSavings = totalNativeTime > 0 ? ((totalNativeTime - totalMcpTime) / totalNativeTime) * 100 : 0;
-  const avgLlmCallsSavings = totalNativeLlmCalls > 0 ? ((totalNativeLlmCalls - totalMcpLlmCalls) / totalNativeLlmCalls) * 100 : 0;
-
-  // Calculate average scores
-  const mcpScores = comparisons.filter(c => c.mcp.evaluation?.score).map(c => c.mcp.evaluation!.score);
-  const nativeScores = comparisons.filter(c => c.native.evaluation?.score).map(c => c.native.evaluation!.score);
-  const avgMcpScore = mcpScores.length > 0 ? mcpScores.reduce((a, b) => a + b, 0) / mcpScores.length : 0;
-  const avgNativeScore = nativeScores.length > 0 ? nativeScores.reduce((a, b) => a + b, 0) / nativeScores.length : 0;
+  // Calculate totals
+  const totalMcpCost = comparisons.reduce((sum, c) => sum + c.mcp.cost.totalCost, 0);
+  const totalNativeCost = comparisons.reduce((sum, c) => sum + c.native.cost.totalCost, 0);
+  const totalMcpTime = comparisons.reduce((sum, c) => sum + c.mcp.executionTimeMs, 0);
+  const totalNativeTime = comparisons.reduce((sum, c) => sum + c.native.executionTimeMs, 0);
+  const totalMcpLlmCalls = comparisons.reduce((sum, c) => sum + c.mcp.llmCalls, 0);
+  const totalNativeLlmCalls = comparisons.reduce((sum, c) => sum + c.native.llmCalls, 0);
+  const totalMcpTokens = comparisons.reduce((sum, c) => sum + c.mcp.tokenUsage.totalTokens, 0);
+  const totalNativeTokens = comparisons.reduce((sum, c) => sum + c.native.tokenUsage.totalTokens, 0);
 
   const config: BenchmarkConfig = {
-    projectPath: mcpResults.projectPath,
-    runsPerScenario: 1,
+    projectPath: firstMcpRun.projectPath,
+    mcpRuns: mcpRuns.length,
+    nativeRuns: nativeRuns.length,
   };
 
   const report: BenchmarkReport = {
@@ -132,14 +174,12 @@ function generateReport(): void {
     config,
     scenarios: comparisons,
     summary: {
-      avgTokenSavings,
-      avgCostSavings,
-      avgTimeSavings,
-      avgLlmCallsSavings,
-      totalMcpCost: mcpResults.totals.cost,
-      totalNativeCost: nativeResults.totals.cost,
-      avgMcpScore,
-      avgNativeScore,
+      avgTokenSavings: calculateSavings(totalMcpTokens, totalNativeTokens),
+      avgCostSavings: calculateSavings(totalMcpCost, totalNativeCost),
+      avgTimeSavings: calculateSavings(totalMcpTime, totalNativeTime),
+      avgLlmCallsSavings: calculateSavings(totalMcpLlmCalls, totalNativeLlmCalls),
+      totalMcpCost,
+      totalNativeCost,
     },
   };
 
@@ -150,17 +190,15 @@ function generateReport(): void {
   console.log('\n════════════════════════════════════════════════════════════');
   console.log('                    BENCHMARK REPORT GENERATED');
   console.log('════════════════════════════════════════════════════════════\n');
-  console.log(`📊 Average Savings with MCP Tools:`);
-  console.log(`   • LLM Calls:  ${avgLlmCallsSavings.toFixed(0)}% fewer`);
-  console.log(`   • Cost:       ${avgCostSavings.toFixed(0)}% saved`);
-  console.log(`   • Time:       ${avgTimeSavings.toFixed(0)}% faster`);
+  console.log(`📊 Runs analyzed: ${mcpRuns.length} MCP, ${nativeRuns.length} Native`);
+  console.log(`\n📈 Average Savings with MCP Tools:`);
+  console.log(`   • LLM Calls:  ${report.summary.avgLlmCallsSavings.toFixed(0)}% fewer`);
+  console.log(`   • Cost:       ${report.summary.avgCostSavings.toFixed(0)}% saved`);
+  console.log(`   • Time:       ${report.summary.avgTimeSavings.toFixed(0)}% faster`);
   console.log(`\n💰 Total Costs:`);
-  console.log(`   • MCP:    $${mcpResults.totals.cost.toFixed(4)}`);
-  console.log(`   • Native: $${nativeResults.totals.cost.toFixed(4)}`);
-  console.log(`   • Saved:  $${(nativeResults.totals.cost - mcpResults.totals.cost).toFixed(4)}`);
-  console.log(`\n📊 Quality Scores (1-10):`);
-  console.log(`   • MCP:    ${avgMcpScore.toFixed(1)}/10`);
-  console.log(`   • Native: ${avgNativeScore.toFixed(1)}/10`);
+  console.log(`   • MCP:    $${totalMcpCost.toFixed(4)}`);
+  console.log(`   • Native: $${totalNativeCost.toFixed(4)}`);
+  console.log(`   • Saved:  $${(totalNativeCost - totalMcpCost).toFixed(4)}`);
   console.log(`\n📄 Report saved to: ${REPORT_PATH}`);
   console.log('\n════════════════════════════════════════════════════════════\n');
 }

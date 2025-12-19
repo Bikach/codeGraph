@@ -8,18 +8,30 @@
  * Usage:
  *   npm run benchmark:mcp <project-path>     # Run with MCP tools
  *   npm run benchmark:native <project-path>  # Run with native tools
- *   npm run benchmark:report                 # Generate HTML report from JSON files
+ *   npm run benchmark:report                 # Generate HTML report from all JSON files
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { scenarios } from './scenarios/index.js';
 import { BenchmarkRunner, type RunnerMode } from './runners/index.js';
-import { evaluateResponse } from './evaluator.js';
-import type { BenchmarkRunResult, ScenarioResult, ResponseEvaluation } from './types.js';
+import type { BenchmarkRunResult, ScenarioResult } from './types.js';
 import type { ScenarioContext } from './scenarios/types.js';
 
 const OUTPUT_DIR = path.join(process.cwd(), 'benchmark-results');
+
+/**
+ * Generate a unique filename with timestamp
+ * Format: mcp-results-20251219-143022.json
+ */
+function generateResultFilename(mode: RunnerMode): string {
+  const now = new Date();
+  const timestamp = now.toISOString()
+    .replace(/[-:]/g, '')
+    .replace('T', '-')
+    .slice(0, 15);
+  return `${mode}-results-${timestamp}.json`;
+}
 
 function printUsage(): void {
   console.log(`
@@ -76,9 +88,6 @@ async function runBenchmark(mode: RunnerMode, projectPath: string): Promise<void
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     console.log(`📋 ${scenario.name}`);
     console.log(`   ${scenario.description}`);
-    if (mode === 'mcp') {
-      console.log(`   Expected tool: ${scenario.expectedMcpTool}`);
-    }
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
     const prompt = scenario.getPrompt(context);
@@ -87,35 +96,11 @@ async function runBenchmark(mode: RunnerMode, projectPath: string): Promise<void
     try {
       const metrics = await runner.runScenario(scenario, context);
       console.log(`   ✅ LLM calls: ${metrics.llmCalls}, Tool calls: ${metrics.toolCalls}`);
-      console.log(`   📊 Tokens: ${metrics.tokenUsage.totalTokens.toLocaleString()}`);
+      console.log(`   📊 Tokens: ${metrics.tokenUsage.totalTokens.toLocaleString()} (in: ${metrics.tokenUsage.inputTokens.toLocaleString()}, out: ${metrics.tokenUsage.outputTokens.toLocaleString()})`);
       console.log(`   💰 Cost: $${metrics.cost.totalCost.toFixed(4)}`);
       console.log(`   ⏱️  Time: ${(metrics.executionTimeMs / 1000).toFixed(1)}s`);
       if (metrics.toolsUsed?.length) {
         console.log(`   🔧 Tools: ${metrics.toolsUsed.join(', ')}`);
-        // Check if expected tool was used
-        if (mode === 'mcp') {
-          const usedExpected = metrics.toolsUsed.some(t => t === scenario.expectedMcpTool);
-          console.log(`   ${usedExpected ? '✅' : '❌'} Expected tool: ${usedExpected ? 'YES' : 'NO'}`);
-        }
-      }
-      console.log(`   📝 Response: ${metrics.response.substring(0, 100)}...`);
-
-      // Evaluate response
-      console.log(`\n   🔍 Evaluating response...`);
-      let evaluation: ResponseEvaluation | undefined;
-      try {
-        evaluation = await evaluateResponse(
-          scenario,
-          prompt,
-          metrics.response,
-          metrics.toolsUsed || [],
-          mode === 'mcp' ? scenario.expectedMcpTool : undefined
-        );
-        console.log(`   📊 Score: ${evaluation.score}/10`);
-        console.log(`   💭 ${evaluation.reasoning}`);
-        console.log(`   🔧 Correct tool: ${evaluation.usedCorrectTool ? 'YES' : 'NO'}`);
-      } catch {
-        console.log(`   ⚠️ Could not evaluate response`);
       }
 
       results.push({
@@ -123,9 +108,7 @@ async function runBenchmark(mode: RunnerMode, projectPath: string): Promise<void
         scenarioName: scenario.name,
         description: scenario.description,
         prompt,
-        expectedMcpTool: mode === 'mcp' ? scenario.expectedMcpTool : undefined,
         metrics,
-        evaluation,
       });
     } catch (error) {
       console.log(`   ❌ Error: ${error instanceof Error ? error.message : String(error)}`);
@@ -134,14 +117,12 @@ async function runBenchmark(mode: RunnerMode, projectPath: string): Promise<void
         scenarioName: scenario.name,
         description: scenario.description,
         prompt,
-        expectedMcpTool: mode === 'mcp' ? scenario.expectedMcpTool : undefined,
         metrics: {
           llmCalls: 0,
           toolCalls: 0,
           tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
           cost: { totalCost: 0 },
           executionTimeMs: 0,
-          response: `Error: ${error instanceof Error ? error.message : String(error)}`,
         },
       });
     }
@@ -158,12 +139,6 @@ async function runBenchmark(mode: RunnerMode, projectPath: string): Promise<void
     toolCalls: results.reduce((sum, r) => sum + r.metrics.toolCalls, 0),
   };
 
-  // Calculate average score
-  const scoredResults = results.filter(r => r.evaluation?.score);
-  const avgScore = scoredResults.length > 0
-    ? scoredResults.reduce((sum, r) => sum + (r.evaluation?.score || 0), 0) / scoredResults.length
-    : 0;
-
   const runResult: BenchmarkRunResult = {
     mode,
     timestamp: new Date().toISOString(),
@@ -172,12 +147,13 @@ async function runBenchmark(mode: RunnerMode, projectPath: string): Promise<void
     totals,
   };
 
-  // Save results
+  // Save results with unique filename
   if (!fs.existsSync(OUTPUT_DIR)) {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   }
 
-  const outputPath = path.join(OUTPUT_DIR, `${mode}-results.json`);
+  const outputFilename = generateResultFilename(mode);
+  const outputPath = path.join(OUTPUT_DIR, outputFilename);
   fs.writeFileSync(outputPath, JSON.stringify(runResult, null, 2));
 
   // Print summary
@@ -190,7 +166,6 @@ async function runBenchmark(mode: RunnerMode, projectPath: string): Promise<void
   console.log(`   • Tokens:     ${totals.tokens.toLocaleString()}`);
   console.log(`   • Cost:       $${totals.cost.toFixed(4)}`);
   console.log(`   • Time:       ${(totals.time / 1000).toFixed(1)}s`);
-  console.log(`   • Avg Score:  ${avgScore.toFixed(1)}/10`);
   console.log(`\n📄 Results saved to: ${outputPath}`);
   console.log('\n════════════════════════════════════════════════════════════\n');
 }
