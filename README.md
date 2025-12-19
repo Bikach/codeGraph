@@ -48,7 +48,30 @@ npm install
 npm run build
 ```
 
-### 3. Configure Claude Code
+### 3. Index Your Project
+
+```bash
+cd mcp-server
+
+# Index a project
+npx tsx src/index-project.ts /path/to/project
+
+# With options
+npx tsx src/index-project.ts --clear --exclude-tests /path/to/project
+
+# Dry run (parse and resolve only, skip Neo4j write)
+npx tsx src/index-project.ts --dry-run /path/to/project
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--clear` | Clear the database before indexing. Use this to start fresh or re-index a project. |
+| `--exclude-tests` | Exclude test files and directories (`*Test.kt`, `*Spec.kt`, `/test/`, `/tests/`, etc.). |
+| `--dry-run` | Parse and resolve symbols without writing to Neo4j. Useful for validating your project parses correctly. |
+
+### 4. Configure Claude Code
 
 Add to your `.mcp.json` (project-level) or `~/.claude/claude.json` (global):
 
