@@ -12,7 +12,13 @@ CodeGraph gives LLMs **structural understanding** of your code through a graph d
 - **Dependency mapping** - Visualize class dependencies
 - **Symbol search** - Find classes, functions, interfaces by name
 
-See the [benchmark report](https://bikach.github.io/codeGraph/report/) comparing CodeGraph MCP tools vs native search tools.
+### Benchmark Results
+
+Tested on a Kotlin/Quarkus backend, CodeGraph reduces LLM calls, token usage, and costs by 40-50% compared to native file search tools (Glob/Grep/Read).
+
+![Benchmark Results](report/benshmark.png)
+
+See the [full benchmark report](https://bikach.github.io/codeGraph/report/) for detailed metrics per scenario.
 
 ## Quick Start
 
