@@ -23,6 +23,14 @@ In Claude Code, run:
 /plugin install codegraph@bikach
 ```
 
+### Installation Scopes
+
+| Scope | Command | Description |
+|-------|---------|-------------|
+| **User** (default) | `/plugin install codegraph@bikach` | Available in all your projects |
+| **Project** | `/plugin install codegraph@bikach --scope project` | Shared with all collaborators |
+| **Local** | `/plugin install codegraph@bikach --scope local` | Only for you in this repo |
+
 ## Commands
 
 ### `/codegraph:setup`
