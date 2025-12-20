@@ -6,7 +6,7 @@
 
 import { execSync } from 'child_process';
 import { existsSync } from 'fs';
-import { resolve } from 'path';
+import { dirname, resolve } from 'path';
 import { Neo4jClient } from '../neo4j/neo4j.js';
 import { Neo4jWriter } from '../indexer/index.js';
 
@@ -59,15 +59,18 @@ function isNeo4jContainerRunning(): boolean {
 }
 
 function startNeo4jContainer(composePath: string): boolean {
+  // Execute from the directory containing docker-compose.yml
+  const composeDir = dirname(composePath);
+
   // Try "docker compose" (Docker plugin) first, then fallback to "docker-compose" (standalone)
   const commands = [
-    `docker compose -f "${composePath}" up -d`,
-    `docker-compose -f "${composePath}" up -d`,
+    'docker compose up -d',
+    'docker-compose up -d',
   ];
 
   for (const cmd of commands) {
     try {
-      execSync(cmd, { stdio: 'ignore' });
+      execSync(cmd, { cwd: composeDir, stdio: 'ignore' });
       return true;
     } catch {
       // Try next command
