@@ -6,7 +6,7 @@
     "name": "Chakib Houd",
     "url": "https://www.linkedin.com/in/chakib-houd-io/"
   },
-  "repository": "https://github.com/bikach/codegraph",
+  "repository": "https://github.com/Bikach/codeGraph/plugin",
   "license": "MIT",
   "keywords": ["code-analysis", "neo4j", "kotlin", "graph", "navigation"]
 }

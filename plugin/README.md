@@ -20,22 +20,22 @@ Analyze and navigate codebases through a Neo4j-backed knowledge graph.
 ### 1. Add the marketplace (once)
 
 ```bash
-/plugin marketplace add bikach/claude-plugins
+/plugin marketplace add Bikach/claude-plugins
 ```
 
 ### 2. Install the plugin
 
 ```bash
-/plugin install codegraph@bikach
+/plugin install codegraph@Bikach
 ```
 
 ### Installation Scopes
 
 | Scope | Command | Description |
 |-------|---------|-------------|
-| **User** (default) | `/plugin install codegraph@bikach` | Available in all your projects |
-| **Project** | `/plugin install codegraph@bikach --scope project` | Shared with all collaborators |
-| **Local** | `/plugin install codegraph@bikach --scope local` | Only for you in this repo |
+| **User** (default) | `/plugin install codegraph@Bikach` | Available in all your projects |
+| **Project** | `/plugin install codegraph@Bikach --scope project` | Shared with all collaborators |
+| **Local** | `/plugin install codegraph@Bikach --scope local` | Only for you in this repo |
 
 ## Commands
 
