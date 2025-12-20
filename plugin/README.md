@@ -17,9 +17,15 @@ Analyze and navigate codebases through a Neo4j-backed knowledge graph.
 
 ## Installation
 
-In Claude Code, run:
+### 1. Add the marketplace (once)
 
+```bash
+/plugin marketplace add bikach/claude-plugins
 ```
+
+### 2. Install the plugin
+
+```bash
 /plugin install codegraph@bikach
 ```
 
