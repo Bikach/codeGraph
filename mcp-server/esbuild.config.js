@@ -11,7 +11,10 @@ import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const pluginDist = resolve(__dirname, '../plugin/dist');
+
+// Plugin output directory: use CLAUDE_PLUGINS_ROOT env var or fallback to sibling repo
+const pluginsRoot = process.env.CLAUDE_PLUGINS_ROOT || resolve(__dirname, '../../claude-plugins/codegraph');
+const pluginDist = resolve(pluginsRoot, 'dist');
 
 // Ensure output directory exists
 if (!existsSync(pluginDist)) {
@@ -65,7 +68,7 @@ async function build() {
   console.log('  ✓ status.js');
 
   console.log('');
-  console.log('Done! Bundles written to plugin/dist/');
+  console.log(`Done! Bundles written to ${pluginDist}`);
 }
 
 build().catch((err) => {
