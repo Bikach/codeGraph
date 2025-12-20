@@ -10,6 +10,11 @@ import { dirname, resolve } from 'path';
 import { Neo4jClient } from '../neo4j/neo4j.js';
 import { Neo4jWriter } from '../indexer/index.js';
 
+// Get script directory - works in both ESM and CJS (esbuild injects __dirname for CJS)
+// In CJS: __dirname is available globally
+// In ESM: we'd need import.meta.url, but esbuild bundles to CJS so __dirname works
+declare const __dirname: string;
+
 const NEO4J_URI = process.env.NEO4J_URI || 'bolt://localhost:7687';
 const NEO4J_USER = process.env.NEO4J_USER || 'neo4j';
 const NEO4J_PASSWORD = process.env.NEO4J_PASSWORD || '';
@@ -35,12 +40,18 @@ function isDockerRunning(): boolean {
 }
 
 function findDockerCompose(): string | null {
-  // Search from current working directory upwards
+  // Search from the script's directory (not cwd, which depends on where Claude Code was launched)
+  // Script is in: plugin/scripts/setup.ts (or dist/scripts/setup.js)
+  // docker-compose.yml is in: plugin/docker-compose.yml
+  const scriptDir = __dirname; // e.g., /path/to/plugin/scripts or /path/to/plugin/dist/scripts
+
   const candidates = [
+    // From script dir: ../docker-compose.yml (scripts/ -> plugin/)
+    resolve(scriptDir, '..', 'docker-compose.yml'),
+    // From script dir: ../../docker-compose.yml (dist/scripts/ -> plugin/)
+    resolve(scriptDir, '..', '..', 'docker-compose.yml'),
+    // Fallback: check cwd for local development
     resolve(process.cwd(), 'docker-compose.yml'),
-    resolve(process.cwd(), 'plugin', 'docker-compose.yml'),
-    resolve(process.cwd(), '..', 'docker-compose.yml'),
-    resolve(process.cwd(), '..', 'plugin', 'docker-compose.yml'),
   ];
 
   for (const path of candidates) {

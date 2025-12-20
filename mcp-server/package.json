@@ -1,6 +1,6 @@
 {
   "name": "@codegraph/mcp-server",
-  "version": "0.1.0",
+  "version": "1.0.3",
   "description": "MCP Server for CodeGraph - Code analysis and navigation via Neo4j knowledge graph",
   "type": "module",
   "main": "dist/index.js",
