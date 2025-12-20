@@ -4,13 +4,11 @@ MCP (Model Context Protocol) server that builds and exposes a code graph via Neo
 
 ## Why CodeGraph?
 
-CodeGraph gives LLMs **structural understanding** of your code through a graph database, enabling:
+LLMs are great at understanding code, but they lack **structural awareness**. They can read files, but they don't know how classes relate to each other, which functions call which, or what implements what.
 
-- **Find callers/callees** - Trace function call chains across files
-- **Impact analysis** - Understand what breaks when you change something
-- **Implementation discovery** - Find all implementations of an interface
-- **Dependency mapping** - Visualize class dependencies
-- **Symbol search** - Find classes, functions, interfaces by name
+CodeGraph solves this by building a **knowledge graph** of your codebase. Instead of searching through files, the LLM can directly ask: "Who calls this function?", "What classes implement this interface?", or "What would break if I change this?".
+
+The result: faster navigation, fewer hallucinations, and more accurate refactoring suggestions.
 
 ## Supported Languages
 
@@ -54,14 +52,16 @@ npm run build
 cd mcp-server
 
 # Index a project
-npx tsx src/index-project.ts /path/to/project
+npx tsx src/scripts/index-project.ts /path/to/project
 
 # With options
-npx tsx src/index-project.ts --clear --exclude-tests /path/to/project
+npx tsx src/scripts/index-project.ts --clear --exclude-tests /path/to/project
 
 # Dry run (parse and resolve only, skip Neo4j write)
-npx tsx src/index-project.ts --dry-run /path/to/project
+npx tsx src/scripts/index-project.ts --dry-run /path/to/project
 ```
+
+> 💡 **Using Claude Code?** Use `/codegraph:index` instead. See [Claude Code Plugin](plugin/README.md).
 
 **Options:**
 
@@ -92,6 +92,18 @@ Add to your `.mcp.json` (project-level) or `~/.claude/claude.json` (global):
 ```
 
 > **Note**: Leave `NEO4J_PASSWORD` empty if using the default Docker setup (`NEO4J_AUTH=none`).
+
+## Claude Code Plugin
+
+For the best experience with Claude Code, use the CodeGraph plugin with slash commands:
+
+| Command | Description |
+|---------|-------------|
+| `/codegraph:setup` | Start Neo4j and prepare the database |
+| `/codegraph:index` | Index your project into the graph |
+| `/codegraph:status` | Check Neo4j connection and graph stats |
+
+👉 See [plugin/README.md](plugin/README.md) for installation and usage.
 
 ## Available MCP Tools
 

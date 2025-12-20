@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "benchmark:mcp": "tsx src/benchmark/index.ts mcp",
     "benchmark:native": "tsx src/benchmark/index.ts native",
-    "benchmark:report": "tsx src/benchmark/report.ts"
+    "benchmark:report": "tsx src/benchmark/report.ts",
+    "bundle": "node esbuild.config.js"
   },
   "keywords": [
     "mcp",
@@ -37,6 +38,7 @@
   "devDependencies": {
     "@testcontainers/neo4j": "^11.10.0",
     "@types/node": "^22.15.30",
+    "esbuild": "^0.27.2",
     "glob": "^11.0.0",
     "testcontainers": "^11.10.0",
     "tsx": "^4.20.3",

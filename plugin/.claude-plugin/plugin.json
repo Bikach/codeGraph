@@ -1,0 +1,12 @@
+{
+  "name": "codegraph",
+  "version": "1.0.0",
+  "description": "Analyze and navigate codebases through a Neo4j-backed knowledge graph",
+  "author": {
+    "name": "Chakib Houd",
+    "url": "https://www.linkedin.com/in/chakib-houd-io/"
+  },
+  "repository": "https://github.com/bikach/codegraph",
+  "license": "MIT",
+  "keywords": ["code-analysis", "neo4j", "kotlin", "graph", "navigation"]
+}
