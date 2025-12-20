@@ -25,7 +25,10 @@ interface SetupResult {
   container: boolean;
   neo4j: boolean;
   indexes: boolean;
-  error?: string;
+  message?: string;
+  errorMessage?: string;
+  hint?: string;
+  failedStep?: 'docker' | 'compose' | 'container' | 'neo4j' | 'indexes';
   neo4jUri?: string;
   browserUrl?: string;
 }
@@ -117,7 +120,9 @@ async function main(): Promise<void> {
   // 1. Check Docker
   result.docker = isDockerRunning();
   if (!result.docker) {
-    result.error = 'Docker is not running';
+    result.errorMessage = 'Docker is not running';
+    result.hint = 'Start Docker Desktop and try again';
+    result.failedStep = 'docker';
     console.log(JSON.stringify(result));
     process.exit(1);
   }
@@ -125,14 +130,18 @@ async function main(): Promise<void> {
   // 2. Find and start container
   const composePath = findDockerCompose();
   if (!composePath) {
-    result.error = 'docker-compose.yml not found';
+    result.errorMessage = 'docker-compose.yml not found';
+    result.hint = 'Make sure the CodeGraph plugin is installed correctly with docker-compose.yml in the plugin directory';
+    result.failedStep = 'compose';
     console.log(JSON.stringify(result));
     process.exit(1);
   }
 
   if (!isNeo4jContainerRunning()) {
     if (!startNeo4jContainer(composePath)) {
-      result.error = 'Failed to start Neo4j container';
+      result.errorMessage = 'Failed to start Neo4j container';
+      result.hint = 'Check Docker logs with: docker logs codegraph-neo4j';
+      result.failedStep = 'container';
       console.log(JSON.stringify(result));
       process.exit(1);
     }
@@ -142,7 +151,9 @@ async function main(): Promise<void> {
   // 3. Wait for Neo4j
   result.neo4j = await waitForNeo4j();
   if (!result.neo4j) {
-    result.error = 'Neo4j did not become ready';
+    result.errorMessage = 'Neo4j did not become ready after 60 seconds';
+    result.hint = 'Check container status with: docker ps -a | grep neo4j. Check logs with: docker logs codegraph-neo4j';
+    result.failedStep = 'neo4j';
     console.log(JSON.stringify(result));
     process.exit(1);
   }
@@ -155,7 +166,9 @@ async function main(): Promise<void> {
     await writer.ensureConstraintsAndIndexes();
     result.indexes = true;
   } catch (err) {
-    result.error = `Failed to create indexes: ${err instanceof Error ? err.message : String(err)}`;
+    result.errorMessage = `Failed to create indexes: ${err instanceof Error ? err.message : String(err)}`;
+    result.hint = 'Check Neo4j connection and permissions. Try restarting the container.';
+    result.failedStep = 'indexes';
     console.log(JSON.stringify(result));
     process.exit(1);
   } finally {
@@ -164,12 +177,17 @@ async function main(): Promise<void> {
 
   // Success
   result.success = true;
+  result.message = 'Neo4j is ready';
   result.neo4jUri = NEO4J_URI;
   result.browserUrl = 'http://localhost:7474';
   console.log(JSON.stringify(result));
 }
 
 main().catch((err) => {
-  console.log(JSON.stringify({ success: false, error: err instanceof Error ? err.message : String(err) }));
+  console.log(JSON.stringify({
+    success: false,
+    errorMessage: err instanceof Error ? err.message : String(err),
+    hint: 'An unexpected error occurred. Check the error message for details.',
+  }));
   process.exit(1);
 });
