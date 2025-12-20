@@ -59,12 +59,21 @@ function isNeo4jContainerRunning(): boolean {
 }
 
 function startNeo4jContainer(composePath: string): boolean {
-  try {
-    execSync(`docker compose -f "${composePath}" up -d`, { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
+  // Try "docker compose" (Docker plugin) first, then fallback to "docker-compose" (standalone)
+  const commands = [
+    `docker compose -f "${composePath}" up -d`,
+    `docker-compose -f "${composePath}" up -d`,
+  ];
+
+  for (const cmd of commands) {
+    try {
+      execSync(cmd, { stdio: 'ignore' });
+      return true;
+    } catch {
+      // Try next command
+    }
   }
+  return false;
 }
 
 async function waitForNeo4j(maxRetries = 30, delayMs = 2000): Promise<boolean> {
