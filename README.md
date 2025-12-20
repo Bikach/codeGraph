@@ -61,7 +61,7 @@ npx tsx src/scripts/index-project.ts --clear --exclude-tests /path/to/project
 npx tsx src/scripts/index-project.ts --dry-run /path/to/project
 ```
 
-> 💡 **Using Claude Code?** Use `/codegraph:index` instead. See [Claude Code Plugin](plugin/README.md).
+> 💡 **Using Claude Code?** Use `/codegraph:index` instead. See [Claude Code Plugin](https://github.com/Bikach/claude-plugins/tree/main/codegraph).
 
 **Options:**
 
@@ -103,7 +103,7 @@ For the best experience with Claude Code, use the CodeGraph plugin with slash co
 | `/codegraph:index` | Index your project into the graph |
 | `/codegraph:status` | Check Neo4j connection and graph stats |
 
-👉 See [plugin/README.md](plugin/README.md) for installation and usage.
+👉 See [Claude Code Plugin](https://github.com/Bikach/claude-plugins/tree/main/codegraph) for installation and usage.
 
 ## Available MCP Tools
 
