@@ -4,7 +4,7 @@
  * Returns JSON for Claude Code to interpret.
  */
 
-import { resolve } from 'path';
+import { resolve, basename } from 'path';
 import { readdir, readFile, stat } from 'fs/promises';
 import { Neo4jClient } from '../neo4j/neo4j.js';
 import {
@@ -168,14 +168,13 @@ async function main(): Promise<void> {
   }
 
   try {
-    const writer = new Neo4jWriter(client, { batchSize: 500, clearBefore });
+    const writer = new Neo4jWriter(client, { batchSize: 500 });
 
-    if (clearBefore) {
-      await writer.clearGraph();
-    }
-
-    await writer.ensureConstraintsAndIndexes();
-    const writeResult = await writer.writeFiles(resolvedFiles);
+    const writeResult = await writer.writeFiles(resolvedFiles, {
+      clearBefore,
+      projectPath,
+      projectName: basename(projectPath),
+    });
 
     result.nodesCreated = writeResult.nodesCreated;
     result.relationshipsCreated = writeResult.relationshipsCreated;

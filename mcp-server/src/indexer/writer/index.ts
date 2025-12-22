@@ -9,6 +9,7 @@
  */
 
 import neo4j from 'neo4j-driver';
+import path from 'path';
 import type { Neo4jClient } from '../../neo4j/neo4j.js';
 import type {
   ResolvedFile,
@@ -132,6 +133,8 @@ export class Neo4jWriter {
    */
   async ensureConstraintsAndIndexes(): Promise<void> {
     const constraints = [
+      // Project uniqueness by path
+      'CREATE CONSTRAINT project_path_unique IF NOT EXISTS FOR (p:Project) REQUIRE p.path IS UNIQUE',
       // Uniqueness constraints (FQN-based for most types)
       'CREATE CONSTRAINT class_fqn_unique IF NOT EXISTS FOR (c:Class) REQUIRE c.fqn IS UNIQUE',
       'CREATE CONSTRAINT interface_fqn_unique IF NOT EXISTS FOR (i:Interface) REQUIRE i.fqn IS UNIQUE',
@@ -148,6 +151,8 @@ export class Neo4jWriter {
     ];
 
     const indexes = [
+      // Project index
+      'CREATE INDEX project_name_index IF NOT EXISTS FOR (p:Project) ON (p.name)',
       // Name indexes for fast lookups
       'CREATE INDEX class_name_index IF NOT EXISTS FOR (c:Class) ON (c.name)',
       'CREATE INDEX interface_name_index IF NOT EXISTS FOR (i:Interface) ON (i.name)',
@@ -176,19 +181,34 @@ export class Neo4jWriter {
   }
 
   /**
-   * Clear all code graph data from the database.
-   * Useful before a full re-index.
+   * Clear code graph data from the database.
+   * If projectPath is provided, only clears data for that project.
+   * Otherwise, clears all code graph data.
    */
-  async clearGraph(): Promise<ClearResult> {
-    const deleteQuery = `
-      MATCH (n)
-      WHERE n:Package OR n:Class OR n:Interface OR n:Object
-         OR n:Function OR n:Property OR n:Parameter OR n:Annotation OR n:TypeAlias
-         OR n:Constructor OR n:Domain
-      DETACH DELETE n
-    `;
+  async clearGraph(projectPath?: string): Promise<ClearResult> {
+    let deleteQuery: string;
+    let params: Record<string, unknown> = {};
 
-    const result = await this.client.execute(deleteQuery, {}, neo4j.routing.WRITE);
+    if (projectPath) {
+      // Clear only the specified project and its contents
+      deleteQuery = `
+        MATCH (proj:Project {path: $projectPath})
+        OPTIONAL MATCH (proj)-[:CONTAINS*]->(n)
+        DETACH DELETE proj, n
+      `;
+      params = { projectPath };
+    } else {
+      // Clear all code graph data
+      deleteQuery = `
+        MATCH (n)
+        WHERE n:Project OR n:Package OR n:Class OR n:Interface OR n:Object
+           OR n:Function OR n:Property OR n:Parameter OR n:Annotation OR n:TypeAlias
+           OR n:Constructor OR n:Domain
+        DETACH DELETE n
+      `;
+    }
+
+    const result = await this.client.execute(deleteQuery, params, neo4j.routing.WRITE);
 
     return {
       nodesDeleted: result.summary.counters.nodesDeleted || 0,
@@ -213,7 +233,14 @@ export class Neo4jWriter {
     }
 
     if (options.clearBefore) {
-      await this.clearGraph();
+      // If projectPath is provided, only clear that project; otherwise clear all
+      await this.clearGraph(options.projectPath);
+    }
+
+    // Create Project node if projectPath is provided
+    if (options.projectPath) {
+      await this.writeProject(options.projectPath, options.projectName);
+      result.nodesCreated++;
     }
 
     // Collect all packages first
@@ -224,9 +251,10 @@ export class Neo4jWriter {
       }
     }
 
-    // Create all packages
-    const packageResult = await this.writePackages(Array.from(packages));
-    result.nodesCreated += packageResult;
+    // Create all packages (linked to project if provided)
+    const packageResult = await this.writePackages(Array.from(packages), options.projectPath);
+    result.nodesCreated += packageResult.nodesCreated;
+    result.relationshipsCreated += packageResult.relationshipsCreated;
 
     // Process each file
     for (const file of files) {
@@ -326,19 +354,49 @@ export class Neo4jWriter {
   }
 
   /**
-   * Write packages to Neo4j.
+   * Write a project node to Neo4j.
    */
-  private async writePackages(packages: string[]): Promise<number> {
-    if (packages.length === 0) return 0;
+  private async writeProject(projectPath: string, projectName?: string): Promise<void> {
+    const name = projectName || path.basename(projectPath);
 
     const query = `
+      MERGE (p:Project {path: $path})
+      SET p.name = $name
+      RETURN p
+    `;
+
+    await this.client.write(query, { path: projectPath, name });
+  }
+
+  /**
+   * Write packages to Neo4j and link them to the project if provided.
+   */
+  private async writePackages(packages: string[], projectPath?: string): Promise<NodeRelResult> {
+    if (packages.length === 0) return { nodesCreated: 0, relationshipsCreated: 0 };
+
+    // Create package nodes
+    const createQuery = `
       UNWIND $packages AS pkg
       MERGE (p:Package {name: pkg})
       RETURN count(p) AS created
     `;
+    await this.client.write(createQuery, { packages });
 
-    await this.client.write(query, { packages });
-    return packages.length;
+    let relationshipsCreated = 0;
+
+    // Link packages to project if projectPath is provided
+    if (projectPath) {
+      const linkQuery = `
+        MATCH (proj:Project {path: $projectPath})
+        UNWIND $packages AS pkg
+        MATCH (p:Package {name: pkg})
+        MERGE (proj)-[:CONTAINS]->(p)
+      `;
+      await this.client.write(linkQuery, { projectPath, packages });
+      relationshipsCreated = packages.length;
+    }
+
+    return { nodesCreated: packages.length, relationshipsCreated };
   }
 
   /**

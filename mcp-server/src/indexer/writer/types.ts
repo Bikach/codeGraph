@@ -52,6 +52,10 @@ export interface WriterOptions {
   analyzeDomains?: boolean;
   /** Path to codegraph.domains.json for domain configuration */
   domainsConfigPath?: string;
+  /** Absolute path to the project being indexed (used for multi-project support) */
+  projectPath?: string;
+  /** Human-readable project name (defaults to directory name if not provided) */
+  projectName?: string;
 }
 
 // =============================================================================
