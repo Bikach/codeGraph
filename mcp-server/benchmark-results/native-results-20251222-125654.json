@@ -1,6 +1,6 @@
 {
   "mode": "native",
-  "timestamp": "2025-12-19T09:30:52.272Z",
+  "timestamp": "2025-12-22T12:56:54.184Z",
   "projectPath": "/Users/bikach/workspace/h-backend",
   "scenarios": [
     {
@@ -9,21 +9,22 @@
       "description": "Find all functions that call a specific function",
       "prompt": "Find all functions that call the function that finds a user by their ID in this codebase. Return the list of callers with their file locations.",
       "metrics": {
-        "llmCalls": 5,
-        "toolCalls": 4,
+        "llmCalls": 8,
+        "toolCalls": 7,
         "toolsUsed": [
           "Grep",
-          "Read"
+          "Read",
+          "LSP"
         ],
         "tokenUsage": {
-          "inputTokens": 17,
-          "outputTokens": 899,
-          "totalTokens": 916
+          "inputTokens": 30,
+          "outputTokens": 1276,
+          "totalTokens": 1306
         },
         "cost": {
-          "totalCost": 0.04496955
+          "totalCost": 0.08348710000000001
         },
-        "executionTimeMs": 20547
+        "executionTimeMs": 33235
       }
     },
     {
@@ -39,14 +40,14 @@
           "Read"
         ],
         "tokenUsage": {
-          "inputTokens": 365,
-          "outputTokens": 665,
-          "totalTokens": 1030
+          "inputTokens": 22,
+          "outputTokens": 634,
+          "totalTokens": 656
         },
         "cost": {
-          "totalCost": 0.051044400000000004
+          "totalCost": 0.0443967
         },
-        "executionTimeMs": 20689
+        "executionTimeMs": 29605
       }
     },
     {
@@ -55,23 +56,25 @@
       "description": "Analyze the impact of modifying a class or function",
       "prompt": "Analyze the impact of modifying the domain model representing a user. Find all code that would be affected by changes to this class, including direct and indirect dependents. Return the impact analysis.",
       "metrics": {
-        "llmCalls": 31,
-        "toolCalls": 35,
+        "llmCalls": 43,
+        "toolCalls": 53,
         "toolsUsed": [
+          "TodoWrite",
           "Task",
           "Glob",
           "Read",
+          "Bash",
           "Grep"
         ],
         "tokenUsage": {
-          "inputTokens": 72,
-          "outputTokens": 6077,
-          "totalTokens": 6149
+          "inputTokens": 130,
+          "outputTokens": 7361,
+          "totalTokens": 7491
         },
         "cost": {
-          "totalCost": 0.4422485
+          "totalCost": 0.5143518000000001
         },
-        "executionTimeMs": 147251
+        "executionTimeMs": 217101
       }
     },
     {
@@ -80,22 +83,23 @@
       "description": "Analyze all dependencies of a class (incoming and outgoing)",
       "prompt": "Analyze all dependencies of the use case that handles user login. Find what it depends on (imports, injections) and what depends on it (usages). Return the dependency graph.",
       "metrics": {
-        "llmCalls": 34,
-        "toolCalls": 33,
+        "llmCalls": 29,
+        "toolCalls": 28,
         "toolsUsed": [
           "Glob",
-          "Read",
-          "Grep"
+          "Grep",
+          "Bash",
+          "Read"
         ],
         "tokenUsage": {
-          "inputTokens": 52,
+          "inputTokens": 150,
           "outputTokens": 4105,
-          "totalTokens": 4157
+          "totalTokens": 4255
         },
         "cost": {
-          "totalCost": 0.1761896
+          "totalCost": 0.2185373
         },
-        "executionTimeMs": 72485
+        "executionTimeMs": 97177
       }
     },
     {
@@ -104,32 +108,33 @@
       "description": "Trace the call chain between two functions",
       "prompt": "Trace the call chain from the function that retrieves a user by ID to the function that saves data to the database. Find if there's a path of function calls connecting these two functions. Return the call chain if it exists.",
       "metrics": {
-        "llmCalls": 6,
-        "toolCalls": 57,
+        "llmCalls": 17,
+        "toolCalls": 81,
         "toolsUsed": [
+          "TodoWrite",
           "Task",
-          "Bash",
-          "Glob",
           "Grep",
-          "Read"
+          "Glob",
+          "Read",
+          "Bash"
         ],
         "tokenUsage": {
-          "inputTokens": 1916,
-          "outputTokens": 1636,
-          "totalTokens": 3552
+          "inputTokens": 58,
+          "outputTokens": 3557,
+          "totalTokens": 3615
         },
         "cost": {
-          "totalCost": 0.23025250000000008
+          "totalCost": 0.3967282999999999
         },
-        "executionTimeMs": 71649
+        "executionTimeMs": 199485
       }
     }
   ],
   "totals": {
-    "cost": 0.9447045500000001,
-    "tokens": 15804,
-    "time": 332621,
-    "llmCalls": 82,
-    "toolCalls": 134
+    "cost": 1.2575012,
+    "tokens": 17323,
+    "time": 576603,
+    "llmCalls": 103,
+    "toolCalls": 174
   }
 }

@@ -7,10 +7,6 @@ export const getImplementationsDefinition = {
   inputSchema: {
     interface_name: z.string().describe('Name of the interface or abstract class'),
     include_indirect: z.boolean().optional().default(false).describe('Include indirect implementations (via inheritance chain)'),
+    project_path: z.string().optional().describe('Filter by project path (use current working directory). If not provided, searches all indexed projects.'),
   },
-};
-
-export type GetImplementationsParams = {
-  interface_name: string;
-  include_indirect?: boolean;
 };

@@ -1,6 +1,6 @@
 {
   "mode": "mcp",
-  "timestamp": "2025-12-19T09:11:57.528Z",
+  "timestamp": "2025-12-22T12:29:30.929Z",
   "projectPath": "/Users/bikach/workspace/h-backend",
   "scenarios": [
     {
@@ -17,13 +17,13 @@
         ],
         "tokenUsage": {
           "inputTokens": 16,
-          "outputTokens": 1065,
-          "totalTokens": 1081
+          "outputTokens": 1097,
+          "totalTokens": 1113
         },
         "cost": {
-          "totalCost": 0.06222749999999999
+          "totalCost": 0.07811155
         },
-        "executionTimeMs": 29833
+        "executionTimeMs": 26223
       }
     },
     {
@@ -40,13 +40,13 @@
         ],
         "tokenUsage": {
           "inputTokens": 15,
-          "outputTokens": 426,
-          "totalTokens": 441
+          "outputTokens": 476,
+          "totalTokens": 491
         },
         "cost": {
-          "totalCost": 0.03746755
+          "totalCost": 0.053160149999999996
         },
-        "executionTimeMs": 15792
+        "executionTimeMs": 17800
       }
     },
     {
@@ -55,24 +55,24 @@
       "description": "Analyze the impact of modifying a class or function",
       "prompt": "Analyze the impact of modifying the domain model representing a user. Find all code that would be affected by changes to this class, including direct and indirect dependents. Return the impact analysis.",
       "metrics": {
-        "llmCalls": 13,
-        "toolCalls": 12,
+        "llmCalls": 16,
+        "toolCalls": 15,
         "toolsUsed": [
           "mcp__codegraph__search_nodes",
           "mcp__codegraph__get_impact",
-          "mcp__codegraph__get_neighbors",
           "Read",
+          "mcp__codegraph__get_neighbors",
           "Grep"
         ],
         "tokenUsage": {
-          "inputTokens": 42,
-          "outputTokens": 2504,
-          "totalTokens": 2546
+          "inputTokens": 53,
+          "outputTokens": 3053,
+          "totalTokens": 3106
         },
         "cost": {
-          "totalCost": 0.1479018
+          "totalCost": 0.2005824
         },
-        "executionTimeMs": 59171
+        "executionTimeMs": 76511
       }
     },
     {
@@ -81,24 +81,25 @@
       "description": "Analyze all dependencies of a class (incoming and outgoing)",
       "prompt": "Analyze all dependencies of the use case that handles user login. Find what it depends on (imports, injections) and what depends on it (usages). Return the dependency graph.",
       "metrics": {
-        "llmCalls": 9,
-        "toolCalls": 8,
+        "llmCalls": 13,
+        "toolCalls": 12,
         "toolsUsed": [
           "mcp__codegraph__search_nodes",
           "mcp__codegraph__get_neighbors",
-          "mcp__codegraph__get_callees",
           "mcp__codegraph__get_callers",
-          "Read"
+          "Read",
+          "Grep",
+          "Glob"
         ],
         "tokenUsage": {
-          "inputTokens": 23,
-          "outputTokens": 2231,
-          "totalTokens": 2254
+          "inputTokens": 188,
+          "outputTokens": 2869,
+          "totalTokens": 3057
         },
         "cost": {
-          "totalCost": 0.10005105
+          "totalCost": 0.2154174
         },
-        "executionTimeMs": 45779
+        "executionTimeMs": 73852
       }
     },
     {
@@ -107,34 +108,29 @@
       "description": "Trace the call chain between two functions",
       "prompt": "Trace the call chain from the function that retrieves a user by ID to the function that saves data to the database. Find if there's a path of function calls connecting these two functions. Return the call chain if it exists.",
       "metrics": {
-        "llmCalls": 17,
-        "toolCalls": 16,
+        "llmCalls": 6,
+        "toolCalls": 5,
         "toolsUsed": [
           "mcp__codegraph__search_nodes",
-          "mcp__codegraph__get_callers",
-          "Glob",
-          "Read",
-          "Grep",
-          "mcp__codegraph__find_path",
-          "mcp__codegraph__get_callees"
+          "mcp__codegraph__find_path"
         ],
         "tokenUsage": {
-          "inputTokens": 37,
-          "outputTokens": 2381,
-          "totalTokens": 2418
+          "inputTokens": 13,
+          "outputTokens": 1055,
+          "totalTokens": 1068
         },
         "cost": {
-          "totalCost": 0.20531015
+          "totalCost": 0.07646245
         },
-        "executionTimeMs": 62953
+        "executionTimeMs": 26185
       }
     }
   ],
   "totals": {
-    "cost": 0.55295805,
-    "tokens": 8740,
-    "time": 213528,
-    "llmCalls": 47,
-    "toolCalls": 42
+    "cost": 0.62373395,
+    "tokens": 8835,
+    "time": 220571,
+    "llmCalls": 43,
+    "toolCalls": 38
   }
 }

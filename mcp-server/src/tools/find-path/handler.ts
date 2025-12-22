@@ -1,4 +1,5 @@
 import { Neo4jClient } from '../../neo4j/neo4j.js';
+import { validateProject, projectNotFoundResponse } from '../project-filter.js';
 import type { FindPathParams, PathStep } from './types.js';
 
 const formatPathStep = (p: PathStep) =>
@@ -20,7 +21,15 @@ export async function handleFindPath(
   client: Neo4jClient,
   params: FindPathParams
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
-  const { from_node, to_node, max_depth = 5, relationship_types } = params;
+  const { from_node, to_node, max_depth = 5, relationship_types, project_path } = params;
+
+  // Validate project if project_path is provided
+  if (project_path) {
+    const validation = await validateProject(client, project_path);
+    if (!validation.valid) {
+      return projectNotFoundResponse(validation.error);
+    }
+  }
 
   // Build relationship type filter
   const relFilter =
@@ -28,17 +37,28 @@ export async function handleFindPath(
       ? `:${relationship_types.join('|')}`
       : '';
 
+  // Build project filter clause - filter both endpoints to ensure they're in the project
+  const projectFilterFrom = project_path ? 'AND from.filePath STARTS WITH $projectPath' : '';
+  const projectFilterTo = project_path ? 'AND to.filePath STARTS WITH $projectPath' : '';
+
   // Use shortestPath to find the path between nodes
+  // Note: The path itself may traverse nodes outside the project, but both endpoints must be in the project
   const cypher = `
     MATCH (from), (to)
     WHERE from.name = $from_node AND to.name = $to_node
       AND from <> to
+      ${projectFilterFrom}
+      ${projectFilterTo}
     MATCH path = shortestPath((from)-[${relFilter}*1..${max_depth}]-(to))
     RETURN path
     LIMIT 1
   `;
 
-  const records = await client.query<PathRecord>(cypher, { from_node, to_node });
+  const records = await client.query<PathRecord>(cypher, {
+    from_node,
+    to_node,
+    projectPath: project_path ?? '',
+  });
 
   if (records.length === 0) {
     return {

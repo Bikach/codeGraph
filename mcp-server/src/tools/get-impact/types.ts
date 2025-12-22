@@ -6,6 +6,7 @@ export type GetImpactParams = {
   node_name: string;
   node_type?: 'class' | 'interface' | 'function' | 'property';
   depth?: number;
+  project_path?: string;
 };
 
 export type ImpactResult = {

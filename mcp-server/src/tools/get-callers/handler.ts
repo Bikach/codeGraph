@@ -1,5 +1,6 @@
 import { Neo4jClient } from '../../neo4j/neo4j.js';
 import { buildCompactOutput } from '../formatters.js';
+import { validateProject, projectNotFoundResponse } from '../project-filter.js';
 import type { GetCallersParams, CallerResult } from './types.js';
 
 const formatCaller = (c: CallerResult) =>
@@ -17,7 +18,18 @@ export async function handleGetCallers(
   client: Neo4jClient,
   params: GetCallersParams
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
-  const { function_name, class_name, depth = 2 } = params;
+  const { function_name, class_name, depth = 2, project_path } = params;
+
+  // Validate project if project_path is provided
+  if (project_path) {
+    const validation = await validateProject(client, project_path);
+    if (!validation.valid) {
+      return projectNotFoundResponse(validation.error);
+    }
+  }
+
+  // Build project filter clause
+  const projectFilter = project_path ? 'AND caller.filePath STARTS WITH $projectPath' : '';
 
   // Use APOC-free approach with variable-length path
   // We find the target function first, then traverse backwards to find callers
@@ -26,6 +38,7 @@ export async function handleGetCallers(
     WHERE target.name = $function_name
       AND ($class_name IS NULL OR target.declaringType ENDS WITH $class_name)
       AND caller <> target
+      ${projectFilter}
     WITH DISTINCT caller, length(path) AS pathDepth
     OPTIONAL MATCH (owner)-[:DECLARES]->(caller)
     WHERE owner:Class OR owner:Interface OR owner:Object
@@ -41,6 +54,7 @@ export async function handleGetCallers(
   const records = await client.query<CallerRecord>(cypher, {
     function_name,
     class_name: class_name ?? null,
+    projectPath: project_path ?? '',
   });
 
   const callers: CallerResult[] = records.map((r) => ({

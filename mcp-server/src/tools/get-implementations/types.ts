@@ -5,6 +5,7 @@
 export type GetImplementationsParams = {
   interface_name: string;
   include_indirect?: boolean;
+  project_path?: string;
 };
 
 export type ImplementationResult = {

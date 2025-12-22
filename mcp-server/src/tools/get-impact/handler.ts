@@ -1,5 +1,6 @@
 import { Neo4jClient } from '../../neo4j/neo4j.js';
 import { buildCompactOutput } from '../formatters.js';
+import { validateProject, projectNotFoundResponse } from '../project-filter.js';
 import type { GetImpactParams, ImpactResult } from './types.js';
 
 const formatImpact = (i: ImpactResult) =>
@@ -18,7 +19,21 @@ export async function handleGetImpact(
   client: Neo4jClient,
   params: GetImpactParams
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
-  const { node_name, node_type, depth = 3 } = params;
+  const { node_name, node_type, depth = 3, project_path } = params;
+
+  // Validate project if project_path is provided
+  if (project_path) {
+    const validation = await validateProject(client, project_path);
+    if (!validation.valid) {
+      return projectNotFoundResponse(validation.error);
+    }
+  }
+
+  // Build project filter clause
+  const projectFilter = project_path ? 'AND caller.filePath STARTS WITH $projectPath' : '';
+  const projectFilterDependent = project_path ? 'AND dependent.filePath STARTS WITH $projectPath' : '';
+  const projectFilterImpl = project_path ? 'AND impl.filePath STARTS WITH $projectPath' : '';
+  const projectFilterChild = project_path ? 'AND child.filePath STARTS WITH $projectPath' : '';
 
   const impacts: ImpactResult[] = [];
 
@@ -31,6 +46,7 @@ export async function handleGetImpact(
       MATCH path = (caller:Function)-[:CALLS*1..${depth}]->(target:Function)
       WHERE target.name = $node_name
         AND caller <> target
+        ${projectFilter}
       WITH DISTINCT caller, min(length(path)) AS pathDepth
       RETURN
         caller.name AS name,
@@ -42,7 +58,10 @@ export async function handleGetImpact(
       ORDER BY pathDepth, name
     `;
 
-    const callers = await client.query<ImpactRecord>(callersCypher, { node_name });
+    const callers = await client.query<ImpactRecord>(callersCypher, {
+      node_name,
+      projectPath: project_path ?? '',
+    });
     impacts.push(...callers);
   }
 
@@ -54,6 +73,7 @@ export async function handleGetImpact(
         ${labelFilter ? `AND target:${labelFilter}` : 'AND (target:Class OR target:Interface)'}
         AND (dependent:Class OR dependent:Interface OR dependent:Object)
         AND dependent <> target
+        ${projectFilterDependent}
       RETURN DISTINCT
         dependent.name AS name,
         [label IN labels(dependent) WHERE label IN ['Class', 'Interface', 'Object']][0] AS type,
@@ -64,7 +84,10 @@ export async function handleGetImpact(
       ORDER BY name
     `;
 
-    const dependents = await client.query<ImpactRecord>(dependentsCypher, { node_name });
+    const dependents = await client.query<ImpactRecord>(dependentsCypher, {
+      node_name,
+      projectPath: project_path ?? '',
+    });
     impacts.push(...dependents);
   }
 
@@ -73,6 +96,7 @@ export async function handleGetImpact(
     const implementorsCypher = `
       MATCH (impl:Class)-[:IMPLEMENTS]->(target:Interface)
       WHERE target.name = $node_name
+        ${projectFilterImpl}
       RETURN DISTINCT
         impl.name AS name,
         'class' AS type,
@@ -83,7 +107,10 @@ export async function handleGetImpact(
       ORDER BY name
     `;
 
-    const implementors = await client.query<ImpactRecord>(implementorsCypher, { node_name });
+    const implementors = await client.query<ImpactRecord>(implementorsCypher, {
+      node_name,
+      projectPath: project_path ?? '',
+    });
     impacts.push(...implementors);
   }
 
@@ -92,6 +119,7 @@ export async function handleGetImpact(
     const childrenCypher = `
       MATCH path = (child:Class)-[:EXTENDS*1..${depth}]->(target:Class)
       WHERE target.name = $node_name
+        ${projectFilterChild}
       WITH DISTINCT child, min(length(path)) AS pathDepth
       RETURN
         child.name AS name,
@@ -103,7 +131,10 @@ export async function handleGetImpact(
       ORDER BY pathDepth, name
     `;
 
-    const children = await client.query<ImpactRecord>(childrenCypher, { node_name });
+    const children = await client.query<ImpactRecord>(childrenCypher, {
+      node_name,
+      projectPath: project_path ?? '',
+    });
     impacts.push(...children);
   }
 

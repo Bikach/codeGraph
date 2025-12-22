@@ -1,5 +1,6 @@
 import { Neo4jClient } from '../../neo4j/neo4j.js';
 import { buildCompactOutput } from '../formatters.js';
+import { validateProject, projectNotFoundResponse } from '../project-filter.js';
 import type { GetImplementationsParams, ImplementationResult } from './types.js';
 
 const formatImplementation = (i: ImplementationResult) =>
@@ -16,7 +17,18 @@ export async function handleGetImplementations(
   client: Neo4jClient,
   params: GetImplementationsParams
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
-  const { interface_name, include_indirect = false } = params;
+  const { interface_name, include_indirect = false, project_path } = params;
+
+  // Validate project if project_path is provided
+  if (project_path) {
+    const validation = await validateProject(client, project_path);
+    if (!validation.valid) {
+      return projectNotFoundResponse(validation.error);
+    }
+  }
+
+  // Build project filter clause
+  const projectFilter = project_path ? 'AND c.filePath STARTS WITH $projectPath' : '';
 
   const implementations: ImplementationResult[] = [];
 
@@ -24,6 +36,7 @@ export async function handleGetImplementations(
   const directCypher = `
     MATCH (c:Class)-[:IMPLEMENTS]->(i:Interface)
     WHERE i.name = $interface_name
+      ${projectFilter}
     RETURN
       c.name AS name,
       c.filePath AS filePath,
@@ -32,7 +45,10 @@ export async function handleGetImplementations(
     ORDER BY c.name
   `;
 
-  const direct = await client.query<ImplementationRecord>(directCypher, { interface_name });
+  const direct = await client.query<ImplementationRecord>(directCypher, {
+    interface_name,
+    projectPath: project_path ?? '',
+  });
   implementations.push(
     ...direct.map((r) => ({
       name: r.name,
@@ -48,6 +64,7 @@ export async function handleGetImplementations(
       MATCH (c:Class)-[:EXTENDS*1..]->(parent:Class)-[:IMPLEMENTS]->(i:Interface)
       WHERE i.name = $interface_name
         AND NOT (c)-[:IMPLEMENTS]->(i)
+        ${projectFilter}
       RETURN DISTINCT
         c.name AS name,
         c.filePath AS filePath,
@@ -56,7 +73,10 @@ export async function handleGetImplementations(
       ORDER BY c.name
     `;
 
-    const indirect = await client.query<ImplementationRecord>(indirectCypher, { interface_name });
+    const indirect = await client.query<ImplementationRecord>(indirectCypher, {
+      interface_name,
+      projectPath: project_path ?? '',
+    });
     implementations.push(
       ...indirect.map((r) => ({
         name: r.name,

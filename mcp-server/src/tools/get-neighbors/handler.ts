@@ -1,5 +1,6 @@
 import { Neo4jClient } from '../../neo4j/neo4j.js';
 import { buildCompactOutput } from '../formatters.js';
+import { validateProject, projectNotFoundResponse } from '../project-filter.js';
 import type { GetNeighborsParams, NeighborResult } from './types.js';
 
 const formatNeighbor = (n: NeighborResult) =>
@@ -17,8 +18,22 @@ export async function handleGetNeighbors(
   client: Neo4jClient,
   params: GetNeighborsParams
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
-  const { node_name, direction = 'both', depth: _depth = 1, include_external = false } = params;
+  const { node_name, direction = 'both', depth: _depth = 1, include_external = false, project_path } = params;
   // Note: depth parameter reserved for future multi-hop traversal
+
+  // Validate project if project_path is provided
+  if (project_path) {
+    const validation = await validateProject(client, project_path);
+    if (!validation.valid) {
+      return projectNotFoundResponse(validation.error);
+    }
+  }
+
+  // Build project filter clause
+  // For both directions, we filter on source.filePath because:
+  // - Outgoing: source is the node we're studying (must be in project)
+  // - Incoming: source is the dependent (must be in project to be relevant)
+  const projectFilterSource = project_path ? 'AND source.filePath STARTS WITH $projectPath' : '';
 
   const neighbors: NeighborResult[] = [];
 
@@ -31,6 +46,7 @@ export async function handleGetNeighbors(
         AND (source:Class OR source:Interface OR source:Object)
         AND (target:Class OR target:Interface)
         ${include_external ? '' : 'AND target.filePath IS NOT NULL'}
+        ${projectFilterSource}
       RETURN DISTINCT
         target.name AS name,
         [label IN labels(target) WHERE label IN ['Class', 'Interface', 'Object']][0] AS type,
@@ -47,6 +63,7 @@ export async function handleGetNeighbors(
         AND (target:Class OR target:Interface)
         AND source <> target
         ${include_external ? '' : 'AND target.filePath IS NOT NULL'}
+        ${projectFilterSource}
       RETURN DISTINCT
         target.name AS name,
         [label IN labels(target) WHERE label IN ['Class', 'Interface', 'Object']][0] AS type,
@@ -56,8 +73,8 @@ export async function handleGetNeighbors(
     `;
 
     const [directOutgoing, functionUsesOutgoing] = await Promise.all([
-      client.query<NeighborRecord>(directOutgoingCypher, { node_name }),
-      client.query<NeighborRecord>(functionUsesOutgoingCypher, { node_name }),
+      client.query<NeighborRecord>(directOutgoingCypher, { node_name, projectPath: project_path ?? '' }),
+      client.query<NeighborRecord>(functionUsesOutgoingCypher, { node_name, projectPath: project_path ?? '' }),
     ]);
 
     // Combine and dedupe
@@ -88,6 +105,7 @@ export async function handleGetNeighbors(
         AND (source:Class OR source:Interface OR source:Object)
         AND (target:Class OR target:Interface)
         ${include_external ? '' : 'AND source.filePath IS NOT NULL'}
+        ${projectFilterSource}
       RETURN DISTINCT
         source.name AS name,
         [label IN labels(source) WHERE label IN ['Class', 'Interface', 'Object']][0] AS type,
@@ -104,6 +122,7 @@ export async function handleGetNeighbors(
         AND (target:Class OR target:Interface)
         AND source <> target
         ${include_external ? '' : 'AND source.filePath IS NOT NULL'}
+        ${projectFilterSource}
       RETURN DISTINCT
         source.name AS name,
         [label IN labels(source) WHERE label IN ['Class', 'Interface', 'Object']][0] AS type,
@@ -113,8 +132,8 @@ export async function handleGetNeighbors(
     `;
 
     const [directIncoming, functionUsesIncoming] = await Promise.all([
-      client.query<NeighborRecord>(directIncomingCypher, { node_name }),
-      client.query<NeighborRecord>(functionUsesIncomingCypher, { node_name }),
+      client.query<NeighborRecord>(directIncomingCypher, { node_name, projectPath: project_path ?? '' }),
+      client.query<NeighborRecord>(functionUsesIncomingCypher, { node_name, projectPath: project_path ?? '' }),
     ]);
 
     // Combine and dedupe

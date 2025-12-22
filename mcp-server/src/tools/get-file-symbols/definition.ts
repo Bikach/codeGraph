@@ -7,10 +7,6 @@ export const getFileSymbolsDefinition = {
   inputSchema: {
     file_path: z.string().describe('Path to the file (absolute or relative to project root)'),
     include_private: z.boolean().optional().default(true).describe('Include private/internal symbols'),
+    project_path: z.string().optional().describe('Filter by project path (use current working directory). If not provided, searches all indexed projects.'),
   },
-};
-
-export type GetFileSymbolsParams = {
-  file_path: string;
-  include_private?: boolean;
 };

@@ -5,6 +5,7 @@
 export type GetFileSymbolsParams = {
   file_path: string;
   include_private?: boolean;
+  project_path?: string;
 };
 
 export type SymbolResult = {

@@ -28,3 +28,4 @@ export { getFileSymbolsDefinition, handleGetFileSymbols, type GetFileSymbolsPara
 
 // Shared utilities
 export { formatters, buildCompactOutput } from './formatters.js';
+export { validateProject, projectNotFoundResponse, type ProjectValidationResult } from './project-filter.js';

@@ -1,6 +1,6 @@
 {
-  "mode": "native",
-  "timestamp": "2025-12-19T09:40:16.050Z",
+  "mode": "mcp",
+  "timestamp": "2025-12-22T12:35:06.528Z",
   "projectPath": "/Users/bikach/workspace/h-backend",
   "scenarios": [
     {
@@ -9,21 +9,21 @@
       "description": "Find all functions that call a specific function",
       "prompt": "Find all functions that call the function that finds a user by their ID in this codebase. Return the list of callers with their file locations.",
       "metrics": {
-        "llmCalls": 9,
-        "toolCalls": 8,
+        "llmCalls": 3,
+        "toolCalls": 2,
         "toolsUsed": [
-          "Grep",
-          "Read"
+          "mcp__codegraph__search_nodes",
+          "mcp__codegraph__get_callers"
         ],
         "tokenUsage": {
-          "inputTokens": 28,
-          "outputTokens": 1339,
-          "totalTokens": 1367
+          "inputTokens": 15,
+          "outputTokens": 900,
+          "totalTokens": 915
         },
         "cost": {
-          "totalCost": 0.08443055
+          "totalCost": 0.1299051
         },
-        "executionTimeMs": 31150
+        "executionTimeMs": 25042
       }
     },
     {
@@ -32,21 +32,21 @@
       "description": "Find all classes that implement a specific interface",
       "prompt": "Find all classes that implement the repository interface for managing users. Return the list with file paths.",
       "metrics": {
-        "llmCalls": 7,
-        "toolCalls": 6,
+        "llmCalls": 3,
+        "toolCalls": 2,
         "toolsUsed": [
-          "Grep",
-          "Read"
+          "mcp__codegraph__search_nodes",
+          "mcp__codegraph__get_implementations"
         ],
         "tokenUsage": {
-          "inputTokens": 23,
-          "outputTokens": 680,
-          "totalTokens": 703
+          "inputTokens": 15,
+          "outputTokens": 452,
+          "totalTokens": 467
         },
         "cost": {
-          "totalCost": 0.053872949999999996
+          "totalCost": 0.05877084999999999
         },
-        "executionTimeMs": 20742
+        "executionTimeMs": 20807
       }
     },
     {
@@ -55,23 +55,24 @@
       "description": "Analyze the impact of modifying a class or function",
       "prompt": "Analyze the impact of modifying the domain model representing a user. Find all code that would be affected by changes to this class, including direct and indirect dependents. Return the impact analysis.",
       "metrics": {
-        "llmCalls": 4,
-        "toolCalls": 52,
+        "llmCalls": 15,
+        "toolCalls": 14,
         "toolsUsed": [
-          "Task",
-          "Glob",
-          "Grep",
-          "Read"
+          "mcp__codegraph__search_nodes",
+          "mcp__codegraph__get_impact",
+          "mcp__codegraph__get_neighbors",
+          "Read",
+          "Grep"
         ],
         "tokenUsage": {
-          "inputTokens": 14,
-          "outputTokens": 3087,
-          "totalTokens": 3101
+          "inputTokens": 49,
+          "outputTokens": 2657,
+          "totalTokens": 2706
         },
         "cost": {
-          "totalCost": 0.22519369999999994
+          "totalCost": 0.1879073
         },
-        "executionTimeMs": 136036
+        "executionTimeMs": 70231
       }
     },
     {
@@ -80,22 +81,24 @@
       "description": "Analyze all dependencies of a class (incoming and outgoing)",
       "prompt": "Analyze all dependencies of the use case that handles user login. Find what it depends on (imports, injections) and what depends on it (usages). Return the dependency graph.",
       "metrics": {
-        "llmCalls": 27,
-        "toolCalls": 26,
+        "llmCalls": 7,
+        "toolCalls": 6,
         "toolsUsed": [
-          "Glob",
+          "mcp__codegraph__search_nodes",
           "Read",
-          "Grep"
+          "mcp__codegraph__get_neighbors",
+          "mcp__codegraph__get_callers",
+          "mcp__codegraph__get_impact"
         ],
         "tokenUsage": {
-          "inputTokens": 62,
-          "outputTokens": 3843,
-          "totalTokens": 3905
+          "inputTokens": 19,
+          "outputTokens": 1613,
+          "totalTokens": 1632
         },
         "cost": {
-          "totalCost": 0.18649565
+          "totalCost": 0.09280654999999999
         },
-        "executionTimeMs": 80193
+        "executionTimeMs": 40907
       }
     },
     {
@@ -104,32 +107,32 @@
       "description": "Trace the call chain between two functions",
       "prompt": "Trace the call chain from the function that retrieves a user by ID to the function that saves data to the database. Find if there's a path of function calls connecting these two functions. Return the call chain if it exists.",
       "metrics": {
-        "llmCalls": 9,
-        "toolCalls": 71,
+        "llmCalls": 12,
+        "toolCalls": 11,
         "toolsUsed": [
-          "Task",
-          "Glob",
-          "Grep",
-          "Bash",
-          "Read"
+          "mcp__codegraph__search_nodes",
+          "mcp__codegraph__get_callers",
+          "mcp__codegraph__get_callees",
+          "Read",
+          "mcp__codegraph__find_path"
         ],
         "tokenUsage": {
-          "inputTokens": 24,
-          "outputTokens": 1908,
-          "totalTokens": 1932
+          "inputTokens": 27,
+          "outputTokens": 1862,
+          "totalTokens": 1889
         },
         "cost": {
-          "totalCost": 0.2679415
+          "totalCost": 0.14305465
         },
-        "executionTimeMs": 105751
+        "executionTimeMs": 49548
       }
     }
   ],
   "totals": {
-    "cost": 0.81793435,
-    "tokens": 11008,
-    "time": 373872,
-    "llmCalls": 56,
-    "toolCalls": 163
+    "cost": 0.6124444499999999,
+    "tokens": 7609,
+    "time": 206535,
+    "llmCalls": 40,
+    "toolCalls": 35
   }
 }

@@ -7,6 +7,7 @@ export type SearchNodesParams = {
   node_types?: Array<'class' | 'interface' | 'function' | 'property' | 'object'>;
   exact_match?: boolean;
   limit?: number;
+  project_path?: string;
 };
 
 export type NodeResult = {
