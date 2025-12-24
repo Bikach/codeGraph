@@ -17,4 +17,5 @@ export const config: Config = {
     name: 'codegraph-server',
     version: '0.1.0',
   },
+  lspMode: process.env.CODEGRAPH_LSP_MODE === 'true',
 };

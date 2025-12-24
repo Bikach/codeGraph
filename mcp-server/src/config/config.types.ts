@@ -16,4 +16,6 @@ export interface ServerConfig {
 export interface Config {
   neo4j: Neo4jConfig;
   server: ServerConfig;
+  /** When true, disables get_callers and get_implementations tools (LSP handles these) */
+  lspMode: boolean;
 }
