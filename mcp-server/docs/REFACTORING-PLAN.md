@@ -71,7 +71,7 @@ domain/
 | 6 | generics/ | ✅ | `97f77a7` | 21 tests |
 | 7 | property/, function/ params | ✅ | `d0394ff` | - |
 | 8 | calls/ (rest) | ✅ | `66cceab` | - |
-| 9 | function/ | ⏳ | - | - |
+| 9 | function/ | ✅ | `78fc9b8` | - |
 | 10 | constructor/ | ⏳ | - | - |
 | 11 | companion/ | ⏳ | - | - |
 | 12 | class/ infra | ⏳ | - | - |

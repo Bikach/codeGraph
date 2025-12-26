@@ -25,15 +25,10 @@ import {
   extractTypeName,
 } from './extractor/ast-utils/index.js';
 import { extractModifiers, extractAnnotations } from './extractor/modifiers/index.js';
-import { extractCalls } from './extractor/calls/index.js';
 import { extractPackageName, extractImports } from './extractor/package/index.js';
 import { extractTypeParameters } from './extractor/generics/index.js';
 import { extractProperty } from './extractor/property/index.js';
-import {
-  extractParameters,
-  extractReturnType,
-  extractReceiverType,
-} from './extractor/function/index.js';
+import { extractFunction } from './extractor/function/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -266,48 +261,6 @@ function extractClassBody(classBody: SyntaxNode | undefined): {
   }
 
   return { properties, functions, nestedClasses, companionObject, secondaryConstructors };
-}
-
-// =============================================================================
-// Functions
-// =============================================================================
-
-function extractFunction(node: SyntaxNode): ParsedFunction {
-  const nameNode = node.childForFieldName('name') ?? findChildByType(node, 'simple_identifier');
-  const name = nameNode?.text ?? '<anonymous>';
-
-  const modifiers = extractModifiers(node);
-  const annotations = extractAnnotations(node);
-  const parameters = extractParameters(node);
-  const returnType = extractReturnType(node);
-
-  // Extract type parameters (generics)
-  const typeParameters = extractTypeParameters(node);
-
-  // Check for extension function
-  const receiverType = extractReceiverType(node);
-
-  // Extract function calls from body
-  const body = findChildByType(node, 'function_body');
-  const calls = body ? extractCalls(body) : [];
-
-  return {
-    name,
-    visibility: modifiers.visibility,
-    parameters,
-    returnType,
-    isAbstract: modifiers.isAbstract,
-    isSuspend: modifiers.isSuspend,
-    isExtension: !!receiverType,
-    receiverType,
-    isInline: modifiers.isInline,
-    isInfix: modifiers.isInfix,
-    isOperator: modifiers.isOperator,
-    typeParameters: typeParameters.length > 0 ? typeParameters : undefined,
-    annotations,
-    location: nodeLocation(node),
-    calls,
-  };
 }
 
 // =============================================================================
