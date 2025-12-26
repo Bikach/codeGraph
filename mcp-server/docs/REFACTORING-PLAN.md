@@ -74,7 +74,7 @@ domain/
 | 9 | function/ | ✅ | `78fc9b8` | - |
 | 10 | constructor/ | ✅ | `3b44be2` | - |
 | 11 | companion/ (partial) | ✅ | `1e8b579` | - |
-| 12 | class/ infra | ⏳ | - | - |
+| 12 | class/ infra (partial) | ✅ | `34168bf` | - |
 | 13 | advanced/ | ⏳ | - | - |
 | 14 | object-expressions/ | ⏳ | - | - |
 | 15 | class/, extractor/ | ⏳ | - | - |
@@ -180,7 +180,7 @@ parsers/kotlin/
 | 9 | function/ | extractFunction | parameters, modifiers, generics, calls |
 | 10 | constructor/ | extractPrimaryConstructorProperties, extractSecondaryConstructor | modifiers, ast-utils |
 | 11 | companion/ | isCompanionObject | modifiers, ast-utils |
-| 12 | class/ infra | mapClassKind, extractSuperTypes, extractClassBody, extractCompanionObject | modifiers, property, function, companion, constructor |
+| 12 | class/ infra | mapClassKind, extractSuperTypes | ast-utils |
 | 13 | advanced/ | extractTypeAlias, extractDestructuringDeclaration | modifiers, generics |
 | 14 | object-expressions/ | extractObjectExpression, extractAllObjectExpressions | class-body, ast-utils |
 | 15 | class/, extractor/ | extractClass, extractSymbols, index.ts | Tout |

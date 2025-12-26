@@ -33,6 +33,7 @@ import {
   extractSecondaryConstructor,
 } from './extractor/constructor/index.js';
 import { isCompanionObject } from './extractor/companion/index.js';
+import { mapClassKind, extractSuperTypes } from './extractor/class/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -144,72 +145,6 @@ function extractClass(node: SyntaxNode): ParsedClass {
     secondaryConstructors: secondaryConstructors.length > 0 ? secondaryConstructors : undefined,
     location: nodeLocation(node),
   };
-}
-
-function mapClassKind(node: SyntaxNode): ParsedClass['kind'] {
-  // Check for interface/object/enum keywords as children
-  const hasInterface = node.children.some((c) => c.type === 'interface');
-  const hasObject = node.children.some((c) => c.type === 'object');
-  const hasEnum = node.children.some((c) => c.type === 'enum');
-
-  // Check for annotation class (modifier in modifiers > class_modifier > annotation)
-  const modifiers = findChildByType(node, 'modifiers');
-  const hasAnnotationModifier = modifiers?.children.some(
-    (c) => c.type === 'class_modifier' && c.children.some((m) => m.type === 'annotation')
-  );
-
-  if (hasInterface) return 'interface';
-  if (hasObject) return 'object';
-  if (hasEnum) return 'enum';
-  if (hasAnnotationModifier) return 'annotation';
-
-  switch (node.type) {
-    case 'object_declaration':
-      return 'object';
-    case 'enum_class_declaration':
-      return 'enum';
-    default:
-      return 'class';
-  }
-}
-
-function extractSuperTypes(classNode: SyntaxNode): { superClass?: string; interfaces: string[] } {
-  let superClass: string | undefined;
-  const interfaces: string[] = [];
-
-  // delegation_specifier nodes are direct children of class_declaration
-  // In Kotlin: superclass has constructor invocation (parentheses), interfaces don't
-  // Example: class User : BaseEntity(), Serializable, Comparable<User>
-  //          BaseEntity() -> superclass (has parentheses = constructor_invocation)
-  //          Serializable, Comparable<User> -> interfaces (no parentheses = user_type only)
-  for (const child of classNode.children) {
-    if (child.type === 'delegation_specifier') {
-      const constructorInvocation = findChildByType(child, 'constructor_invocation');
-      const userType = findChildByType(child, 'user_type');
-
-      if (constructorInvocation) {
-        // This is a superclass (has constructor call with parentheses)
-        // constructor_invocation contains user_type for the class name
-        const typeNode = findChildByType(constructorInvocation, 'user_type');
-        const typeName = typeNode ? extractTypeName(typeNode) : extractTypeName(constructorInvocation);
-        if (typeName && !superClass) {
-          // Only take the first one as superclass (Kotlin allows only one)
-          superClass = typeName;
-        } else if (typeName) {
-          // Additional constructor invocations are rare but possible (delegation)
-          interfaces.push(typeName);
-        }
-      } else if (userType) {
-        // This is an interface (no constructor call)
-        const typeName = extractTypeName(userType);
-        if (typeName) {
-          interfaces.push(typeName);
-        }
-      }
-    }
-  }
-
-  return { superClass, interfaces };
 }
 
 function extractClassBody(classBody: SyntaxNode | undefined): {
