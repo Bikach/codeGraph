@@ -21,9 +21,15 @@ import type {
   ParsedDestructuringDeclaration,
   ParsedObjectExpression,
   ParsedFunctionType,
-  SourceLocation,
   Visibility,
 } from '../../types.js';
+
+import {
+  findChildByType,
+  traverseNode,
+  nodeLocation,
+  extractTypeName,
+} from './extractor/ast-utils/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -892,42 +898,6 @@ function extractAnnotations(node: SyntaxNode): ParsedAnnotation[] {
   return annotations;
 }
 
-// =============================================================================
-// Helpers
-// =============================================================================
-
-function findChildByType(node: SyntaxNode, type: string): SyntaxNode | undefined {
-  return node.children.find((c) => c.type === type);
-}
-
-function extractTypeName(typeNode: SyntaxNode): string | undefined {
-  if (typeNode.type === 'user_type') {
-    const identifier = findChildByType(typeNode, 'simple_identifier');
-    return identifier?.text ?? typeNode.text;
-  }
-  if (typeNode.type === 'constructor_invocation') {
-    const userType = findChildByType(typeNode, 'user_type');
-    return userType ? extractTypeName(userType) : typeNode.text;
-  }
-  return typeNode.text;
-}
-
-function nodeLocation(node: SyntaxNode): SourceLocation {
-  return {
-    filePath: '', // Will be set by caller
-    startLine: node.startPosition.row + 1,
-    startColumn: node.startPosition.column + 1,
-    endLine: node.endPosition.row + 1,
-    endColumn: node.endPosition.column + 1,
-  };
-}
-
-function traverseNode(node: SyntaxNode, callback: (node: SyntaxNode) => void): void {
-  callback(node);
-  for (const child of node.children) {
-    traverseNode(child, callback);
-  }
-}
 
 // =============================================================================
 // Type Parameters (Generics)
