@@ -11,7 +11,6 @@ import type {
   ParsedClass,
   ParsedFunction,
   ParsedProperty,
-  ParsedParameter,
   ParsedTypeAlias,
   ParsedConstructor,
   ParsedDestructuringDeclaration,
@@ -29,6 +28,10 @@ import { extractPackageName, extractImports } from './extractor/package/index.js
 import { extractTypeParameters } from './extractor/generics/index.js';
 import { extractProperty } from './extractor/property/index.js';
 import { extractFunction } from './extractor/function/index.js';
+import {
+  extractPrimaryConstructorProperties,
+  extractSecondaryConstructor,
+} from './extractor/constructor/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -264,51 +267,6 @@ function extractClassBody(classBody: SyntaxNode | undefined): {
 }
 
 // =============================================================================
-// Primary Constructor Properties
-// =============================================================================
-
-function extractPrimaryConstructorProperties(classNode: SyntaxNode): ParsedProperty[] {
-  const properties: ParsedProperty[] = [];
-
-  // Primary constructor is in primary_constructor node
-  const primaryConstructor = findChildByType(classNode, 'primary_constructor');
-  if (!primaryConstructor) return properties;
-
-  // class_parameter nodes are direct children of primary_constructor (not in class_parameters)
-  for (const child of primaryConstructor.children) {
-    if (child.type === 'class_parameter') {
-      // Check if it's a property (has val/var in binding_pattern_kind)
-      const bindingKind = findChildByType(child, 'binding_pattern_kind');
-      const hasVal = bindingKind?.children.some((c) => c.type === 'val') ?? false;
-      const hasVar = bindingKind?.children.some((c) => c.type === 'var') ?? false;
-
-      if (hasVal || hasVar) {
-        const nameNode = findChildByType(child, 'simple_identifier');
-        const typeNode =
-          findChildByType(child, 'nullable_type') ??
-          findChildByType(child, 'user_type') ??
-          findChildByType(child, 'type_identifier');
-
-        // Extract visibility from modifiers if present
-        const modifiers = extractModifiers(child);
-
-        properties.push({
-          name: nameNode?.text ?? '<unnamed>',
-          type: typeNode?.text,
-          visibility: modifiers.visibility,
-          isVal: hasVal,
-          initializer: undefined, // Primary constructor props don't have initializers in declaration
-          annotations: extractAnnotations(child),
-          location: nodeLocation(child),
-        });
-      }
-    }
-  }
-
-  return properties;
-}
-
-// =============================================================================
 // Companion Objects
 // =============================================================================
 
@@ -351,56 +309,6 @@ function extractCompanionObject(node: SyntaxNode): ParsedClass {
     properties,
     functions,
     nestedClasses,
-    location: nodeLocation(node),
-  };
-}
-
-// =============================================================================
-// Secondary Constructors
-// =============================================================================
-
-function extractSecondaryConstructor(node: SyntaxNode): ParsedConstructor {
-  const modifiers = extractModifiers(node);
-  const annotations = extractAnnotations(node);
-
-  // Extract parameters
-  const params: ParsedParameter[] = [];
-  const paramList = findChildByType(node, 'function_value_parameters');
-
-  if (paramList) {
-    for (const child of paramList.children) {
-      if (child.type === 'parameter') {
-        const nameNode = findChildByType(child, 'simple_identifier');
-        const typeNode =
-          findChildByType(child, 'nullable_type') ??
-          findChildByType(child, 'user_type') ??
-          findChildByType(child, 'type');
-
-        params.push({
-          name: nameNode?.text ?? '<unnamed>',
-          type: typeNode?.text,
-          annotations: extractAnnotations(child),
-        });
-      }
-    }
-  }
-
-  // Check for delegation (this() or super())
-  let delegatesTo: 'this' | 'super' | undefined;
-  const constructorDelegationCall = findChildByType(node, 'constructor_delegation_call');
-  if (constructorDelegationCall) {
-    const delegationType = constructorDelegationCall.children.find(
-      (c) => c.type === 'this' || c.type === 'super'
-    );
-    if (delegationType?.type === 'this') delegatesTo = 'this';
-    if (delegationType?.type === 'super') delegatesTo = 'super';
-  }
-
-  return {
-    parameters: params,
-    visibility: modifiers.visibility,
-    delegatesTo,
-    annotations,
     location: nodeLocation(node),
   };
 }

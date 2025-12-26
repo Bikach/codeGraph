@@ -72,7 +72,7 @@ domain/
 | 7 | property/, function/ params | ✅ | `d0394ff` | - |
 | 8 | calls/ (rest) | ✅ | `66cceab` | - |
 | 9 | function/ | ✅ | `78fc9b8` | - |
-| 10 | constructor/ | ⏳ | - | - |
+| 10 | constructor/ | ✅ | `3b44be2` | - |
 | 11 | companion/ | ⏳ | - | - |
 | 12 | class/ infra | ⏳ | - | - |
 | 13 | advanced/ | ⏳ | - | - |
