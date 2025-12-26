@@ -14,7 +14,6 @@ import type {
   ParsedParameter,
   ParsedCall,
   ParsedTypeAlias,
-  ParsedTypeParameter,
   ParsedConstructor,
   ParsedDestructuringDeclaration,
   ParsedObjectExpression,
@@ -30,6 +29,7 @@ import {
 import { extractModifiers, extractAnnotations } from './extractor/modifiers/index.js';
 import { inferArgumentType } from './extractor/calls/index.js';
 import { extractPackageName, extractImports } from './extractor/package/index.js';
+import { extractTypeParameters } from './extractor/generics/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -659,108 +659,6 @@ function extractCallArguments(callSuffix: SyntaxNode): { argumentCount: number; 
   return { argumentCount, argumentTypes };
 }
 
-
-// =============================================================================
-// Type Parameters (Generics)
-// =============================================================================
-
-function extractTypeParameters(node: SyntaxNode): ParsedTypeParameter[] {
-  const typeParams: ParsedTypeParameter[] = [];
-  const typeParamList = findChildByType(node, 'type_parameters');
-
-  if (!typeParamList) return typeParams;
-
-  for (const child of typeParamList.children) {
-    if (child.type === 'type_parameter') {
-      const typeParam = extractSingleTypeParameter(child);
-      if (typeParam) {
-        typeParams.push(typeParam);
-      }
-    }
-  }
-
-  // Handle where clause (multiple type bounds)
-  // AST: type_constraints > where, type_constraint, [,], type_constraint, ...
-  const typeConstraints = findChildByType(node, 'type_constraints');
-  if (typeConstraints) {
-    for (const constraintNode of typeConstraints.children) {
-      if (constraintNode.type === 'type_constraint') {
-        // type_constraint > type_identifier, :, user_type
-        const typeId = findChildByType(constraintNode, 'type_identifier');
-        const boundType =
-          findChildByType(constraintNode, 'user_type') ??
-          findChildByType(constraintNode, 'nullable_type');
-
-        if (typeId && boundType) {
-          // Find the matching type parameter and add this bound
-          const matchingParam = typeParams.find((tp) => tp.name === typeId.text);
-          if (matchingParam) {
-            if (!matchingParam.bounds) {
-              matchingParam.bounds = [];
-            }
-            matchingParam.bounds.push(boundType.text);
-          }
-        }
-      }
-    }
-  }
-
-  return typeParams;
-}
-
-function extractSingleTypeParameter(node: SyntaxNode): ParsedTypeParameter | undefined {
-  // Structure: type_parameter > [modifiers] [type_identifier] [: type_constraint]
-  const nameNode = findChildByType(node, 'type_identifier');
-  if (!nameNode) return undefined;
-
-  const name = nameNode.text;
-
-  // Extract variance (in/out) and reified from modifiers
-  let variance: 'in' | 'out' | undefined;
-  let isReified = false;
-  const modifiers = findChildByType(node, 'type_parameter_modifiers');
-  if (modifiers) {
-    for (const child of modifiers.children) {
-      if (child.type === 'variance_modifier') {
-        if (child.text === 'in') variance = 'in';
-        if (child.text === 'out') variance = 'out';
-      }
-      if (child.type === 'reification_modifier' && child.text === 'reified') {
-        isReified = true;
-      }
-    }
-  }
-
-  // Extract bounds (upper bounds after :)
-  const bounds: string[] = [];
-  const typeConstraint = findChildByType(node, 'type_constraint');
-  if (typeConstraint) {
-    // type_constraint contains the bound types
-    for (const child of typeConstraint.children) {
-      if (child.type === 'user_type' || child.type === 'nullable_type') {
-        bounds.push(child.text);
-      }
-    }
-  }
-
-  // Also check for direct bounds (T : Comparable<T>)
-  for (const child of node.children) {
-    if (child.type === 'user_type' || child.type === 'nullable_type') {
-      // Check if preceded by ':'
-      const prev = child.previousSibling;
-      if (prev?.type === ':') {
-        bounds.push(child.text);
-      }
-    }
-  }
-
-  return {
-    name,
-    bounds: bounds.length > 0 ? bounds : undefined,
-    variance,
-    isReified: isReified || undefined,
-  };
-}
 
 // =============================================================================
 // Primary Constructor Properties

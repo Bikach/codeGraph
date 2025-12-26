@@ -67,8 +67,8 @@ domain/
 | 2 | modifiers/ (base) | ✅ | `9bee7db` | 18 tests |
 | 3 | modifiers/ (annotations) | ✅ | `5feb454` | 12 tests |
 | 4 | calls/type-inference/ | ✅ | `d5f45a1` | 27 tests |
-| 5 | package/ | 🔄 | - | 11 tests |
-| 6 | generics/ | ⏳ | - | - |
+| 5 | package/ | ✅ | `e5d4a99` | 11 tests |
+| 6 | generics/ | 🔄 | - | 21 tests |
 | 7 | property/, function/ params | ⏳ | - | - |
 | 8 | calls/ (rest) | ⏳ | - | - |
 | 9 | function/ | ⏳ | - | - |
