@@ -13,7 +13,6 @@ import type {
   ParsedProperty,
   ParsedParameter,
   ParsedImport,
-  ParsedAnnotation,
   ParsedCall,
   ParsedTypeAlias,
   ParsedTypeParameter,
@@ -29,7 +28,7 @@ import {
   nodeLocation,
   extractTypeName,
 } from './extractor/ast-utils/index.js';
-import { extractModifiers } from './extractor/modifiers/index.js';
+import { extractModifiers, extractAnnotations } from './extractor/modifiers/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -801,41 +800,6 @@ function inferExpressionType(expression: SyntaxNode): string {
 }
 
 // =============================================================================
-// Annotations
-// =============================================================================
-
-function extractAnnotations(node: SyntaxNode): ParsedAnnotation[] {
-  const annotations: ParsedAnnotation[] = [];
-  const modifiersList = findChildByType(node, 'modifiers');
-
-  if (!modifiersList) return annotations;
-
-  for (const child of modifiersList.children) {
-    if (child.type === 'annotation') {
-      // Annotation can be:
-      // - @Name -> user_type directly
-      // - @Name("arg") -> constructor_invocation > user_type
-      const constructorInvocation = findChildByType(child, 'constructor_invocation');
-      const nameNode = constructorInvocation
-        ? findChildByType(constructorInvocation, 'user_type')
-        : findChildByType(child, 'user_type') ?? findChildByType(child, 'simple_identifier');
-
-      if (nameNode) {
-        // Extract just the annotation name (e.g., "Deprecated" not "Deprecated(\"msg\")")
-        const typeIdentifier = findChildByType(nameNode, 'type_identifier');
-        annotations.push({
-          name: typeIdentifier?.text ?? nameNode.text,
-          arguments: extractAnnotationArguments(child),
-        });
-      }
-    }
-  }
-
-  return annotations;
-}
-
-
-// =============================================================================
 // Type Parameters (Generics)
 // =============================================================================
 
@@ -1214,44 +1178,3 @@ function extractObjectExpression(node: SyntaxNode): ParsedObjectExpression | und
   };
 }
 
-// =============================================================================
-// Annotation Arguments (enhanced)
-// =============================================================================
-
-function extractAnnotationArguments(node: SyntaxNode): Record<string, string> | undefined {
-  // Look for value_arguments in constructor_invocation
-  const constructorInvocation = findChildByType(node, 'constructor_invocation');
-  if (!constructorInvocation) return undefined;
-
-  const valueArgs = findChildByType(constructorInvocation, 'value_arguments');
-  if (!valueArgs) return undefined;
-
-  const args: Record<string, string> = {};
-  let positionalIndex = 0;
-
-  for (const child of valueArgs.children) {
-    if (child.type === 'value_argument') {
-      const nameNode = findChildByType(child, 'simple_identifier');
-      // Get the expression (everything after '=' or the whole argument)
-      const expression = child.children.find(
-        (c) =>
-          c.type !== 'simple_identifier' &&
-          c.type !== '=' &&
-          c.type !== '(' &&
-          c.type !== ')' &&
-          c.type !== ','
-      );
-
-      if (nameNode) {
-        // Named argument: @Deprecated(message = "use X")
-        args[nameNode.text] = expression?.text ?? '';
-      } else if (expression) {
-        // Positional argument: @Deprecated("use X")
-        args[`_${positionalIndex}`] = expression.text;
-        positionalIndex++;
-      }
-    }
-  }
-
-  return Object.keys(args).length > 0 ? args : undefined;
-}
