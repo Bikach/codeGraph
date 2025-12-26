@@ -29,6 +29,7 @@ import {
   extractTypeName,
 } from './extractor/ast-utils/index.js';
 import { extractModifiers, extractAnnotations } from './extractor/modifiers/index.js';
+import { inferArgumentType } from './extractor/calls/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -702,102 +703,6 @@ function extractCallArguments(callSuffix: SyntaxNode): { argumentCount: number; 
   return { argumentCount, argumentTypes };
 }
 
-/**
- * Infer the type of an argument from its expression.
- * Returns the inferred type or 'Unknown' if it cannot be determined.
- */
-function inferArgumentType(valueArgument: SyntaxNode): string {
-  // value_argument may contain: expression, named argument (name = expression), or spread (*array)
-  // Skip the name part for named arguments
-  const expression = findFirstExpression(valueArgument);
-  if (!expression) return 'Unknown';
-
-  return inferExpressionType(expression);
-}
-
-/**
- * Find the first expression in a node (skips named argument labels).
- */
-function findFirstExpression(node: SyntaxNode): SyntaxNode | undefined {
-  for (const child of node.children) {
-    // Skip identifier and '=' for named arguments
-    if (child.type === 'simple_identifier' || child.text === '=') continue;
-    // Common expression types
-    if (isExpressionType(child.type)) {
-      return child;
-    }
-  }
-  return undefined;
-}
-
-/**
- * Check if a node type is an expression type.
- */
-function isExpressionType(type: string): boolean {
-  const expressionTypes = [
-    'integer_literal',
-    'long_literal',
-    'real_literal',
-    'string_literal',
-    'character_literal',
-    'boolean_literal',
-    'null_literal',
-    'call_expression',
-    'navigation_expression',
-    'simple_identifier',
-    'prefix_expression',
-    'postfix_expression',
-    'additive_expression',
-    'multiplicative_expression',
-    'comparison_expression',
-    'equality_expression',
-    'conjunction_expression',
-    'disjunction_expression',
-    'lambda_literal',
-    'object_literal',
-    'collection_literal',
-    'if_expression',
-    'when_expression',
-    'try_expression',
-    'parenthesized_expression',
-  ];
-  return expressionTypes.includes(type);
-}
-
-/**
- * Infer type from an expression node.
- */
-function inferExpressionType(expression: SyntaxNode): string {
-  switch (expression.type) {
-    // Literal types - these are certain
-    case 'integer_literal':
-      return 'Int';
-    case 'long_literal':
-      return 'Long';
-    case 'real_literal':
-      // Check for 'f' suffix for Float
-      return expression.text.toLowerCase().endsWith('f') ? 'Float' : 'Double';
-    case 'string_literal':
-      return 'String';
-    case 'character_literal':
-      return 'Char';
-    case 'boolean_literal':
-      return 'Boolean';
-    case 'null_literal':
-      return 'Nothing?';
-    case 'lambda_literal':
-      return 'Function';
-
-    // Collection literals
-    case 'collection_literal':
-      // Could be listOf, arrayOf, etc. - hard to determine element type
-      return 'Collection';
-
-    // For other expressions, we can't reliably infer the type without full type analysis
-    default:
-      return 'Unknown';
-  }
-}
 
 // =============================================================================
 // Type Parameters (Generics)
