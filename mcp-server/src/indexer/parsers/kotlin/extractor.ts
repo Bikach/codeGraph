@@ -11,9 +11,7 @@ import type {
   ParsedClass,
   ParsedFunction,
   ParsedProperty,
-  ParsedTypeAlias,
   ParsedConstructor,
-  ParsedDestructuringDeclaration,
   ParsedObjectExpression,
 } from '../../types.js';
 
@@ -34,6 +32,10 @@ import {
 } from './extractor/constructor/index.js';
 import { isCompanionObject } from './extractor/companion/index.js';
 import { mapClassKind, extractSuperTypes } from './extractor/class/index.js';
+import {
+  extractTypeAlias,
+  extractDestructuringDeclaration,
+} from './extractor/advanced/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -230,93 +232,6 @@ function extractCompanionObject(node: SyntaxNode): ParsedClass {
     properties,
     functions,
     nestedClasses,
-    location: nodeLocation(node),
-  };
-}
-
-// =============================================================================
-// Type Aliases
-// =============================================================================
-
-function extractTypeAlias(node: SyntaxNode): ParsedTypeAlias {
-  const nameNode = findChildByType(node, 'type_identifier');
-  const name = nameNode?.text ?? '<unnamed>';
-
-  const modifiers = extractModifiers(node);
-
-  // Extract type parameters if present
-  const typeParameters = extractTypeParameters(node);
-
-  // Extract the aliased type (after '=')
-  let aliasedType = '';
-  for (const child of node.children) {
-    if (
-      child.type === 'user_type' ||
-      child.type === 'nullable_type' ||
-      child.type === 'function_type'
-    ) {
-      // Check if preceded by '='
-      const prev = child.previousSibling;
-      if (prev?.type === '=') {
-        aliasedType = child.text;
-        break;
-      }
-    }
-  }
-
-  return {
-    name,
-    aliasedType,
-    visibility: modifiers.visibility,
-    typeParameters: typeParameters.length > 0 ? typeParameters : undefined,
-    location: nodeLocation(node),
-  };
-}
-
-// =============================================================================
-// Destructuring Declarations
-// =============================================================================
-
-function extractDestructuringDeclaration(
-  node: SyntaxNode
-): ParsedDestructuringDeclaration | undefined {
-  // Check if this is a destructuring declaration
-  // Structure: property_declaration > multi_variable_declaration > variable_declaration+
-  const multiVarDecl = findChildByType(node, 'multi_variable_declaration');
-  if (!multiVarDecl) return undefined;
-
-  const componentNames: string[] = [];
-  const componentTypes: (string | undefined)[] = [];
-
-  for (const child of multiVarDecl.children) {
-    if (child.type === 'variable_declaration') {
-      const nameNode = findChildByType(child, 'simple_identifier');
-      const typeNode =
-        findChildByType(child, 'nullable_type') ??
-        findChildByType(child, 'user_type');
-
-      componentNames.push(nameNode?.text ?? '_');
-      componentTypes.push(typeNode?.text);
-    }
-  }
-
-  if (componentNames.length === 0) return undefined;
-
-  const modifiers = extractModifiers(node);
-  const bindingKind = findChildByType(node, 'binding_pattern_kind');
-  const isVal = bindingKind
-    ? bindingKind.children.some((c) => c.type === 'val')
-    : node.children.some((c) => c.type === 'val');
-
-  // Get initializer
-  const initializer = node.childForFieldName('initializer');
-
-  return {
-    componentNames,
-    componentTypes: componentTypes.some((t) => t !== undefined) ? componentTypes : undefined,
-    initializer: initializer?.text,
-    visibility: modifiers.visibility,
-    isVal,
     location: nodeLocation(node),
   };
 }
