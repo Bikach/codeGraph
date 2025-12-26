@@ -21,7 +21,6 @@ import type {
   ParsedDestructuringDeclaration,
   ParsedObjectExpression,
   ParsedFunctionType,
-  Visibility,
 } from '../../types.js';
 
 import {
@@ -30,6 +29,7 @@ import {
   nodeLocation,
   extractTypeName,
 } from './extractor/ast-utils/index.js';
+import { extractModifiers } from './extractor/modifiers/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -801,72 +801,8 @@ function inferExpressionType(expression: SyntaxNode): string {
 }
 
 // =============================================================================
-// Modifiers & Annotations
+// Annotations
 // =============================================================================
-
-interface Modifiers {
-  visibility: Visibility;
-  isAbstract: boolean;
-  isData: boolean;
-  isSealed: boolean;
-  isSuspend: boolean;
-  isInline: boolean;
-  isInfix: boolean;
-  isOperator: boolean;
-}
-
-function extractModifiers(node: SyntaxNode): Modifiers {
-  const result: Modifiers = {
-    visibility: 'public',
-    isAbstract: false,
-    isData: false,
-    isSealed: false,
-    isSuspend: false,
-    isInline: false,
-    isInfix: false,
-    isOperator: false,
-  };
-
-  const modifiersList = findChildByType(node, 'modifiers');
-  if (!modifiersList) return result;
-
-  for (const child of modifiersList.children) {
-    switch (child.type) {
-      case 'visibility_modifier':
-        result.visibility = mapVisibility(child.text);
-        break;
-      case 'inheritance_modifier':
-        if (child.text === 'abstract') result.isAbstract = true;
-        if (child.text === 'sealed') result.isSealed = true;
-        break;
-      case 'class_modifier':
-        if (child.text === 'data') result.isData = true;
-        if (child.text === 'sealed') result.isSealed = true;
-        break;
-      case 'function_modifier':
-        if (child.text === 'suspend') result.isSuspend = true;
-        if (child.text === 'inline') result.isInline = true;
-        if (child.text === 'infix') result.isInfix = true;
-        if (child.text === 'operator') result.isOperator = true;
-        break;
-    }
-  }
-
-  return result;
-}
-
-function mapVisibility(text: string): Visibility {
-  switch (text) {
-    case 'private':
-      return 'private';
-    case 'protected':
-      return 'protected';
-    case 'internal':
-      return 'internal';
-    default:
-      return 'public';
-  }
-}
 
 function extractAnnotations(node: SyntaxNode): ParsedAnnotation[] {
   const annotations: ParsedAnnotation[] = [];
