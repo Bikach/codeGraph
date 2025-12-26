@@ -54,10 +54,10 @@ domain/
 
 ---
 
-## Phase 2: Kotlin Extractor 🔄 EN COURS
+## Phase 2: Kotlin Extractor ✅ TERMINÉ
 
-**Fichier source:** `parsers/kotlin/extractor.ts` (1351 lignes → ~700 lignes, 39 fonctions)
-**Fichier test:** `parsers/kotlin/index.test.ts` (1525 lignes, 123 tests + 68 nouveaux tests)
+**Fichier source:** `parsers/kotlin/extractor.ts` (1351 lignes → 8 lignes, 39 fonctions extraites)
+**Fichier test:** `parsers/kotlin/index.test.ts` (1525 lignes, 123 tests) + 200+ nouveaux tests unitaires
 
 ### Progression
 
@@ -76,8 +76,8 @@ domain/
 | 11 | companion/ (partial) | ✅ | `1e8b579` | - |
 | 12 | class/ infra (partial) | ✅ | `34168bf` | - |
 | 13 | advanced/ | ✅ | `2e479b2` | 26 tests |
-| 14 | object-expressions/ | ✅ | - | 29 tests |
-| 15 | class/, extractor/ | ⏳ | - | - |
+| 14 | object-expressions/ | ✅ | `c01cc72` | 29 tests |
+| 15 | class/, extractor/ | ✅ | - | 61 tests |
 
 ### Structure Cible
 ```
