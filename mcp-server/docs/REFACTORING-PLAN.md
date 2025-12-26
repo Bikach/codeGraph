@@ -69,8 +69,8 @@ domain/
 | 4 | calls/type-inference/ | ✅ | `d5f45a1` | 27 tests |
 | 5 | package/ | ✅ | `e5d4a99` | 11 tests |
 | 6 | generics/ | ✅ | `97f77a7` | 21 tests |
-| 7 | property/, function/ params | 🔄 | - | - |
-| 8 | calls/ (rest) | ⏳ | - | - |
+| 7 | property/, function/ params | ✅ | `d0394ff` | - |
+| 8 | calls/ (rest) | ✅ | `66cceab` | - |
 | 9 | function/ | ⏳ | - | - |
 | 10 | constructor/ | ⏳ | - | - |
 | 11 | companion/ | ⏳ | - | - |

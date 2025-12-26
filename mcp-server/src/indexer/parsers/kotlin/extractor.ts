@@ -12,7 +12,6 @@ import type {
   ParsedFunction,
   ParsedProperty,
   ParsedParameter,
-  ParsedCall,
   ParsedTypeAlias,
   ParsedConstructor,
   ParsedDestructuringDeclaration,
@@ -26,7 +25,7 @@ import {
   extractTypeName,
 } from './extractor/ast-utils/index.js';
 import { extractModifiers, extractAnnotations } from './extractor/modifiers/index.js';
-import { inferArgumentType } from './extractor/calls/index.js';
+import { extractCalls } from './extractor/calls/index.js';
 import { extractPackageName, extractImports } from './extractor/package/index.js';
 import { extractTypeParameters } from './extractor/generics/index.js';
 import { extractProperty } from './extractor/property/index.js';
@@ -310,146 +309,6 @@ function extractFunction(node: SyntaxNode): ParsedFunction {
     calls,
   };
 }
-
-// =============================================================================
-// Function Calls
-// =============================================================================
-
-function extractCalls(body: SyntaxNode): ParsedCall[] {
-  const calls: ParsedCall[] = [];
-
-  traverseNode(body, (node) => {
-    if (node.type === 'call_expression') {
-      const call = extractCallExpression(node);
-      if (call) {
-        calls.push(call);
-      }
-    }
-  });
-
-  return calls;
-}
-
-function extractCallExpression(node: SyntaxNode): ParsedCall | undefined {
-  // call_expression has structure: receiver.function_name(args)
-  // or just: function_name(args)
-  // For qualified calls: com.example.Utils.method(args) has nested navigation_expressions
-
-  const navigations = findChildByType(node, 'navigation_expression');
-  const callSuffix = findChildByType(node, 'call_suffix');
-
-  if (!callSuffix) return undefined;
-
-  let name: string;
-  let receiver: string | undefined;
-  let isSafeCall = false;
-
-  if (navigations) {
-    // Extract the full receiver path and method name from navigation_expression
-    const { receiverPath, methodName, hasSafeCall } = extractNavigationPath(navigations);
-    receiver = receiverPath;
-    name = methodName;
-    isSafeCall = hasSafeCall;
-  } else {
-    // Direct function call
-    const identifier = node.children.find((c) => c.type === 'simple_identifier');
-    name = identifier?.text ?? '<unknown>';
-  }
-
-  // Extract argument information from call_suffix
-  const { argumentCount, argumentTypes } = extractCallArguments(callSuffix);
-
-  return {
-    name,
-    receiver,
-    receiverType: undefined, // Will be resolved later
-    argumentCount,
-    argumentTypes: argumentTypes.length > 0 ? argumentTypes : undefined,
-    isSafeCall: isSafeCall || undefined,
-    location: nodeLocation(node),
-  };
-}
-
-/**
- * Extract the full navigation path from a (possibly nested) navigation_expression.
- * Handles qualified calls like: com.example.Utils.method()
- * Returns the receiver path (com.example.Utils) and the method name (method).
- */
-function extractNavigationPath(navExpr: SyntaxNode): {
-  receiverPath: string | undefined;
-  methodName: string;
-  hasSafeCall: boolean;
-} {
-  // Collect all parts of the navigation path
-  const parts: string[] = [];
-  let hasSafeCall = false;
-
-  // Recursively collect parts from nested navigation_expressions
-  function collectParts(node: SyntaxNode): void {
-    if (node.type === 'simple_identifier') {
-      parts.push(node.text);
-    } else if (node.type === 'navigation_expression') {
-      // Process children in order
-      for (const child of node.children) {
-        if (child.type === 'navigation_expression' || child.type === 'simple_identifier') {
-          collectParts(child);
-        } else if (child.type === 'navigation_suffix') {
-          // Check for safe call
-          for (const suffixChild of child.children) {
-            if (suffixChild.text === '?.' || suffixChild.type === '?.') {
-              hasSafeCall = true;
-            } else if (suffixChild.type === 'simple_identifier') {
-              parts.push(suffixChild.text);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  collectParts(navExpr);
-
-  // The last part is the method name, everything before is the receiver
-  if (parts.length === 0) {
-    return { receiverPath: undefined, methodName: '<unknown>', hasSafeCall };
-  }
-
-  if (parts.length === 1) {
-    // Just a method call without receiver (shouldn't happen for navigation_expression)
-    return { receiverPath: undefined, methodName: parts[0]!, hasSafeCall };
-  }
-
-  const methodName = parts.pop()!;
-  const receiverPath = parts.join('.');
-
-  return { receiverPath, methodName, hasSafeCall };
-}
-
-/**
- * Extract argument count and types from a call_suffix node.
- * Types are inferred from literals and simple expressions where possible.
- */
-function extractCallArguments(callSuffix: SyntaxNode): { argumentCount: number; argumentTypes: string[] } {
-  const argumentTypes: string[] = [];
-  let argumentCount = 0;
-
-  // call_suffix contains value_arguments which contains value_argument nodes
-  const valueArguments = findChildByType(callSuffix, 'value_arguments');
-  if (!valueArguments) {
-    return { argumentCount: 0, argumentTypes: [] };
-  }
-
-  for (const child of valueArguments.children) {
-    if (child.type === 'value_argument') {
-      argumentCount++;
-      const argType = inferArgumentType(child);
-      argumentTypes.push(argType);
-    }
-  }
-
-  return { argumentCount, argumentTypes };
-}
-
 
 // =============================================================================
 // Primary Constructor Properties
