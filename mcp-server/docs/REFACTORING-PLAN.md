@@ -75,8 +75,8 @@ domain/
 | 10 | constructor/ | ✅ | `3b44be2` | - |
 | 11 | companion/ (partial) | ✅ | `1e8b579` | - |
 | 12 | class/ infra (partial) | ✅ | `34168bf` | - |
-| 13 | advanced/ | ⏳ | - | - |
-| 14 | object-expressions/ | ⏳ | - | - |
+| 13 | advanced/ | ✅ | `2e479b2` | 26 tests |
+| 14 | object-expressions/ | ✅ | - | 29 tests |
 | 15 | class/, extractor/ | ⏳ | - | - |
 
 ### Structure Cible

@@ -12,15 +12,9 @@ import type {
   ParsedFunction,
   ParsedProperty,
   ParsedConstructor,
-  ParsedObjectExpression,
 } from '../../types.js';
 
-import {
-  findChildByType,
-  traverseNode,
-  nodeLocation,
-  extractTypeName,
-} from './extractor/ast-utils/index.js';
+import { findChildByType, nodeLocation } from './extractor/ast-utils/index.js';
 import { extractModifiers, extractAnnotations } from './extractor/modifiers/index.js';
 import { extractPackageName, extractImports } from './extractor/package/index.js';
 import { extractTypeParameters } from './extractor/generics/index.js';
@@ -36,6 +30,7 @@ import {
   extractTypeAlias,
   extractDestructuringDeclaration,
 } from './extractor/advanced/index.js';
+import { extractAllObjectExpressions } from './extractor/object-expressions/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -93,7 +88,7 @@ export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
   }
 
   // Extract object expressions from all function bodies for dependency tracking
-  result.objectExpressions = extractAllObjectExpressions(root);
+  result.objectExpressions = extractAllObjectExpressions(root, extractClassBody);
 
   return result;
 }
@@ -236,51 +231,4 @@ function extractCompanionObject(node: SyntaxNode): ParsedClass {
   };
 }
 
-// =============================================================================
-// Object Expressions
-// =============================================================================
-
-function extractAllObjectExpressions(root: SyntaxNode): ParsedObjectExpression[] {
-  const expressions: ParsedObjectExpression[] = [];
-
-  traverseNode(root, (node) => {
-    if (node.type === 'object_literal') {
-      const expr = extractObjectExpression(node);
-      if (expr) {
-        expressions.push(expr);
-      }
-    }
-  });
-
-  return expressions;
-}
-
-function extractObjectExpression(node: SyntaxNode): ParsedObjectExpression | undefined {
-  // object_literal: object [: delegation_specifiers] { class_body }
-  const superTypes: string[] = [];
-
-  // Extract implemented interfaces/extended classes
-  for (const child of node.children) {
-    if (child.type === 'delegation_specifier') {
-      const typeRef =
-        findChildByType(child, 'user_type') ?? findChildByType(child, 'constructor_invocation');
-      if (typeRef) {
-        const typeName = extractTypeName(typeRef);
-        if (typeName) {
-          superTypes.push(typeName);
-        }
-      }
-    }
-  }
-
-  const classBody = findChildByType(node, 'class_body');
-  const { properties, functions } = extractClassBody(classBody);
-
-  return {
-    superTypes,
-    properties,
-    functions,
-    location: nodeLocation(node),
-  };
-}
 
