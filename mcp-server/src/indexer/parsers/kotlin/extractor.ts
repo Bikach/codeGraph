@@ -17,7 +17,6 @@ import type {
   ParsedConstructor,
   ParsedDestructuringDeclaration,
   ParsedObjectExpression,
-  ParsedFunctionType,
 } from '../../types.js';
 
 import {
@@ -30,6 +29,12 @@ import { extractModifiers, extractAnnotations } from './extractor/modifiers/inde
 import { inferArgumentType } from './extractor/calls/index.js';
 import { extractPackageName, extractImports } from './extractor/package/index.js';
 import { extractTypeParameters } from './extractor/generics/index.js';
+import { extractProperty } from './extractor/property/index.js';
+import {
+  extractParameters,
+  extractReturnType,
+  extractReceiverType,
+} from './extractor/function/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -303,220 +308,6 @@ function extractFunction(node: SyntaxNode): ParsedFunction {
     annotations,
     location: nodeLocation(node),
     calls,
-  };
-}
-
-function extractParameters(node: SyntaxNode): ParsedParameter[] {
-  const params: ParsedParameter[] = [];
-  const paramList = findChildByType(node, 'function_value_parameters');
-
-  if (!paramList) return params;
-
-  // Track pending modifiers (they appear as siblings before each parameter)
-  let pendingModifiers: SyntaxNode | null = null;
-
-  for (const child of paramList.children) {
-    if (child.type === 'parameter_modifiers') {
-      pendingModifiers = child;
-      continue;
-    }
-
-    if (child.type === 'parameter') {
-      const nameNode = findChildByType(child, 'simple_identifier');
-      // Type can be: user_type (String), nullable_type (User?), function_type, or other type nodes
-      const functionTypeNode = findChildByType(child, 'function_type');
-      const typeNode =
-        functionTypeNode ??
-        findChildByType(child, 'nullable_type') ??
-        findChildByType(child, 'user_type') ??
-        findChildByType(child, 'type');
-      const defaultValue = findChildByType(child, 'default_value');
-
-      // Extract function type for lambda parameters
-      let functionType: ParsedFunctionType | undefined;
-      if (functionTypeNode) {
-        functionType = extractFunctionType(functionTypeNode, child);
-      }
-
-      // Check for crossinline/noinline modifiers
-      let isCrossinline = false;
-      let isNoinline = false;
-      if (pendingModifiers) {
-        for (const mod of pendingModifiers.children) {
-          if (mod.type === 'parameter_modifier') {
-            if (mod.text === 'crossinline') isCrossinline = true;
-            if (mod.text === 'noinline') isNoinline = true;
-          }
-        }
-        pendingModifiers = null; // Reset after processing
-      }
-
-      params.push({
-        name: nameNode?.text ?? '<unnamed>',
-        type: typeNode?.text,
-        functionType,
-        defaultValue: defaultValue?.text,
-        annotations: extractAnnotations(child),
-        isCrossinline: isCrossinline || undefined,
-        isNoinline: isNoinline || undefined,
-      });
-    }
-  }
-
-  return params;
-}
-
-function extractReturnType(node: SyntaxNode): string | undefined {
-  // Return type can be: nullable_type (User?), user_type (User), or other type nodes
-  // They appear after ':' and before function_body in function_declaration
-  for (const child of node.children) {
-    // Skip parameter types (they are inside function_value_parameters)
-    if (
-      child.type === 'nullable_type' ||
-      child.type === 'user_type' ||
-      child.type === 'type_identifier'
-    ) {
-      // Make sure it's not the receiver type (comes before the function name)
-      const prevSibling = child.previousSibling;
-      if (prevSibling?.type === ':') {
-        return child.text;
-      }
-    }
-  }
-  return undefined;
-}
-
-function extractReceiverType(node: SyntaxNode): string | undefined {
-  const receiverType = node.childForFieldName('receiver_type');
-  if (receiverType) {
-    return receiverType.text;
-  }
-
-  // Extension function: user_type before the dot, e.g., "fun String.capitalize()"
-  // AST: [user_type] [.] [simple_identifier]
-  const userType = findChildByType(node, 'user_type');
-  if (userType) {
-    const nextSibling = userType.nextSibling;
-    if (nextSibling?.type === '.') {
-      return userType.text;
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Extracts a function type from a function_type AST node.
- * Handles: (Int, String) -> Boolean, Int.(String) -> Boolean, suspend () -> Unit
- */
-function extractFunctionType(
-  node: SyntaxNode,
-  parentNode?: SyntaxNode
-): ParsedFunctionType | undefined {
-  if (node.type !== 'function_type') return undefined;
-
-  const parameterTypes: string[] = [];
-  let returnType = 'Unit';
-  let receiverType: string | undefined;
-
-  // Check for suspend modifier in preceding type_modifiers sibling
-  let isSuspend = false;
-  if (parentNode) {
-    for (const child of parentNode.children) {
-      if (child.type === 'type_modifiers') {
-        for (const mod of child.children) {
-          if (mod.text === 'suspend') {
-            isSuspend = true;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  // Process function_type children
-  // Pattern 1: function_type_parameters -> -> return_type
-  // Pattern 2: receiver_type . function_type_parameters -> -> return_type
-  let foundArrow = false;
-
-  for (const child of node.children) {
-    if (child.type === 'type_identifier' && !foundArrow) {
-      // This could be the receiver type (before the dot)
-      const nextSibling = child.nextSibling;
-      if (nextSibling?.type === '.') {
-        receiverType = child.text;
-      }
-    } else if (child.type === 'function_type_parameters') {
-      // Extract parameter types from function_type_parameters
-      for (const paramChild of child.children) {
-        if (
-          paramChild.type === 'user_type' ||
-          paramChild.type === 'nullable_type' ||
-          paramChild.type === 'function_type'
-        ) {
-          parameterTypes.push(paramChild.text);
-        }
-      }
-    } else if (child.type === '->') {
-      foundArrow = true;
-    } else if (
-      foundArrow &&
-      (child.type === 'user_type' ||
-        child.type === 'nullable_type' ||
-        child.type === 'type_identifier')
-    ) {
-      // Return type comes after ->
-      returnType = child.text;
-    }
-  }
-
-  return {
-    parameterTypes,
-    returnType,
-    isSuspend,
-    receiverType,
-  };
-}
-
-// =============================================================================
-// Properties
-// =============================================================================
-
-function extractProperty(node: SyntaxNode): ParsedProperty {
-  // Property name is in variable_declaration > simple_identifier
-  const varDecl = findChildByType(node, 'variable_declaration');
-  const nameNode =
-    node.childForFieldName('name') ??
-    (varDecl ? findChildByType(varDecl, 'simple_identifier') : null) ??
-    findChildByType(node, 'simple_identifier');
-
-  const name = nameNode?.text ?? '<unnamed>';
-  const modifiers = extractModifiers(node);
-  const annotations = extractAnnotations(node);
-
-  // Check if val or var (can be in binding_pattern_kind or directly)
-  const bindingKind = findChildByType(node, 'binding_pattern_kind');
-  const isVal = bindingKind
-    ? bindingKind.children.some((c) => c.type === 'val')
-    : node.children.some((c) => c.type === 'val');
-
-  // Extract type from variable_declaration (can be user_type or nullable_type)
-  const typeNode = varDecl
-    ? findChildByType(varDecl, 'nullable_type') ?? findChildByType(varDecl, 'user_type')
-    : findChildByType(node, 'nullable_type') ?? findChildByType(node, 'user_type') ?? findChildByType(node, 'type');
-  const type = typeNode?.text;
-
-  // Extract initializer
-  const initializer = findChildByType(node, 'property_delegate') ?? node.childForFieldName('initializer');
-
-  return {
-    name,
-    type,
-    visibility: modifiers.visibility,
-    isVal,
-    initializer: initializer?.text,
-    annotations,
-    location: nodeLocation(node),
   };
 }
 
