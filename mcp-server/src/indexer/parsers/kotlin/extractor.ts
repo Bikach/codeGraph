@@ -32,6 +32,7 @@ import {
   extractPrimaryConstructorProperties,
   extractSecondaryConstructor,
 } from './extractor/constructor/index.js';
+import { isCompanionObject } from './extractor/companion/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -269,21 +270,6 @@ function extractClassBody(classBody: SyntaxNode | undefined): {
 // =============================================================================
 // Companion Objects
 // =============================================================================
-
-function isCompanionObject(node: SyntaxNode): boolean {
-  // Check if the object declaration has 'companion' modifier
-  const modifiers = findChildByType(node, 'modifiers');
-  if (modifiers) {
-    for (const child of modifiers.children) {
-      if (child.type === 'class_modifier' && child.text === 'companion') {
-        return true;
-      }
-    }
-  }
-
-  // Also check for 'companion' keyword as direct child
-  return node.children.some((c) => c.type === 'companion');
-}
 
 function extractCompanionObject(node: SyntaxNode): ParsedClass {
   // companion_object has similar structure to object_declaration

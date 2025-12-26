@@ -73,7 +73,7 @@ domain/
 | 8 | calls/ (rest) | ✅ | `66cceab` | - |
 | 9 | function/ | ✅ | `78fc9b8` | - |
 | 10 | constructor/ | ✅ | `3b44be2` | - |
-| 11 | companion/ | ⏳ | - | - |
+| 11 | companion/ (partial) | ✅ | `1e8b579` | - |
 | 12 | class/ infra | ⏳ | - | - |
 | 13 | advanced/ | ⏳ | - | - |
 | 14 | object-expressions/ | ⏳ | - | - |
@@ -179,8 +179,8 @@ parsers/kotlin/
 | 8 | calls/ | extractNavigationPath, extractCallArguments, extractCallExpression, extractCalls | type-inference, ast-utils |
 | 9 | function/ | extractFunction | parameters, modifiers, generics, calls |
 | 10 | constructor/ | extractPrimaryConstructorProperties, extractSecondaryConstructor | modifiers, ast-utils |
-| 11 | companion/ | isCompanionObject, extractCompanionObject | modifiers, class-body |
-| 12 | class/ infra | mapClassKind, extractSuperTypes, extractClassBody | modifiers, property, function, companion, constructor |
+| 11 | companion/ | isCompanionObject | modifiers, ast-utils |
+| 12 | class/ infra | mapClassKind, extractSuperTypes, extractClassBody, extractCompanionObject | modifiers, property, function, companion, constructor |
 | 13 | advanced/ | extractTypeAlias, extractDestructuringDeclaration | modifiers, generics |
 | 14 | object-expressions/ | extractObjectExpression, extractAllObjectExpressions | class-body, ast-utils |
 | 15 | class/, extractor/ | extractClass, extractSymbols, index.ts | Tout |
