@@ -12,7 +12,6 @@ import type {
   ParsedFunction,
   ParsedProperty,
   ParsedParameter,
-  ParsedImport,
   ParsedCall,
   ParsedTypeAlias,
   ParsedTypeParameter,
@@ -30,6 +29,7 @@ import {
 } from './extractor/ast-utils/index.js';
 import { extractModifiers, extractAnnotations } from './extractor/modifiers/index.js';
 import { inferArgumentType } from './extractor/calls/index.js';
+import { extractPackageName, extractImports } from './extractor/package/index.js';
 
 // =============================================================================
 // Main Extractor
@@ -90,50 +90,6 @@ export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
   result.objectExpressions = extractAllObjectExpressions(root);
 
   return result;
-}
-
-// =============================================================================
-// Package & Imports
-// =============================================================================
-
-function extractPackageName(root: SyntaxNode): string | undefined {
-  const packageHeader = root.children.find((c) => c.type === 'package_header');
-  if (!packageHeader) return undefined;
-
-  const identifier = findChildByType(packageHeader, 'identifier');
-  return identifier?.text;
-}
-
-function extractImports(root: SyntaxNode): ParsedImport[] {
-  const imports: ParsedImport[] = [];
-
-  // Imports are inside import_list
-  const importList = root.children.find((c) => c.type === 'import_list');
-  const importHeaders = importList ? importList.children : root.children;
-
-  for (const child of importHeaders) {
-    if (child.type === 'import_header') {
-      const identifier = findChildByType(child, 'identifier');
-      if (identifier) {
-        const path = identifier.text;
-        // Wildcard can be: path ends with *, STAR node, or wildcard_import node
-        const isWildcard =
-          path.endsWith('*') ||
-          child.children.some((c) => c.type === 'STAR' || c.type === 'wildcard_import');
-        const aliasNode = findChildByType(child, 'import_alias');
-
-        imports.push({
-          path: path.replace(/\.\*$/, ''),
-          alias: aliasNode
-            ? (findChildByType(aliasNode, 'type_identifier') ?? findChildByType(aliasNode, 'simple_identifier'))?.text
-            : undefined,
-          isWildcard,
-        });
-      }
-    }
-  }
-
-  return imports;
 }
 
 // =============================================================================

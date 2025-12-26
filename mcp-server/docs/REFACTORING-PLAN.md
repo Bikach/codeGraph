@@ -54,10 +54,30 @@ domain/
 
 ---
 
-## Phase 2: Kotlin Extractor ⏳ EN ATTENTE
+## Phase 2: Kotlin Extractor 🔄 EN COURS
 
-**Fichier source:** `parsers/kotlin/extractor.ts` (1351 lignes, 39 fonctions)
-**Fichier test:** `parsers/kotlin/index.test.ts` (1525 lignes, 123 tests)
+**Fichier source:** `parsers/kotlin/extractor.ts` (1351 lignes → ~700 lignes, 39 fonctions)
+**Fichier test:** `parsers/kotlin/index.test.ts` (1525 lignes, 123 tests + 68 nouveaux tests)
+
+### Progression
+
+| # | Module | Status | Commit | Tests ajoutés |
+|---|--------|--------|--------|---------------|
+| 1 | ast-utils/ | ✅ | `e67e38a` | 22 tests |
+| 2 | modifiers/ (base) | ✅ | `9bee7db` | 18 tests |
+| 3 | modifiers/ (annotations) | ✅ | `5feb454` | 12 tests |
+| 4 | calls/type-inference/ | ✅ | `d5f45a1` | 27 tests |
+| 5 | package/ | 🔄 | - | 11 tests |
+| 6 | generics/ | ⏳ | - | - |
+| 7 | property/, function/ params | ⏳ | - | - |
+| 8 | calls/ (rest) | ⏳ | - | - |
+| 9 | function/ | ⏳ | - | - |
+| 10 | constructor/ | ⏳ | - | - |
+| 11 | companion/ | ⏳ | - | - |
+| 12 | class/ infra | ⏳ | - | - |
+| 13 | advanced/ | ⏳ | - | - |
+| 14 | object-expressions/ | ⏳ | - | - |
+| 15 | class/, extractor/ | ⏳ | - | - |
 
 ### Structure Cible
 ```
