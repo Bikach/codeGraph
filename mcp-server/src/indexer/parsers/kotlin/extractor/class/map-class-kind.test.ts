@@ -11,7 +11,7 @@ function findClassLikeDeclaration(
   types: string[] = ['class_declaration', 'object_declaration']
 ): ReturnType<typeof findChildByType> {
   const tree = parseKotlin(code);
-  let found: ReturnType<typeof findChildByType> = null;
+  let found: ReturnType<typeof findChildByType> = undefined;
   traverseNode(tree.rootNode, (node) => {
     if (types.includes(node.type)) {
       found = node;
@@ -66,7 +66,7 @@ describe('mapClassKind', () => {
         }
       `;
       const tree = parseKotlin(code);
-      let innerClass: ReturnType<typeof findChildByType> = null;
+      let innerClass: ReturnType<typeof findChildByType> = undefined;
       let depth = 0;
       traverseNode(tree.rootNode, (node) => {
         if (node.type === 'class_declaration') {

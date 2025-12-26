@@ -233,7 +233,7 @@ describe('extractSuperTypes', () => {
       `;
       // Find the inner class
       const tree = parseKotlin(code);
-      let innerClass: ReturnType<typeof findChildByType> = null;
+      let innerClass: ReturnType<typeof findChildByType> = undefined;
       let depth = 0;
       const traverse = (node: any): void => {
         if (node.type === 'class_declaration') {

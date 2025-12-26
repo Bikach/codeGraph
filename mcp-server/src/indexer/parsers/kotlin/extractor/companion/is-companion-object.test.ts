@@ -10,7 +10,7 @@ import { isCompanionObject } from './is-companion-object.js';
  */
 function findObjectDeclaration(code: string): ReturnType<typeof findChildByType> {
   const tree = parseKotlin(code);
-  let objectDecl: ReturnType<typeof findChildByType> = null;
+  let objectDecl: ReturnType<typeof findChildByType> = undefined;
   traverseNode(tree.rootNode, (node) => {
     if (node.type === 'object_declaration') {
       objectDecl = node;
@@ -26,7 +26,7 @@ function findObjectDeclaration(code: string): ReturnType<typeof findChildByType>
  */
 function findCompanionObject(code: string): ReturnType<typeof findChildByType> {
   const tree = parseKotlin(code);
-  let companionObj: ReturnType<typeof findChildByType> = null;
+  let companionObj: ReturnType<typeof findChildByType> = undefined;
   traverseNode(tree.rootNode, (node) => {
     if (node.type === 'companion_object') {
       companionObj = node;
@@ -192,7 +192,7 @@ describe('isCompanionObject', () => {
       `;
       // Object expressions have type 'object_literal' not 'object_declaration'
       const tree = parseKotlin(code);
-      let objectLiteral: ReturnType<typeof findChildByType> = null;
+      let objectLiteral: ReturnType<typeof findChildByType> = undefined;
       traverseNode(tree.rootNode, (node) => {
         if (node.type === 'object_literal') {
           objectLiteral = node;

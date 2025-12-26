@@ -78,6 +78,13 @@ domain/
 | 13 | advanced/ | ✅ | `2e479b2` | 26 tests |
 | 14 | object-expressions/ | ✅ | `c01cc72` | 29 tests |
 | 15 | class/, extractor/ | ✅ | - | 61 tests |
+| 16 | Nettoyage cohérence | ✅ | - | - |
+
+### Nettoyage post-Phase 2
+
+Le fichier wrapper `extractor.ts` à la racine a été supprimé car il créait
+une double couche de re-export inutile. `index.ts` importe maintenant
+directement de `extractor/index.js`.
 
 ### Structure Cible
 ```

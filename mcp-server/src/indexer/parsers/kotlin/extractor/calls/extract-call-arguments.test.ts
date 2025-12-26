@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseKotlin } from '../../parser.js';
-import { traverseNode, findChildByType } from '../ast-utils/index.js';
+import { traverseNode } from '../ast-utils/index.js';
 import { extractCallArguments } from './extract-call-arguments.js';
 
 function findCallSuffix(source: string) {

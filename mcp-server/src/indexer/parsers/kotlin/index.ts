@@ -8,7 +8,7 @@
 
 import type { LanguageParser, ParsedFile } from '../../types.js';
 import { parseKotlin } from './parser.js';
-import { extractSymbols } from './extractor.js';
+import { extractSymbols } from './extractor/index.js';
 
 /**
  * Kotlin language parser.

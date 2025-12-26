@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseKotlin } from '../../parser.js';
-import { findChildByType, traverseNode } from '../ast-utils/index.js';
+import { traverseNode } from '../ast-utils/index.js';
 import { extractProperty } from './extract-property.js';
 
 function findPropertyDeclaration(source: string) {
