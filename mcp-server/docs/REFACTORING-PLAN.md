@@ -204,9 +204,9 @@ parsers/kotlin/
 | # | Module | Status | Commit | Tests ajoutés |
 |---|--------|--------|--------|---------------|
 | 1 | utils/ | ✅ | `30a625c` | 31 tests |
-| 2 | overload-resolution/ | ✅ | `d507f89` | 52 tests |
-| 3 | type-hierarchy/ | ⏳ | - | - |
-| 4 | call-resolution/ | ⏳ | - | - |
+| 2 | overload-resolution/ | ✅ | `f3a0488` | 52 tests |
+| 3 | type-hierarchy/ | ✅ | `ce957d3` | 24 tests |
+| 4 | call-resolution/ | ✅ | `5c70251` | 65 tests |
 | 5 | symbol-table/ | ⏳ | - | - |
 | 6 | resolution/ | ⏳ | - | - |
 
