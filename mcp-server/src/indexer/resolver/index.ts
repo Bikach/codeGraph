@@ -29,10 +29,12 @@ import type {
   PropertySymbol,
   SymbolTable,
   ResolutionContext,
-  ResolutionStats,
 } from './types.js';
 
 import { getStdlibProvider, getDefaultWildcardImports } from './stdlib/stdlib-registry.js';
+
+// Import utility functions
+import { getClassFqn } from './utils/index.js';
 
 // Re-export types
 export type {
@@ -1208,15 +1210,6 @@ function resolveExtensionFunction(
 }
 
 /**
- * Get the FQN of the current class from context.
- */
-function getClassFqn(context: ResolutionContext): string {
-  if (!context.currentClass) return '';
-  const packageName = context.currentFile.packageName || '';
-  return packageName ? `${packageName}.${context.currentClass.name}` : context.currentClass.name;
-}
-
-/**
  * Resolve synthetic static methods on enum types.
  * Kotlin/Java enums have compiler-generated methods: valueOf, values, entries.
  *
@@ -1240,79 +1233,7 @@ function resolveEnumStaticMethod(enumFqn: string, methodName: string): string | 
 }
 
 // =============================================================================
-// Utility Functions
+// Utility Functions (re-exported from utils/)
 // =============================================================================
 
-/**
- * Get statistics about the resolution results.
- */
-export function getResolutionStats(resolvedFiles: ResolvedFile[]): ResolutionStats {
-  let totalCalls = 0;
-  let resolvedCalls = 0;
-
-  for (const file of resolvedFiles) {
-    // Count total calls from all functions
-    for (const func of file.topLevelFunctions) {
-      totalCalls += func.calls.length;
-    }
-    for (const cls of file.classes) {
-      totalCalls += countCallsInClass(cls);
-    }
-
-    // Count resolved calls
-    resolvedCalls += file.resolvedCalls.length;
-  }
-
-  return {
-    totalCalls,
-    resolvedCalls,
-    unresolvedCalls: totalCalls - resolvedCalls,
-    resolutionRate: totalCalls > 0 ? resolvedCalls / totalCalls : 1,
-  };
-}
-
-/**
- * Count all calls in a class (including nested classes and companion).
- */
-function countCallsInClass(cls: ParsedClass): number {
-  let count = 0;
-
-  for (const func of cls.functions) {
-    count += func.calls.length;
-  }
-
-  for (const nested of cls.nestedClasses) {
-    count += countCallsInClass(nested);
-  }
-
-  if (cls.companionObject) {
-    for (const func of cls.companionObject.functions) {
-      count += func.calls.length;
-    }
-  }
-
-  return count;
-}
-
-/**
- * Lookup a symbol by FQN.
- */
-export function lookupSymbol(table: SymbolTable, fqn: string): Symbol | undefined {
-  return table.byFqn.get(fqn);
-}
-
-/**
- * Find all symbols matching a pattern (simple glob-like matching).
- */
-export function findSymbols(table: SymbolTable, pattern: string): Symbol[] {
-  const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
-  const results: Symbol[] = [];
-
-  for (const symbol of table.byFqn.values()) {
-    if (regex.test(symbol.fqn) || regex.test(symbol.name)) {
-      results.push(symbol);
-    }
-  }
-
-  return results;
-}
+export { getResolutionStats, lookupSymbol, findSymbols } from './utils/index.js';
