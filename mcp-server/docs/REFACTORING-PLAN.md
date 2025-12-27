@@ -207,7 +207,7 @@ parsers/kotlin/
 | 2 | overload-resolution/ | ✅ | `f3a0488` | 52 tests |
 | 3 | type-hierarchy/ | ✅ | `ce957d3` | 24 tests |
 | 4 | call-resolution/ | ✅ | `5c70251` | 65 tests |
-| 5 | symbol-table/ | ⏳ | - | - |
+| 5 | symbol-table/ | ✅ | - | 113 tests |
 | 6 | resolution/ | ⏳ | - | - |
 
 ### Structure Cible
