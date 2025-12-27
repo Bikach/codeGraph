@@ -194,10 +194,21 @@ parsers/kotlin/
 
 ---
 
-## Phase 3: Resolver ⏳ EN ATTENTE
+## Phase 3: Resolver 🔄 EN COURS
 
-**Fichier source:** `resolver/index.ts` (1318 lignes)
-**Fichier test:** `resolver/index.test.ts` (1638 lignes, 48 tests)
+**Fichier source:** `resolver/index.ts` (1318 lignes → en cours de réduction)
+**Fichier test:** `resolver/index.test.ts` (1638 lignes, 48 tests) + nouveaux tests unitaires
+
+### Progression
+
+| # | Module | Status | Commit | Tests ajoutés |
+|---|--------|--------|--------|---------------|
+| 1 | utils/ | ✅ | `30a625c` | 31 tests |
+| 2 | overload-resolution/ | ✅ | `d507f89` | 52 tests |
+| 3 | type-hierarchy/ | ⏳ | - | - |
+| 4 | call-resolution/ | ⏳ | - | - |
+| 5 | symbol-table/ | ⏳ | - | - |
+| 6 | resolution/ | ⏳ | - | - |
 
 ### Structure Cible
 ```
@@ -205,39 +216,46 @@ resolver/
 ├── index.ts
 ├── types.ts (inchangé)
 ├── stdlib/ (inchangé)
-├── symbol-table/
-│   ├── build-symbol-table.ts + .test.ts
-│   ├── index-file.ts + .test.ts
-│   ├── index-class.ts + .test.ts
-│   ├── index-function.ts + .test.ts
-│   └── add-symbol.ts + .test.ts
-├── type-hierarchy/
+├── utils/                          # ✅ Commit 1
+│   ├── index.ts
+│   ├── get-class-fqn.ts + .test.ts
+│   ├── count-calls-in-class.ts + .test.ts
+│   ├── lookup-symbol.ts + .test.ts
+│   ├── find-symbols.ts + .test.ts
+│   └── get-resolution-stats.ts + .test.ts
+├── overload-resolution/            # ✅ Commit 2
+│   ├── index.ts
+│   ├── normalize-type.ts + .test.ts
+│   ├── is-type-compatible.ts + .test.ts
+│   ├── score-overload-match.ts + .test.ts
+│   ├── select-best-overload.ts + .test.ts
+│   ├── find-methods-in-type.ts + .test.ts
+│   └── find-functions-in-package.ts + .test.ts
+├── type-hierarchy/                 # Commit 3
 │   ├── build-type-hierarchy.ts + .test.ts
 │   ├── build-class-hierarchy.ts + .test.ts
 │   └── resolve-type-name.ts + .test.ts
-├── resolution/
-│   ├── resolve-symbols.ts + .test.ts
-│   ├── resolve-file.ts + .test.ts
-│   ├── create-resolution-context.ts + .test.ts
-│   ├── resolve-calls-in-class.ts + .test.ts
-│   └── resolve-calls-in-function.ts + .test.ts
-├── call-resolution/
+├── call-resolution/                # Commit 4
 │   ├── resolve-call.ts + .test.ts
 │   ├── resolve-qualified-call.ts + .test.ts
 │   ├── resolve-constructor-call.ts + .test.ts
 │   ├── resolve-method-in-type.ts + .test.ts
 │   ├── resolve-method-in-hierarchy.ts + .test.ts
 │   ├── resolve-extension-function.ts + .test.ts
-│   └── resolve-symbol-by-name.ts + .test.ts
-├── overload-resolution/
-│   ├── find-methods-in-type.ts + .test.ts
-│   ├── select-best-overload.ts + .test.ts
-│   ├── score-overload-match.ts + .test.ts
-│   └── is-type-compatible.ts + .test.ts
-└── utils/
-    ├── get-resolution-stats.ts + .test.ts
-    ├── lookup-symbol.ts + .test.ts
-    └── find-symbols.ts + .test.ts
+│   ├── resolve-symbol-by-name.ts + .test.ts
+│   └── resolve-enum-static-method.ts + .test.ts
+├── symbol-table/                   # Commit 5
+│   ├── build-symbol-table.ts + .test.ts
+│   ├── index-file.ts + .test.ts
+│   ├── index-class.ts + .test.ts
+│   ├── index-function.ts + .test.ts
+│   └── add-symbol.ts + .test.ts
+└── resolution/                     # Commit 6
+    ├── resolve-symbols.ts + .test.ts
+    ├── resolve-file.ts + .test.ts
+    ├── create-resolution-context.ts + .test.ts
+    ├── resolve-calls-in-class.ts + .test.ts
+    └── resolve-calls-in-function.ts + .test.ts
 ```
 
 ---

@@ -36,6 +36,14 @@ import { getStdlibProvider, getDefaultWildcardImports } from './stdlib/stdlib-re
 // Import utility functions
 import { getClassFqn } from './utils/index.js';
 
+// Import overload resolution functions
+import {
+  selectBestOverload,
+  findMethodsInType,
+  findFunctionsInPackage,
+  isTypeCompatible,
+} from './overload-resolution/index.js';
+
 // Re-export types
 export type {
   Symbol,
@@ -747,23 +755,6 @@ function resolveCall(table: SymbolTable, context: ResolutionContext, call: Parse
 }
 
 /**
- * Find all functions with a given name in a package.
- */
-function findFunctionsInPackage(table: SymbolTable, packageName: string, functionName: string): FunctionSymbol[] {
-  const candidates: FunctionSymbol[] = [];
-  const allFunctions = table.functionsByName.get(functionName) || [];
-
-  for (const func of allFunctions) {
-    if (func.packageName === packageName && !func.declaringTypeFqn) {
-      // Top-level function in this package
-      candidates.push(func);
-    }
-  }
-
-  return candidates;
-}
-
-/**
  * Check if a call without receiver is a constructor call.
  * In Kotlin, `User("John")` can be a constructor call if `User` is a class.
  * Returns the class FQN if it's a constructor, undefined otherwise.
@@ -896,167 +887,6 @@ function resolveMethodInType(
   // Multiple candidates - use overload resolution
   const best = selectBestOverload(candidates, call);
   return best?.fqn;
-}
-
-/**
- * Find all methods with a given name in a type.
- * This handles overloaded methods that share the same base FQN.
- */
-function findMethodsInType(table: SymbolTable, typeFqn: string, methodName: string): FunctionSymbol[] {
-  const candidates: FunctionSymbol[] = [];
-
-  // Get all functions with this name
-  const allFunctions = table.functionsByName.get(methodName) || [];
-
-  for (const func of allFunctions) {
-    // Check if this function belongs to the type
-    if (func.declaringTypeFqn === typeFqn) {
-      candidates.push(func);
-    }
-  }
-
-  // Also check for exact FQN match (single method case)
-  const exactFqn = `${typeFqn}.${methodName}`;
-  const exactMatch = table.byFqn.get(exactFqn);
-  if (exactMatch?.kind === 'function' && !candidates.some((c) => c.fqn === exactMatch.fqn)) {
-    candidates.push(exactMatch as FunctionSymbol);
-  }
-
-  return candidates;
-}
-
-/**
- * Select the best overload from candidates based on argument information.
- * Uses a scoring system to find the most specific match.
- */
-function selectBestOverload(candidates: FunctionSymbol[], call?: ParsedCall): FunctionSymbol | undefined {
-  if (candidates.length === 0) return undefined;
-  if (candidates.length === 1) return candidates[0];
-  if (!call) return candidates[0]; // No call info, return first candidate
-
-  const argCount = call.argumentCount ?? 0;
-  const argTypes = call.argumentTypes || [];
-
-  // Score each candidate
-  const scored = candidates.map((candidate) => ({
-    func: candidate,
-    score: scoreOverloadMatch(candidate, argCount, argTypes),
-  }));
-
-  // Sort by score (highest first)
-  scored.sort((a, b) => b.score - a.score);
-
-  // Return best match if it has a positive score
-  const best = scored[0];
-  if (best && best.score > 0) {
-    return best.func;
-  }
-
-  // If no good match based on types, try argument count match
-  const countMatches = candidates.filter((c) => c.parameterTypes.length === argCount);
-  if (countMatches.length === 1 && countMatches[0]) {
-    return countMatches[0];
-  }
-
-  // Fallback to first candidate
-  return candidates[0];
-}
-
-/**
- * Score how well a function signature matches the call arguments.
- * Higher score = better match.
- */
-function scoreOverloadMatch(func: FunctionSymbol, argCount: number, argTypes: string[]): number {
-  let score = 0;
-
-  // Exact argument count match is important
-  if (func.parameterTypes.length === argCount) {
-    score += 100;
-  } else if (argCount > func.parameterTypes.length) {
-    // Too many arguments - not a match
-    return -1;
-  }
-  // Note: Fewer args might be OK due to default parameters, but we penalize it slightly
-  else {
-    score += 50; // Partial match (default params might fill the rest)
-  }
-
-  // Score type matches
-  for (let i = 0; i < argTypes.length && i < func.parameterTypes.length; i++) {
-    const argType = argTypes[i];
-    const paramType = func.parameterTypes[i];
-
-    if (!argType || argType === 'Unknown' || !paramType) {
-      // Unknown type - neutral score
-      continue;
-    }
-
-    // Strip generics and nullability for comparison
-    const normalizedArg = normalizeType(argType);
-    const normalizedParam = normalizeType(paramType);
-
-    if (normalizedArg === normalizedParam) {
-      // Exact type match
-      score += 50;
-    } else if (isTypeCompatible(normalizedArg, normalizedParam)) {
-      // Compatible type (e.g., Int is compatible with Number)
-      score += 25;
-    } else {
-      // Type mismatch
-      score -= 10;
-    }
-  }
-
-  return score;
-}
-
-/**
- * Normalize a type for comparison (strip generics, nullability).
- */
-function normalizeType(typeName: string): string {
-  return typeName
-    .split('<')[0] // Remove generics
-    ?.replace(/\?$/, '') // Remove nullability
-    ?.trim() ?? typeName;
-}
-
-/**
- * Check if a source type is compatible with a target type.
- * This is a simplified check - full type compatibility requires more analysis.
- */
-function isTypeCompatible(sourceType: string, targetType: string): boolean {
-  // Same type
-  if (sourceType === targetType) return true;
-
-  // Nothing? is compatible with any nullable type
-  if (sourceType === 'Nothing') return true;
-
-  // Numeric type hierarchy
-  const numericHierarchy: Record<string, string[]> = {
-    Byte: ['Short', 'Int', 'Long', 'Float', 'Double', 'Number'],
-    Short: ['Int', 'Long', 'Float', 'Double', 'Number'],
-    Int: ['Long', 'Float', 'Double', 'Number'],
-    Long: ['Float', 'Double', 'Number'],
-    Float: ['Double', 'Number'],
-    Double: ['Number'],
-  };
-
-  // Check numeric compatibility
-  const compatibleWith = numericHierarchy[sourceType];
-  if (compatibleWith?.includes(targetType)) {
-    return true;
-  }
-
-  // Any accepts all types
-  if (targetType === 'Any') return true;
-
-  // CharSequence accepts String
-  if (sourceType === 'String' && targetType === 'CharSequence') return true;
-
-  // Collection hierarchy
-  if (sourceType === 'Collection' && ['Iterable', 'Any'].includes(targetType)) return true;
-
-  return false;
 }
 
 /**
