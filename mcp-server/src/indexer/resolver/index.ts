@@ -44,6 +44,9 @@ import {
   isTypeCompatible,
 } from './overload-resolution/index.js';
 
+// Import type hierarchy functions
+import { buildTypeHierarchy } from './type-hierarchy/index.js';
+
 // Re-export types
 export type {
   Symbol,
@@ -356,87 +359,6 @@ function addSymbol(table: SymbolTable, symbol: Symbol): void {
   }
 }
 
-/**
- * Build the type hierarchy (extends/implements relationships).
- */
-function buildTypeHierarchy(table: SymbolTable, files: ParsedFile[]): void {
-  for (const file of files) {
-    const packageName = file.packageName || '';
-    for (const cls of file.classes) {
-      buildClassHierarchy(table, cls, packageName);
-    }
-  }
-}
-
-/**
- * Build hierarchy for a single class.
- */
-function buildClassHierarchy(table: SymbolTable, cls: ParsedClass, packageName: string, parentFqn?: string): void {
-  const fqn = parentFqn
-    ? `${parentFqn}.${cls.name}`
-    : packageName
-      ? `${packageName}.${cls.name}`
-      : cls.name;
-
-  const parents: string[] = [];
-
-  // Add superclass
-  if (cls.superClass) {
-    const resolvedParent = resolveTypeName(table, cls.superClass, packageName);
-    if (resolvedParent) {
-      parents.push(resolvedParent);
-    } else {
-      // Keep unresolved for now (might be external)
-      parents.push(cls.superClass);
-    }
-  }
-
-  // Add interfaces
-  for (const iface of cls.interfaces) {
-    const resolvedIface = resolveTypeName(table, iface, packageName);
-    if (resolvedIface) {
-      parents.push(resolvedIface);
-    } else {
-      parents.push(iface);
-    }
-  }
-
-  if (parents.length > 0) {
-    table.typeHierarchy.set(fqn, parents);
-  }
-
-  // Process nested classes
-  for (const nested of cls.nestedClasses) {
-    buildClassHierarchy(table, nested, packageName, fqn);
-  }
-}
-
-/**
- * Try to resolve a simple type name to its FQN.
- */
-function resolveTypeName(table: SymbolTable, typeName: string, currentPackage: string): string | undefined {
-  // Remove generics for lookup
-  const baseName = typeName.split('<')[0]?.trim() ?? typeName;
-
-  // 1. Check if it's already an FQN
-  if (table.byFqn.has(baseName)) {
-    return baseName;
-  }
-
-  // 2. Check same package
-  const samePackageFqn = currentPackage ? `${currentPackage}.${baseName}` : baseName;
-  if (table.byFqn.has(samePackageFqn)) {
-    return samePackageFqn;
-  }
-
-  // 3. Check by simple name (might find it in another package)
-  const candidates = table.byName.get(baseName);
-  if (candidates && candidates.length === 1 && candidates[0]) {
-    return candidates[0].fqn;
-  }
-
-  return undefined;
-}
 
 // =============================================================================
 // Symbol Resolution
