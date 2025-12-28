@@ -194,10 +194,17 @@ parsers/kotlin/
 
 ---
 
-## Phase 3: Resolver 🔄 EN COURS
+## Phase 3: Resolver ✅ TERMINÉ
 
-**Fichier source:** `resolver/index.ts` (1318 lignes → en cours de réduction)
-**Fichier test:** `resolver/index.test.ts` (1638 lignes, 48 tests) + nouveaux tests unitaires
+**Fichier source:** `resolver/index.ts` (1318 lignes → 57 lignes)
+**Fichier test:** `resolver/index.test.ts` (1638 lignes, 70 tests) + nouveaux tests unitaires
+
+### Résultat
+| Avant | Après |
+|-------|-------|
+| 1318 lignes | 57 lignes (index.ts) |
+| 1 fichier test | 30+ fichiers tests |
+| 48 tests | 285+ tests |
 
 ### Progression
 
@@ -207,8 +214,8 @@ parsers/kotlin/
 | 2 | overload-resolution/ | ✅ | `f3a0488` | 52 tests |
 | 3 | type-hierarchy/ | ✅ | `ce957d3` | 24 tests |
 | 4 | call-resolution/ | ✅ | `5c70251` | 65 tests |
-| 5 | symbol-table/ | ✅ | - | 113 tests |
-| 6 | resolution/ | ⏳ | - | - |
+| 5 | symbol-table/ | ✅ | `af77138` | 113 tests |
+| 6 | resolution/ | ✅ | - | - |
 
 ### Structure Cible
 ```
@@ -250,12 +257,13 @@ resolver/
 │   ├── index-class.ts + .test.ts
 │   ├── index-function.ts + .test.ts
 │   └── add-symbol.ts + .test.ts
-└── resolution/                     # Commit 6
-    ├── resolve-symbols.ts + .test.ts
-    ├── resolve-file.ts + .test.ts
-    ├── create-resolution-context.ts + .test.ts
-    ├── resolve-calls-in-class.ts + .test.ts
-    └── resolve-calls-in-function.ts + .test.ts
+└── resolution/                        # ✅ Commit 6
+    ├── index.ts
+    ├── resolve-symbols.ts
+    ├── resolve-file.ts
+    ├── create-resolution-context.ts
+    ├── resolve-calls-in-class.ts
+    └── resolve-calls-in-function.ts
 ```
 
 ---
@@ -307,7 +315,7 @@ writer/
 
 Après chaque phase :
 ```bash
-npm test        # 672 tests doivent passer
+npm test        # 1056 tests doivent passer
 npm run typecheck
 npm run build
 ```
