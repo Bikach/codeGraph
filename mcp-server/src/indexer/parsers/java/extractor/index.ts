@@ -7,6 +7,7 @@
 
 import type { Tree } from '../parser.js';
 import type { ParsedFile } from '../../../types.js';
+import { extractPackageName, extractImports } from './package/index.js';
 
 /**
  * Extract all symbols from a Java AST.
@@ -15,14 +16,15 @@ import type { ParsedFile } from '../../../types.js';
  * @param filePath - Path to the source file
  * @returns Parsed file with all extracted symbols
  */
-export function extractSymbols(_tree: Tree, filePath: string): ParsedFile {
-  // TODO: Implement extraction in Phase 2
+export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
+  const root = tree.rootNode;
+
   return {
     filePath,
     language: 'java',
-    packageName: undefined,
-    imports: [],
-    classes: [],
+    packageName: extractPackageName(root),
+    imports: extractImports(root),
+    classes: [], // TODO: Phase 3
     topLevelFunctions: [], // Java doesn't have top-level functions
     topLevelProperties: [], // Java doesn't have top-level properties
     typeAliases: [], // Java doesn't have type aliases
