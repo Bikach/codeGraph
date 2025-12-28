@@ -131,8 +131,10 @@ registerParser('kotlin', ['.kt', '.kts'], async () => {
   return kotlinParser;
 });
 
-// Future: Java, PHP, etc.
-// registerParser('java', ['.java'], async () => {
-//   const { javaParser } = await import('./java/index.js');
-//   return javaParser;
-// });
+// Java parser registration
+registerParser('java', ['.java'], async () => {
+  const { javaParser } = await import('./java/index.js');
+  return javaParser;
+});
+
+// Future: PHP, TypeScript, etc.

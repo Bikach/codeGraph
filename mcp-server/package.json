@@ -32,6 +32,7 @@
     "@modelcontextprotocol/sdk": "^1.24.3",
     "neo4j-driver": "^5.28.1",
     "tree-sitter": "^0.21.1",
+    "tree-sitter-java": "^0.23.5",
     "tree-sitter-kotlin": "^0.3.8",
     "zod": "^3.25.67"
   },
