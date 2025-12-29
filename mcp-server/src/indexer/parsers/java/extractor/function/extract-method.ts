@@ -17,6 +17,7 @@ import { extractModifiers, extractAnnotations } from '../modifiers/index.js';
 import { extractTypeParameters } from '../generics/index.js';
 import { extractParameters } from './extract-parameters.js';
 import { extractReturnType } from './extract-return-type.js';
+import { extractCalls } from '../calls/index.js';
 
 /**
  * Extract a method declaration from an AST node.
@@ -56,8 +57,8 @@ export function extractMethod(node: SyntaxNode): ParsedFunction {
   // Check if method has a body (non-abstract)
   const body = findChildByType(node, 'block');
 
-  // TODO Phase 5: Extract function calls from body
-  // const calls = body ? extractCalls(body) : [];
+  // Extract function calls from body
+  const calls = body ? extractCalls(body) : [];
 
   return {
     name,
@@ -74,7 +75,7 @@ export function extractMethod(node: SyntaxNode): ParsedFunction {
     typeParameters: typeParameters.length > 0 ? typeParameters : undefined,
     annotations,
     location: nodeLocation(node),
-    calls: [], // TODO Phase 5
+    calls,
   };
 }
 

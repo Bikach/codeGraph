@@ -167,11 +167,37 @@ describe('extractMethod', () => {
   });
 
   describe('calls', () => {
-    it('should initialize calls as empty array (Phase 5)', () => {
+    it('should extract method calls from body', () => {
       const method = getFirstMethod('class Foo { void bar() { System.out.println("test"); } }');
       const parsed = extractMethod(method!);
-      // Calls extraction is Phase 5 - for now, should be empty
+      expect(parsed.calls).toHaveLength(1);
+      expect(parsed.calls[0].name).toBe('println');
+      expect(parsed.calls[0].receiver).toBe('System.out');
+    });
+
+    it('should return empty calls for abstract method', () => {
+      const method = getFirstMethod('abstract class Foo { abstract void bar(); }');
+      const parsed = extractMethod(method!);
       expect(parsed.calls).toEqual([]);
+    });
+
+    it('should extract multiple calls', () => {
+      const method = getFirstMethod(`
+        class Foo {
+          void bar() {
+            User user = new User();
+            user.save();
+            log("done");
+          }
+        }
+      `);
+      const parsed = extractMethod(method!);
+      expect(parsed.calls.length).toBeGreaterThanOrEqual(3);
+
+      const names = parsed.calls.map((c) => c.name);
+      expect(names).toContain('User'); // constructor
+      expect(names).toContain('save');
+      expect(names).toContain('log');
     });
   });
 
