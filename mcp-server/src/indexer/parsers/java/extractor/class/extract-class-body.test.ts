@@ -178,12 +178,12 @@ describe('extractClassBody', () => {
       const result = extractClassBody(classBody!, mockExtractClass);
 
       expect(result.properties).toHaveLength(3);
-      expect(result.properties[0].name).toBe('x');
-      expect(result.properties[0].visibility).toBe('private');
-      expect(result.properties[1].name).toBe('name');
-      expect(result.properties[1].visibility).toBe('public');
-      expect(result.properties[2].name).toBe('value');
-      expect(result.properties[2].isVal).toBe(true); // final
+      expect(result.properties[0]!.name).toBe('x');
+      expect(result.properties[0]!.visibility).toBe('private');
+      expect(result.properties[1]!.name).toBe('name');
+      expect(result.properties[1]!.visibility).toBe('public');
+      expect(result.properties[2]!.name).toBe('value');
+      expect(result.properties[2]!.isVal).toBe(true); // final
     });
 
     it('should extract methods from class body', () => {
@@ -196,10 +196,10 @@ describe('extractClassBody', () => {
       const result = extractClassBody(classBody!, mockExtractClass);
 
       expect(result.functions).toHaveLength(2);
-      expect(result.functions[0].name).toBe('bar');
-      expect(result.functions[0].visibility).toBe('public');
-      expect(result.functions[1].name).toBe('calculate');
-      expect(result.functions[1].visibility).toBe('private');
+      expect(result.functions[0]!.name).toBe('bar');
+      expect(result.functions[0]!.visibility).toBe('public');
+      expect(result.functions[1]!.name).toBe('calculate');
+      expect(result.functions[1]!.visibility).toBe('private');
     });
 
     it('should extract constructors from class body', () => {
@@ -212,8 +212,8 @@ describe('extractClassBody', () => {
       const result = extractClassBody(classBody!, mockExtractClass);
 
       expect(result.secondaryConstructors).toHaveLength(2);
-      expect(result.secondaryConstructors[0].visibility).toBe('public');
-      expect(result.secondaryConstructors[1].parameters).toHaveLength(1);
+      expect(result.secondaryConstructors[0]!.visibility).toBe('public');
+      expect(result.secondaryConstructors[1]!.parameters).toHaveLength(1);
     });
   });
 
@@ -240,8 +240,8 @@ describe('extractClassBody', () => {
       const result = extractClassBody(interfaceBody!, mockExtractClass);
 
       expect(result.functions).toHaveLength(2);
-      expect(result.functions[0].name).toBe('bar');
-      expect(result.functions[1].name).toBe('calculate');
+      expect(result.functions[0]!.name).toBe('bar');
+      expect(result.functions[1]!.name).toBe('calculate');
     });
   });
 

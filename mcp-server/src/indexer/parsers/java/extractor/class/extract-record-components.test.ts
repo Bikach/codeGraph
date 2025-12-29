@@ -21,10 +21,10 @@ describe('extractRecordComponents', () => {
       const components = extractRecordComponents(node!);
 
       expect(components).toHaveLength(2);
-      expect(components[0].name).toBe('x');
-      expect(components[0].type).toBe('int');
-      expect(components[1].name).toBe('y');
-      expect(components[1].type).toBe('int');
+      expect(components[0]!.name).toBe('x');
+      expect(components[0]!.type).toBe('int');
+      expect(components[1]!.name).toBe('y');
+      expect(components[1]!.type).toBe('int');
     });
 
     it('should mark components as immutable (isVal: true)', () => {
@@ -32,14 +32,14 @@ describe('extractRecordComponents', () => {
       const components = extractRecordComponents(node!);
 
       expect(components).toHaveLength(1);
-      expect(components[0].isVal).toBe(true);
+      expect(components[0]!.isVal).toBe(true);
     });
 
     it('should mark components as private visibility', () => {
       const node = getRecordDeclaration('record User(String name) {}');
       const components = extractRecordComponents(node!);
 
-      expect(components[0].visibility).toBe('private');
+      expect(components[0]!.visibility).toBe('private');
     });
 
     it('should extract record with no components', () => {
@@ -69,15 +69,15 @@ describe('extractRecordComponents', () => {
       const node = getRecordDeclaration('record User(String name, Integer age) {}');
       const components = extractRecordComponents(node!);
 
-      expect(components[0].type).toBe('String');
-      expect(components[1].type).toBe('Integer');
+      expect(components[0]!.type).toBe('String');
+      expect(components[1]!.type).toBe('Integer');
     });
 
     it('should extract generic types', () => {
       const node = getRecordDeclaration('record Container(List<String> items) {}');
       const components = extractRecordComponents(node!);
 
-      expect(components[0].type).toBe('List<String>');
+      expect(components[0]!.type).toBe('List<String>');
     });
 
     it('should extract nested generic types', () => {
@@ -86,22 +86,22 @@ describe('extractRecordComponents', () => {
       );
       const components = extractRecordComponents(node!);
 
-      expect(components[0].type).toBe('Map<String, List<Integer>>');
+      expect(components[0]!.type).toBe('Map<String, List<Integer>>');
     });
 
     it('should extract array types', () => {
       const node = getRecordDeclaration('record Data(int[] numbers, String[][] matrix) {}');
       const components = extractRecordComponents(node!);
 
-      expect(components[0].type).toBe('int[]');
-      expect(components[1].type).toBe('String[][]');
+      expect(components[0]!.type).toBe('int[]');
+      expect(components[1]!.type).toBe('String[][]');
     });
 
     it('should extract qualified types', () => {
       const node = getRecordDeclaration('record Config(java.util.Date date) {}');
       const components = extractRecordComponents(node!);
 
-      expect(components[0].type).toBe('java.util.Date');
+      expect(components[0]!.type).toBe('java.util.Date');
     });
   });
 
@@ -110,9 +110,9 @@ describe('extractRecordComponents', () => {
       const node = getRecordDeclaration('record Point(int x, int y) {}');
       const components = extractRecordComponents(node!);
 
-      expect(components[0].location).toBeDefined();
-      expect(components[0].location.startLine).toBeGreaterThan(0);
-      expect(components[1].location).toBeDefined();
+      expect(components[0]!.location).toBeDefined();
+      expect(components[0]!.location.startLine).toBeGreaterThan(0);
+      expect(components[1]!.location).toBeDefined();
     });
   });
 

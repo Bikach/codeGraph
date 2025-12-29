@@ -98,8 +98,8 @@ describe('extractMethod', () => {
       const method = getFirstMethod('class Foo { void bar(String name) {} }');
       const parsed = extractMethod(method!);
       expect(parsed.parameters).toHaveLength(1);
-      expect(parsed.parameters[0].name).toBe('name');
-      expect(parsed.parameters[0].type).toBe('String');
+      expect(parsed.parameters[0]!.name).toBe('name');
+      expect(parsed.parameters[0]!.type).toBe('String');
     });
 
     it('should extract method with multiple parameters', () => {
@@ -114,23 +114,23 @@ describe('extractMethod', () => {
       const method = getFirstMethod('class Foo { <T> T bar(T item) { return item; } }');
       const parsed = extractMethod(method!);
       expect(parsed.typeParameters).toHaveLength(1);
-      expect(parsed.typeParameters![0].name).toBe('T');
+      expect(parsed.typeParameters![0]!.name).toBe('T');
     });
 
     it('should extract bounded type parameter', () => {
       const method = getFirstMethod('class Foo { <T extends Number> T bar(T item) { return item; } }');
       const parsed = extractMethod(method!);
       expect(parsed.typeParameters).toHaveLength(1);
-      expect(parsed.typeParameters![0].name).toBe('T');
-      expect(parsed.typeParameters![0].bounds).toContain('Number');
+      expect(parsed.typeParameters![0]!.name).toBe('T');
+      expect(parsed.typeParameters![0]!.bounds).toContain('Number');
     });
 
     it('should extract multiple type parameters', () => {
       const method = getFirstMethod('class Foo { <K, V> V bar(K key) { return null; } }');
       const parsed = extractMethod(method!);
       expect(parsed.typeParameters).toHaveLength(2);
-      expect(parsed.typeParameters![0].name).toBe('K');
-      expect(parsed.typeParameters![1].name).toBe('V');
+      expect(parsed.typeParameters![0]!.name).toBe('K');
+      expect(parsed.typeParameters![1]!.name).toBe('V');
     });
   });
 
@@ -139,7 +139,7 @@ describe('extractMethod', () => {
       const method = getFirstMethod('class Foo { @Override void bar() {} }');
       const parsed = extractMethod(method!);
       expect(parsed.annotations).toHaveLength(1);
-      expect(parsed.annotations[0].name).toBe('Override');
+      expect(parsed.annotations[0]!.name).toBe('Override');
     });
 
     it('should extract multiple annotations', () => {
@@ -152,7 +152,7 @@ describe('extractMethod', () => {
       const method = getFirstMethod('class Foo { @SuppressWarnings("unchecked") void bar() {} }');
       const parsed = extractMethod(method!);
       expect(parsed.annotations).toHaveLength(1);
-      expect(parsed.annotations[0].name).toBe('SuppressWarnings');
+      expect(parsed.annotations[0]!.name).toBe('SuppressWarnings');
     });
   });
 
@@ -171,8 +171,8 @@ describe('extractMethod', () => {
       const method = getFirstMethod('class Foo { void bar() { System.out.println("test"); } }');
       const parsed = extractMethod(method!);
       expect(parsed.calls).toHaveLength(1);
-      expect(parsed.calls[0].name).toBe('println');
-      expect(parsed.calls[0].receiver).toBe('System.out');
+      expect(parsed.calls[0]!.name).toBe('println');
+      expect(parsed.calls[0]!.receiver).toBe('System.out');
     });
 
     it('should return empty calls for abstract method', () => {

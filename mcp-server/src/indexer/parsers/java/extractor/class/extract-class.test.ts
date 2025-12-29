@@ -260,11 +260,11 @@ describe('extractClass', () => {
       const result = extractClass(node!);
 
       expect(result.properties).toHaveLength(2);
-      expect(result.properties[0].name).toBe('x');
-      expect(result.properties[0].type).toBe('int');
-      expect(result.properties[0].isVal).toBe(true);
-      expect(result.properties[1].name).toBe('y');
-      expect(result.properties[1].type).toBe('int');
+      expect(result.properties[0]!.name).toBe('x');
+      expect(result.properties[0]!.type).toBe('int');
+      expect(result.properties[0]!.isVal).toBe(true);
+      expect(result.properties[1]!.name).toBe('y');
+      expect(result.properties[1]!.type).toBe('int');
     });
 
     it('should extract record with generic types', () => {
@@ -272,7 +272,7 @@ describe('extractClass', () => {
       const result = extractClass(node!);
 
       expect(result.properties).toHaveLength(1);
-      expect(result.properties[0].type).toBe('List<String>');
+      expect(result.properties[0]!.type).toBe('List<String>');
     });
 
     it('should extract record implementing interfaces', () => {
@@ -294,7 +294,7 @@ describe('extractClass', () => {
       // Components first, then body members
       expect(result.properties.length).toBeGreaterThanOrEqual(2);
       expect(result.functions).toHaveLength(1);
-      expect(result.functions[0].name).toBe('distance');
+      expect(result.functions[0]!.name).toBe('distance');
     });
   });
 
@@ -340,10 +340,10 @@ describe('extractClass', () => {
       const result = extractClass(node!);
 
       expect(result.properties).toHaveLength(2);
-      expect(result.properties[0].name).toBe('x');
-      expect(result.properties[0].visibility).toBe('private');
-      expect(result.properties[1].name).toBe('name');
-      expect(result.properties[1].visibility).toBe('public');
+      expect(result.properties[0]!.name).toBe('x');
+      expect(result.properties[0]!.visibility).toBe('private');
+      expect(result.properties[1]!.name).toBe('name');
+      expect(result.properties[1]!.visibility).toBe('public');
     });
 
     it('should extract functions', () => {
@@ -355,8 +355,8 @@ describe('extractClass', () => {
       const result = extractClass(node!);
 
       expect(result.functions).toHaveLength(1);
-      expect(result.functions[0].name).toBe('bar');
-      expect(result.functions[0].visibility).toBe('public');
+      expect(result.functions[0]!.name).toBe('bar');
+      expect(result.functions[0]!.visibility).toBe('public');
     });
 
     it('should extract secondaryConstructors', () => {
@@ -369,8 +369,8 @@ describe('extractClass', () => {
       const result = extractClass(node!);
 
       expect(result.secondaryConstructors).toHaveLength(2);
-      expect(result.secondaryConstructors![0].visibility).toBe('public');
-      expect(result.secondaryConstructors![1].parameters).toHaveLength(1);
+      expect(result.secondaryConstructors![0]!.visibility).toBe('public');
+      expect(result.secondaryConstructors![1]!.parameters).toHaveLength(1);
     });
   });
 });

@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { parseJava } from '../../parser.js';
-import { findChildByType, traverseNode } from '../ast-utils/index.js';
+import { traverseNode } from '../ast-utils/index.js';
 import { extractMethodInvocation } from './extract-method-invocation.js';
 
 /**

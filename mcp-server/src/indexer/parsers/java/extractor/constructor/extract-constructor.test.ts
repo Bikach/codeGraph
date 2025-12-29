@@ -28,16 +28,16 @@ describe('extractConstructor', () => {
       const ctor = getFirstConstructor('class Foo { Foo(String name) {} }');
       const parsed = extractConstructor(ctor!);
       expect(parsed.parameters).toHaveLength(1);
-      expect(parsed.parameters[0].name).toBe('name');
-      expect(parsed.parameters[0].type).toBe('String');
+      expect(parsed.parameters[0]!.name).toBe('name');
+      expect(parsed.parameters[0]!.type).toBe('String');
     });
 
     it('should extract constructor with multiple parameters', () => {
       const ctor = getFirstConstructor('class Foo { Foo(String name, int age) {} }');
       const parsed = extractConstructor(ctor!);
       expect(parsed.parameters).toHaveLength(2);
-      expect(parsed.parameters[0].name).toBe('name');
-      expect(parsed.parameters[1].name).toBe('age');
+      expect(parsed.parameters[0]!.name).toBe('name');
+      expect(parsed.parameters[1]!.name).toBe('age');
     });
   });
 
@@ -80,7 +80,7 @@ describe('extractConstructor', () => {
       const classBody = findChildByType(classDecl!, 'class_body');
       // Get second constructor
       const ctors = classBody!.children.filter((c) => c.type === 'constructor_declaration');
-      const parsed = extractConstructor(ctors[1]);
+      const parsed = extractConstructor(ctors[1]!);
       expect(parsed.delegatesTo).toBe('this');
     });
 
@@ -107,7 +107,7 @@ describe('extractConstructor', () => {
       const ctor = getFirstConstructor('class Foo { @Deprecated Foo() {} }');
       const parsed = extractConstructor(ctor!);
       expect(parsed.annotations).toHaveLength(1);
-      expect(parsed.annotations[0].name).toBe('Deprecated');
+      expect(parsed.annotations[0]!.name).toBe('Deprecated');
     });
 
     it('should extract multiple annotations', () => {
@@ -132,8 +132,8 @@ describe('extractConstructor', () => {
       const ctor = getFirstConstructor('class Foo { Foo(@NotNull String name) {} }');
       const parsed = extractConstructor(ctor!);
       expect(parsed.parameters).toHaveLength(1);
-      expect(parsed.parameters[0].annotations).toHaveLength(1);
-      expect(parsed.parameters[0].annotations[0].name).toBe('NotNull');
+      expect(parsed.parameters[0]!.annotations).toHaveLength(1);
+      expect(parsed.parameters[0]!.annotations[0]!.name).toBe('NotNull');
     });
   });
 
@@ -142,7 +142,7 @@ describe('extractConstructor', () => {
       const ctor = getFirstConstructor('class Foo { Foo(List<String> items) {} }');
       const parsed = extractConstructor(ctor!);
       expect(parsed.parameters).toHaveLength(1);
-      expect(parsed.parameters[0].type).toBe('List<String>');
+      expect(parsed.parameters[0]!.type).toBe('List<String>');
     });
   });
 
@@ -151,7 +151,7 @@ describe('extractConstructor', () => {
       const ctor = getFirstConstructor('class Foo { Foo(String... args) {} }');
       const parsed = extractConstructor(ctor!);
       expect(parsed.parameters).toHaveLength(1);
-      expect(parsed.parameters[0].type).toBe('String...');
+      expect(parsed.parameters[0]!.type).toBe('String...');
     });
   });
 });

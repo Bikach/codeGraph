@@ -24,8 +24,8 @@ describe('extractCalls', () => {
       const calls = extractCalls(body!);
 
       expect(calls).toHaveLength(1);
-      expect(calls[0].name).toBe('doSomething');
-      expect(calls[0].isConstructorCall).toBeUndefined();
+      expect(calls[0]!.name).toBe('doSomething');
+      expect(calls[0]!.isConstructorCall).toBeUndefined();
     });
 
     it('should extract qualified method calls', () => {
@@ -33,8 +33,8 @@ describe('extractCalls', () => {
       const calls = extractCalls(body!);
 
       expect(calls).toHaveLength(1);
-      expect(calls[0].name).toBe('method');
-      expect(calls[0].receiver).toBe('obj');
+      expect(calls[0]!.name).toBe('method');
+      expect(calls[0]!.receiver).toBe('obj');
     });
 
     it('should extract multiple method calls', () => {
@@ -60,8 +60,8 @@ describe('extractCalls', () => {
       const calls = extractCalls(body!);
 
       expect(calls).toHaveLength(1);
-      expect(calls[0].name).toBe('User');
-      expect(calls[0].isConstructorCall).toBe(true);
+      expect(calls[0]!.name).toBe('User');
+      expect(calls[0]!.isConstructorCall).toBe(true);
     });
 
     it('should extract constructor with arguments', () => {
@@ -69,7 +69,7 @@ describe('extractCalls', () => {
       const calls = extractCalls(body!);
 
       expect(calls).toHaveLength(1);
-      expect(calls[0].argumentCount).toBe(2);
+      expect(calls[0]!.argumentCount).toBe(2);
     });
   });
 
@@ -139,8 +139,8 @@ describe('extractCalls', () => {
       const calls = extractCalls(body!);
 
       expect(calls).toHaveLength(1);
-      expect(calls[0].name).toBe('helper');
-      expect(calls[0].receiver).toBe('this');
+      expect(calls[0]!.name).toBe('helper');
+      expect(calls[0]!.receiver).toBe('this');
     });
 
     it('should extract super.method() calls', () => {
@@ -148,8 +148,8 @@ describe('extractCalls', () => {
       const calls = extractCalls(body!);
 
       expect(calls).toHaveLength(1);
-      expect(calls[0].name).toBe('onCreate');
-      expect(calls[0].receiver).toBe('super');
+      expect(calls[0]!.name).toBe('onCreate');
+      expect(calls[0]!.receiver).toBe('super');
     });
   });
 });
