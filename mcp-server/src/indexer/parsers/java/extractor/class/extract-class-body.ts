@@ -7,6 +7,9 @@
 
 import type { SyntaxNode } from 'tree-sitter';
 import type { ParsedClass, ParsedFunction, ParsedProperty, ParsedConstructor } from '../../../../types.js';
+import { extractMethod } from '../function/index.js';
+import { extractFields } from '../property/index.js';
+import { extractConstructor } from '../constructor/index.js';
 
 /**
  * Result of extracting class body members.
@@ -55,19 +58,17 @@ export function extractClassBody(
 
   for (const child of classBody.children) {
     switch (child.type) {
-      // TODO Phase 4: Implement field extraction
       case 'field_declaration':
-        // properties.push(extractField(child));
+        // extractFields returns array (Java multi-declarator support)
+        properties.push(...extractFields(child));
         break;
 
-      // TODO Phase 4: Implement method extraction
       case 'method_declaration':
-        // functions.push(extractMethod(child));
+        functions.push(extractMethod(child));
         break;
 
-      // TODO Phase 4: Implement constructor extraction
       case 'constructor_declaration':
-        // secondaryConstructors.push(extractConstructor(child));
+        secondaryConstructors.push(extractConstructor(child));
         break;
 
       // Nested type declarations

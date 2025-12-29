@@ -245,8 +245,8 @@ describe('extractClass', () => {
     });
   });
 
-  describe('empty arrays for Phase 4', () => {
-    it('should have empty properties for now', () => {
+  describe('class members extraction', () => {
+    it('should extract properties', () => {
       const node = getTypeDeclaration(`
         class Foo {
           private int x;
@@ -255,11 +255,14 @@ describe('extractClass', () => {
       `);
       const result = extractClass(node!);
 
-      // Phase 4 will implement field extraction
-      expect(result.properties).toEqual([]);
+      expect(result.properties).toHaveLength(2);
+      expect(result.properties[0].name).toBe('x');
+      expect(result.properties[0].visibility).toBe('private');
+      expect(result.properties[1].name).toBe('name');
+      expect(result.properties[1].visibility).toBe('public');
     });
 
-    it('should have empty functions for now', () => {
+    it('should extract functions', () => {
       const node = getTypeDeclaration(`
         class Foo {
           public void bar() {}
@@ -267,11 +270,12 @@ describe('extractClass', () => {
       `);
       const result = extractClass(node!);
 
-      // Phase 4 will implement method extraction
-      expect(result.functions).toEqual([]);
+      expect(result.functions).toHaveLength(1);
+      expect(result.functions[0].name).toBe('bar');
+      expect(result.functions[0].visibility).toBe('public');
     });
 
-    it('should have undefined secondaryConstructors for now', () => {
+    it('should extract secondaryConstructors', () => {
       const node = getTypeDeclaration(`
         class Foo {
           public Foo() {}
@@ -280,8 +284,9 @@ describe('extractClass', () => {
       `);
       const result = extractClass(node!);
 
-      // Phase 4 will implement constructor extraction
-      expect(result.secondaryConstructors).toBeUndefined();
+      expect(result.secondaryConstructors).toHaveLength(2);
+      expect(result.secondaryConstructors![0].visibility).toBe('public');
+      expect(result.secondaryConstructors![1].parameters).toHaveLength(1);
     });
   });
 });

@@ -59,7 +59,7 @@ const mockExtractClass: ClassExtractor = (node) => {
     nestedClasses: [],
     companionObject: undefined,
     secondaryConstructors: undefined,
-    location: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 0 },
+    location: { filePath: '', startLine: 1, startColumn: 0, endLine: 1, endColumn: 0 },
   } as ParsedClass;
 };
 
@@ -166,8 +166,8 @@ describe('extractClassBody', () => {
     });
   });
 
-  describe('Phase 4 stubs (fields, methods, constructors)', () => {
-    it('should return empty properties for class with fields (Phase 4 TODO)', () => {
+  describe('fields, methods, constructors extraction', () => {
+    it('should extract fields from class body', () => {
       const classBody = getClassBody(`
         class Foo {
           private int x;
@@ -177,11 +177,16 @@ describe('extractClassBody', () => {
       `);
       const result = extractClassBody(classBody!, mockExtractClass);
 
-      // Phase 4 will implement field extraction
-      expect(result.properties).toEqual([]);
+      expect(result.properties).toHaveLength(3);
+      expect(result.properties[0].name).toBe('x');
+      expect(result.properties[0].visibility).toBe('private');
+      expect(result.properties[1].name).toBe('name');
+      expect(result.properties[1].visibility).toBe('public');
+      expect(result.properties[2].name).toBe('value');
+      expect(result.properties[2].isVal).toBe(true); // final
     });
 
-    it('should return empty functions for class with methods (Phase 4 TODO)', () => {
+    it('should extract methods from class body', () => {
       const classBody = getClassBody(`
         class Foo {
           public void bar() {}
@@ -190,11 +195,14 @@ describe('extractClassBody', () => {
       `);
       const result = extractClassBody(classBody!, mockExtractClass);
 
-      // Phase 4 will implement method extraction
-      expect(result.functions).toEqual([]);
+      expect(result.functions).toHaveLength(2);
+      expect(result.functions[0].name).toBe('bar');
+      expect(result.functions[0].visibility).toBe('public');
+      expect(result.functions[1].name).toBe('calculate');
+      expect(result.functions[1].visibility).toBe('private');
     });
 
-    it('should return empty secondaryConstructors for class with constructors (Phase 4 TODO)', () => {
+    it('should extract constructors from class body', () => {
       const classBody = getClassBody(`
         class Foo {
           public Foo() {}
@@ -203,8 +211,9 @@ describe('extractClassBody', () => {
       `);
       const result = extractClassBody(classBody!, mockExtractClass);
 
-      // Phase 4 will implement constructor extraction
-      expect(result.secondaryConstructors).toEqual([]);
+      expect(result.secondaryConstructors).toHaveLength(2);
+      expect(result.secondaryConstructors[0].visibility).toBe('public');
+      expect(result.secondaryConstructors[1].parameters).toHaveLength(1);
     });
   });
 
@@ -221,7 +230,7 @@ describe('extractClassBody', () => {
       expect(result.nestedClasses[0]!.name).toBe('InnerClass');
     });
 
-    it('should return empty arrays for interface with methods (Phase 4 TODO)', () => {
+    it('should extract interface methods', () => {
       const interfaceBody = getInterfaceBody(`
         interface Foo {
           void bar();
@@ -230,8 +239,9 @@ describe('extractClassBody', () => {
       `);
       const result = extractClassBody(interfaceBody!, mockExtractClass);
 
-      // Phase 4 will implement method extraction
-      expect(result.functions).toEqual([]);
+      expect(result.functions).toHaveLength(2);
+      expect(result.functions[0].name).toBe('bar');
+      expect(result.functions[1].name).toBe('calculate');
     });
   });
 
