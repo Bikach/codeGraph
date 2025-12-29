@@ -141,6 +141,8 @@ export interface ParsedClass {
   isAbstract: boolean;
   isData: boolean;
   isSealed: boolean;
+  /** Permitted subclasses for sealed classes (Java 17+) */
+  permittedSubclasses?: string[];
   superClass?: string;
   interfaces: string[];
   typeParameters?: ParsedTypeParameter[];

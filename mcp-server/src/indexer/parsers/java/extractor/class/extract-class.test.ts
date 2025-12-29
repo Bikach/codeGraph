@@ -245,6 +245,90 @@ describe('extractClass', () => {
     });
   });
 
+  describe('records (Java 16+)', () => {
+    it('should extract record as class with isData: true', () => {
+      const node = getTypeDeclaration('record Point(int x, int y) {}');
+      const result = extractClass(node!);
+
+      expect(result.name).toBe('Point');
+      expect(result.kind).toBe('class');
+      expect(result.isData).toBe(true);
+    });
+
+    it('should extract record components as properties', () => {
+      const node = getTypeDeclaration('record Point(int x, int y) {}');
+      const result = extractClass(node!);
+
+      expect(result.properties).toHaveLength(2);
+      expect(result.properties[0].name).toBe('x');
+      expect(result.properties[0].type).toBe('int');
+      expect(result.properties[0].isVal).toBe(true);
+      expect(result.properties[1].name).toBe('y');
+      expect(result.properties[1].type).toBe('int');
+    });
+
+    it('should extract record with generic types', () => {
+      const node = getTypeDeclaration('record Container(List<String> items) {}');
+      const result = extractClass(node!);
+
+      expect(result.properties).toHaveLength(1);
+      expect(result.properties[0].type).toBe('List<String>');
+    });
+
+    it('should extract record implementing interfaces', () => {
+      const node = getTypeDeclaration('record Point(int x, int y) implements Serializable {}');
+      const result = extractClass(node!);
+
+      expect(result.interfaces).toContain('Serializable');
+    });
+
+    it('should combine record components with body members', () => {
+      const node = getTypeDeclaration(`
+        record Point(int x, int y) {
+          public static final int ORIGIN = 0;
+          public double distance() { return 0; }
+        }
+      `);
+      const result = extractClass(node!);
+
+      // Components first, then body members
+      expect(result.properties.length).toBeGreaterThanOrEqual(2);
+      expect(result.functions).toHaveLength(1);
+      expect(result.functions[0].name).toBe('distance');
+    });
+  });
+
+  describe('sealed classes (Java 17+)', () => {
+    it('should extract isSealed and permittedSubclasses', () => {
+      const node = getTypeDeclaration('sealed class Shape permits Circle, Rectangle {}');
+      const result = extractClass(node!);
+
+      expect(result.isSealed).toBe(true);
+      expect(result.permittedSubclasses).toEqual(['Circle', 'Rectangle']);
+    });
+
+    it('should extract single permitted subclass', () => {
+      const node = getTypeDeclaration('sealed class Animal permits Dog {}');
+      const result = extractClass(node!);
+
+      expect(result.permittedSubclasses).toEqual(['Dog']);
+    });
+
+    it('should extract qualified type names in permits', () => {
+      const node = getTypeDeclaration('sealed class Shape permits com.shapes.Circle {}');
+      const result = extractClass(node!);
+
+      expect(result.permittedSubclasses).toEqual(['com.shapes.Circle']);
+    });
+
+    it('should have undefined permittedSubclasses for non-sealed class', () => {
+      const node = getTypeDeclaration('class Foo {}');
+      const result = extractClass(node!);
+
+      expect(result.permittedSubclasses).toBeUndefined();
+    });
+  });
+
   describe('class members extraction', () => {
     it('should extract properties', () => {
       const node = getTypeDeclaration(`

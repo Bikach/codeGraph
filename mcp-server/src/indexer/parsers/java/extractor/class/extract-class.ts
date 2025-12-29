@@ -12,6 +12,8 @@ import { extractTypeParameters } from '../generics/index.js';
 import { mapClassKind, isRecordDeclaration } from './map-class-kind.js';
 import { extractSuperTypes } from './extract-super-types.js';
 import { extractClassBody } from './extract-class-body.js';
+import { extractRecordComponents } from './extract-record-components.js';
+import { extractPermits } from './extract-permits.js';
 
 /**
  * Extract a class-like declaration from an AST node.
@@ -46,13 +48,16 @@ export function extractClass(node: SyntaxNode): ParsedClass {
   // Extract body members
   const bodyNode = findClassBody(node);
   const recursiveExtractClass = (n: SyntaxNode): ParsedClass => extractClass(n);
-  const { properties, functions, nestedClasses, secondaryConstructors } = extractClassBody(
-    bodyNode,
-    recursiveExtractClass
-  );
+  const { properties: bodyProperties, functions, nestedClasses, secondaryConstructors } =
+    extractClassBody(bodyNode, recursiveExtractClass);
 
-  // For records: extract properties from record components (TODO Phase 4)
-  // For now, properties will be empty for records
+  // For records: extract properties from record components
+  // Record components are the primary properties, body may have additional static fields
+  const recordComponents = isRecord ? extractRecordComponents(node) : [];
+  const properties = [...recordComponents, ...bodyProperties];
+
+  // For sealed classes: extract permitted subclasses
+  const permittedSubclasses = modifiers.isSealed ? extractPermits(node) : undefined;
 
   return {
     name,
@@ -61,6 +66,7 @@ export function extractClass(node: SyntaxNode): ParsedClass {
     isAbstract: modifiers.isAbstract,
     isData: isRecord, // Records are mapped to isData: true
     isSealed: modifiers.isSealed,
+    permittedSubclasses,
     superClass,
     interfaces,
     typeParameters: typeParameters.length > 0 ? typeParameters : undefined,
