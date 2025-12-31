@@ -38,6 +38,15 @@ export async function analyzeDomains(
   files: ResolvedFile[],
   options: DomainInferenceOptions = {}
 ): Promise<DomainAnalysisResult> {
+  // Early return for empty input
+  if (files.length === 0) {
+    return {
+      domains: [],
+      dependencies: [],
+      unassignedPackages: [],
+    };
+  }
+
   // Collect all unique packages
   const packages = new Set<string>();
   for (const file of files) {

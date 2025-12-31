@@ -23,8 +23,8 @@ function createMockFile(language: 'kotlin' | 'java' | 'typescript' | 'javascript
 }
 
 describe('detectPrimaryLanguage', () => {
-  it('should return kotlin as default for empty files', () => {
-    expect(detectPrimaryLanguage([])).toBe('kotlin');
+  it('should throw an error for empty files', () => {
+    expect(() => detectPrimaryLanguage([])).toThrow('Cannot detect primary language: no files provided');
   });
 
   it('should detect kotlin as primary language', () => {
