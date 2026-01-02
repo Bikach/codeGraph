@@ -10,6 +10,7 @@ import { Neo4jClient } from '../neo4j/neo4j.js';
 import {
   getParserForFile,
   isFileSupported,
+  getSupportedExtensions,
   buildSymbolTable,
   resolveSymbols,
   Neo4jWriter,
@@ -121,8 +122,9 @@ async function main(): Promise<void> {
   result.filesFound = files.length;
 
   if (files.length === 0) {
+    const extensions = getSupportedExtensions().join(', ');
     result.errorMessage = 'No supported source files found';
-    result.hint = 'Currently supported: Kotlin (.kt, .kts). Make sure the project contains Kotlin files.';
+    result.hint = `Supported extensions: ${extensions}`;
     console.log(JSON.stringify(result));
     process.exit(0);
   }
