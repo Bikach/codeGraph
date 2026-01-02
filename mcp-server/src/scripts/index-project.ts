@@ -25,12 +25,18 @@ const SKIP_DIRS = ['node_modules', '.git', 'build', 'out', '.gradle', '.idea', '
 const TEST_DIR_PATTERNS = [/[/\\]test[/\\]/, /[/\\]tests[/\\]/, /[/\\]__tests__[/\\]/, /[/\\]androidTest[/\\]/];
 const TEST_FILE_PATTERNS = [/Test\.[^.]+$/, /Tests\.[^.]+$/, /Spec\.[^.]+$/, /\.test\.[^.]+$/, /\.spec\.[^.]+$/];
 
+interface ParseError {
+  filePath: string;
+  error: string;
+}
+
 interface IndexResult {
   success: boolean;
   projectPath: string;
   filesFound: number;
   filesParsed: number;
   parseErrors: number;
+  parseErrorDetails?: ParseError[];
   symbolsResolved: number;
   nodesCreated: number;
   relationshipsCreated: number;
@@ -77,6 +83,7 @@ async function main(): Promise<void> {
   const clearBefore = flags.includes('--clear');
   const dryRun = flags.includes('--dry-run');
   const excludeTests = flags.includes('--exclude-tests');
+  const verbose = flags.includes('--verbose');
 
   const result: IndexResult = {
     success: false,
@@ -93,7 +100,7 @@ async function main(): Promise<void> {
 
   if (paths.length === 0) {
     result.errorMessage = 'No project path provided';
-    result.hint = 'Usage: npx tsx index-project.ts [--clear] [--exclude-tests] [--dry-run] <project-path>';
+    result.hint = 'Usage: npx tsx index-project.ts [--clear] [--exclude-tests] [--dry-run] [--verbose] <project-path>';
     console.log(JSON.stringify(result));
     process.exit(1);
   }
@@ -131,6 +138,7 @@ async function main(): Promise<void> {
 
   // 2. Parse files
   const parsedFiles: ParsedFile[] = [];
+  const parseErrorDetails: ParseError[] = [];
 
   for (const filePath of files) {
     try {
@@ -139,11 +147,20 @@ async function main(): Promise<void> {
         const source = await readFile(filePath, 'utf-8');
         parsedFiles.push(await parser.parse(source, filePath));
       }
-    } catch {
+    } catch (err) {
       result.parseErrors++;
+      if (verbose) {
+        parseErrorDetails.push({
+          filePath,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
   result.filesParsed = parsedFiles.length;
+  if (verbose && parseErrorDetails.length > 0) {
+    result.parseErrorDetails = parseErrorDetails;
+  }
 
   // 3. Resolve symbols
   const symbolTable = buildSymbolTable(parsedFiles);
