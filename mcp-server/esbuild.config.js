@@ -29,7 +29,7 @@ const commonOptions = {
   sourcemap: false,
   minify: false,
   // tree-sitter has native bindings, keep external
-  external: ['tree-sitter', 'tree-sitter-kotlin'],
+  external: ['tree-sitter', 'tree-sitter-kotlin', 'tree-sitter-java'],
 };
 
 async function build() {
