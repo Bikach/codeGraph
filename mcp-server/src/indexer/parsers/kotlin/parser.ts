@@ -4,7 +4,7 @@
  * Initializes and provides the tree-sitter-kotlin parser for AST generation.
  */
 
-import Parser from 'tree-sitter';
+import Parser, { type Language } from 'tree-sitter';
 import Kotlin from 'tree-sitter-kotlin';
 
 // Singleton parser instance
@@ -17,7 +17,7 @@ let parserInstance: Parser | null = null;
 export function getParser(): Parser {
   if (!parserInstance) {
     parserInstance = new Parser();
-    parserInstance.setLanguage(Kotlin);
+    parserInstance.setLanguage(Kotlin as unknown as Language);
   }
   return parserInstance;
 }

@@ -15,7 +15,7 @@ The result: faster navigation, fewer hallucinations, and more accurate refactori
 | Language | Status |
 |----------|--------|
 | **Kotlin** | ✅ Available |
-| Java | 🔜 Coming soon |
+| **Java** | ✅ Available |
 | TypeScript/Node.js | 🔜 Coming soon |
 
 > 📢 Follow me on [LinkedIn](https://www.linkedin.com/in/chakib-houd-io/) to get notified when new languages are available!

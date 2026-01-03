@@ -4,7 +4,7 @@
  * Initializes and provides the tree-sitter-java parser for AST generation.
  */
 
-import Parser from 'tree-sitter';
+import Parser, { type Language } from 'tree-sitter';
 import Java from 'tree-sitter-java';
 
 // Singleton parser instance
@@ -17,7 +17,7 @@ let parserInstance: Parser | null = null;
 export function getParser(): Parser {
   if (!parserInstance) {
     parserInstance = new Parser();
-    parserInstance.setLanguage(Java);
+    parserInstance.setLanguage(Java as unknown as Language);
   }
   return parserInstance;
 }
