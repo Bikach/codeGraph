@@ -118,21 +118,6 @@ For the best experience with Claude Code, use the CodeGraph plugin with slash co
 | `find_path` | Find shortest path between two nodes |
 | `get_file_symbols` | List all symbols defined in a file |
 
-## Development
-
-```bash
-cd mcp-server
-
-# Development with hot reload
-npm run dev
-
-# Run tests
-npm test
-
-# Type checking
-npm run typecheck
-```
-
 ## Docker Commands
 
 ```bash
