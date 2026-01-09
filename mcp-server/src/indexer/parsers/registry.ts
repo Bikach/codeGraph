@@ -137,4 +137,14 @@ registerParser('java', ['.java'], async () => {
   return javaParser;
 });
 
-// Future: PHP, TypeScript, etc.
+// TypeScript parser registration
+registerParser('typescript', ['.ts', '.tsx'], async () => {
+  const { typescriptParser } = await import('./typescript/index.js');
+  return typescriptParser;
+});
+
+// JavaScript parser registration
+registerParser('javascript', ['.js', '.jsx', '.mjs', '.cjs'], async () => {
+  const { javascriptParser } = await import('./typescript/index.js');
+  return javascriptParser;
+});
