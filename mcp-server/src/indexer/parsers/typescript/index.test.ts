@@ -24,12 +24,13 @@ describe('typescriptParser', () => {
     expect(result.filePath).toBe('/test.tsx');
   });
 
-  it('should return empty arrays for stub extractor', async () => {
+  it('should extract symbols from source code', async () => {
     const result = await typescriptParser.parse('const x = 1;', '/test.ts');
     expect(result.imports).toEqual([]);
     expect(result.classes).toEqual([]);
     expect(result.topLevelFunctions).toEqual([]);
-    expect(result.topLevelProperties).toEqual([]);
+    expect(result.topLevelProperties).toHaveLength(1);
+    expect(result.topLevelProperties[0]!.name).toBe('x');
     expect(result.typeAliases).toEqual([]);
   });
 });

@@ -12,6 +12,7 @@ import type { SyntaxNode } from 'tree-sitter';
 import type { ParsedFunction, ParsedParameter } from '../../../../types.js';
 import { findChildByType, nodeLocation, extractFullTypeName } from '../ast-utils/index.js';
 import { extractModifiers } from '../modifiers/index.js';
+import { extractTypeParameters } from '../generics/index.js';
 
 /**
  * Extract a method from a method_definition or method_signature node.
@@ -56,6 +57,7 @@ export function extractMethodSignature(node: SyntaxNode): ParsedFunction {
 
   const parameters = extractParameters(node);
   const returnType = extractReturnType(node);
+  const typeParameters = extractTypeParameters(node);
 
   return {
     name,
@@ -65,6 +67,7 @@ export function extractMethodSignature(node: SyntaxNode): ParsedFunction {
     isAbstract: true, // Interface methods are implicitly abstract
     isSuspend: false,
     isExtension: false,
+    typeParameters: typeParameters.length > 0 ? typeParameters : undefined,
     annotations: [],
     location: nodeLocation(node),
     calls: [],

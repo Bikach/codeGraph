@@ -1,0 +1,186 @@
+/**
+ * TypeScript Symbol Extractor - Main Entry Point
+ *
+ * Traverses the tree-sitter AST and extracts TypeScript/JavaScript symbols
+ * into the normalized ParsedFile format.
+ */
+
+import type { SyntaxNode, Tree } from 'tree-sitter';
+import type { ParsedFile } from '../../../types.js';
+
+import { extractImports } from './imports/index.js';
+import { extractClass } from './class/extract-class.js';
+import { extractInterface } from './class/extract-interface.js';
+import { extractEnum } from './class/extract-enum.js';
+import { extractFunction } from './function/extract-function.js';
+import {
+  extractArrowFunction,
+  isArrowFunctionDeclarator,
+  getArrowFunction,
+} from './function/extract-arrow-function.js';
+import { extractVariable, isVariableFunction } from './property/extract-variable.js';
+
+/**
+ * Extract all symbols from a TypeScript/JavaScript AST.
+ *
+ * @param tree - The tree-sitter AST
+ * @param filePath - Path to the source file
+ * @returns ParsedFile with extracted symbols
+ */
+export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
+  const root = tree.rootNode;
+
+  const result: ParsedFile = {
+    filePath,
+    language: 'typescript',
+    packageName: undefined, // TypeScript doesn't have package declarations
+    imports: extractImports(root),
+    classes: [],
+    topLevelFunctions: [],
+    topLevelProperties: [],
+    typeAliases: [],
+    destructuringDeclarations: [],
+    objectExpressions: [],
+  };
+
+  // Traverse top-level declarations
+  traverseTopLevel(root, result);
+
+  return result;
+}
+
+/**
+ * Traverse top-level nodes and extract symbols.
+ *
+ * Handles both direct declarations and export_statement wrappers.
+ */
+function traverseTopLevel(root: SyntaxNode, result: ParsedFile): void {
+  for (const child of root.children) {
+    // Handle export statements - unwrap and extract the inner declaration
+    if (child.type === 'export_statement') {
+      extractFromExportStatement(child, result);
+      continue;
+    }
+
+    // Direct declarations
+    extractDeclaration(child, result);
+  }
+}
+
+/**
+ * Extract declarations from an export_statement.
+ *
+ * export_statement can contain:
+ * - export class Foo {}
+ * - export function foo() {}
+ * - export const x = ...
+ * - export default ...
+ * - export { ... }
+ */
+function extractFromExportStatement(exportNode: SyntaxNode, result: ParsedFile): void {
+  for (const child of exportNode.children) {
+    // Skip export keyword, default, type modifiers, etc.
+    if (
+      child.type === 'export' ||
+      child.type === 'default' ||
+      child.type === 'type' ||
+      child.type === '{' ||
+      child.type === '}' ||
+      child.type === 'export_clause' ||
+      child.type === 'from' ||
+      child.type === 'string'
+    ) {
+      continue;
+    }
+
+    extractDeclaration(child, result);
+  }
+}
+
+/**
+ * Extract a single declaration based on its type.
+ */
+function extractDeclaration(node: SyntaxNode, result: ParsedFile): void {
+  switch (node.type) {
+    // Classes
+    case 'class_declaration':
+    case 'abstract_class_declaration':
+      result.classes.push(extractClass(node));
+      break;
+
+    // Interfaces
+    case 'interface_declaration':
+      result.classes.push(extractInterface(node));
+      break;
+
+    // Enums
+    case 'enum_declaration':
+      result.classes.push(extractEnum(node));
+      break;
+
+    // Functions
+    case 'function_declaration':
+    case 'generator_function_declaration':
+      result.topLevelFunctions.push(extractFunction(node));
+      break;
+
+    // Variables (const, let, var) - may contain arrow functions
+    case 'lexical_declaration':
+    case 'variable_declaration':
+      extractVariableOrFunction(node, result);
+      break;
+
+    // Type aliases (type Foo = ...)
+    case 'type_alias_declaration':
+      // TODO: Implement type alias extraction if needed
+      break;
+
+    // Ambient declarations (declare ...)
+    case 'ambient_declaration':
+      extractAmbientDeclaration(node, result);
+      break;
+  }
+}
+
+/**
+ * Extract variables or arrow functions from a variable declaration.
+ *
+ * In TypeScript/JavaScript, arrow functions are often declared as:
+ * const foo = () => {}
+ *
+ * We need to distinguish between:
+ * - Regular variables: const x = 1
+ * - Arrow functions: const foo = () => {}
+ */
+function extractVariableOrFunction(node: SyntaxNode, result: ParsedFile): void {
+  for (const child of node.children) {
+    if (child.type === 'variable_declarator') {
+      // Check if it's an arrow function
+      if (isArrowFunctionDeclarator(child)) {
+        const arrowFunc = getArrowFunction(child);
+        if (arrowFunc) {
+          result.topLevelFunctions.push(extractArrowFunction(child, arrowFunc));
+        }
+      } else if (!isVariableFunction(child)) {
+        // Regular variable (not a function expression)
+        const properties = extractVariable(node);
+        result.topLevelProperties.push(...properties);
+        return; // extractVariable handles all declarators in the node
+      }
+    }
+  }
+}
+
+/**
+ * Extract declarations from ambient (declare) blocks.
+ *
+ * declare class Foo {}
+ * declare function foo(): void
+ * declare const x: number
+ */
+function extractAmbientDeclaration(node: SyntaxNode, result: ParsedFile): void {
+  for (const child of node.children) {
+    if (child.type === 'declare') continue;
+    extractDeclaration(child, result);
+  }
+}
