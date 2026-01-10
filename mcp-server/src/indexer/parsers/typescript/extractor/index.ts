@@ -15,8 +15,8 @@ import type { ParsedFile } from '../../../types.js';
  * @param filePath - Path to the source file
  * @returns ParsedFile with extracted symbols
  */
-export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
-  // TODO: Phase 2 will implement full extraction
+export function extractSymbols(_tree: Tree, filePath: string): ParsedFile {
+  // TODO: Phase 2 will implement full extraction using _tree
   return {
     filePath,
     language: 'typescript',

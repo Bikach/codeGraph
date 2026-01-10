@@ -34,12 +34,16 @@ export interface SourceLocation {
 export type Visibility = 'public' | 'private' | 'protected' | 'internal';
 
 export interface ParsedImport {
-  /** Full import path (e.g., "com.example.User") */
+  /** Full import path (e.g., "com.example.User" or "./module") */
   path: string;
-  /** Alias if renamed (e.g., "import User as AppUser") */
+  /** Imported symbol name (e.g., "User" in "import { User } from ...") */
+  name?: string;
+  /** Alias if renamed (e.g., "import User as AppUser" or "import { X as Y }") */
   alias?: string;
-  /** Is it a wildcard import? (e.g., "import com.example.*") */
-  isWildcard: boolean;
+  /** Is it a wildcard import? (e.g., "import com.example.*" or "import * as X") */
+  isWildcard?: boolean;
+  /** Is this a type-only import? (TypeScript: "import type { X }") */
+  isTypeOnly?: boolean;
 }
 
 export interface ParsedAnnotation {
