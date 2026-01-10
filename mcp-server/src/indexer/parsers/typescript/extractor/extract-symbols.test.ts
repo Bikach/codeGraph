@@ -470,4 +470,80 @@ describe('extractSymbols', () => {
       expect(result.classes[0]!.functions[0]!.annotations[0]!.name).toBe('Get');
     });
   });
+
+  describe('destructuring declarations', () => {
+    it('should extract object destructuring', () => {
+      const source = `const { name, age } = user;`;
+      const tree = parseTypeScript(source, '/test/destructuring.ts');
+      const result = extractSymbols(tree, '/test/destructuring.ts');
+
+      expect(result.destructuringDeclarations).toHaveLength(1);
+      expect(result.destructuringDeclarations[0]!.componentNames).toEqual(['name', 'age']);
+      expect(result.destructuringDeclarations[0]!.initializer).toBe('user');
+    });
+
+    it('should extract array destructuring', () => {
+      const source = `const [first, second] = items;`;
+      const tree = parseTypeScript(source, '/test/destructuring.ts');
+      const result = extractSymbols(tree, '/test/destructuring.ts');
+
+      expect(result.destructuringDeclarations).toHaveLength(1);
+      expect(result.destructuringDeclarations[0]!.componentNames).toEqual(['first', 'second']);
+    });
+
+    it('should handle object destructuring with renaming', () => {
+      const source = `const { name: userName, age: userAge } = user;`;
+      const tree = parseTypeScript(source, '/test/destructuring.ts');
+      const result = extractSymbols(tree, '/test/destructuring.ts');
+
+      expect(result.destructuringDeclarations).toHaveLength(1);
+      expect(result.destructuringDeclarations[0]!.componentNames).toEqual(['userName', 'userAge']);
+    });
+
+    it('should handle destructuring with default values', () => {
+      const source = `const { name = 'default', age = 0 } = user;`;
+      const tree = parseTypeScript(source, '/test/destructuring.ts');
+      const result = extractSymbols(tree, '/test/destructuring.ts');
+
+      expect(result.destructuringDeclarations).toHaveLength(1);
+      expect(result.destructuringDeclarations[0]!.componentNames).toContain('name');
+      expect(result.destructuringDeclarations[0]!.componentNames).toContain('age');
+    });
+
+    it('should handle exported destructuring', () => {
+      const source = `export const { name, age } = user;`;
+      const tree = parseTypeScript(source, '/test/destructuring.ts');
+      const result = extractSymbols(tree, '/test/destructuring.ts');
+
+      expect(result.destructuringDeclarations).toHaveLength(1);
+      expect(result.destructuringDeclarations[0]!.componentNames).toEqual(['name', 'age']);
+    });
+
+    it('should distinguish const vs let for destructuring', () => {
+      const source = `
+        const { a } = obj1;
+        let { b } = obj2;
+      `;
+      const tree = parseTypeScript(source, '/test/destructuring.ts');
+      const result = extractSymbols(tree, '/test/destructuring.ts');
+
+      expect(result.destructuringDeclarations).toHaveLength(2);
+      expect(result.destructuringDeclarations[0]!.isVal).toBe(true);
+      expect(result.destructuringDeclarations[1]!.isVal).toBe(false);
+    });
+
+    it('should not confuse destructuring with regular variables', () => {
+      const source = `
+        const { name } = user;
+        const age = 30;
+        const [first] = items;
+      `;
+      const tree = parseTypeScript(source, '/test/mixed.ts');
+      const result = extractSymbols(tree, '/test/mixed.ts');
+
+      expect(result.destructuringDeclarations).toHaveLength(2);
+      expect(result.topLevelProperties).toHaveLength(1);
+      expect(result.topLevelProperties[0]!.name).toBe('age');
+    });
+  });
 });

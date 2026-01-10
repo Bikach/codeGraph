@@ -19,6 +19,10 @@ import {
   getArrowFunction,
 } from './function/extract-arrow-function.js';
 import { extractVariable, isVariableFunction } from './property/extract-variable.js';
+import {
+  extractDestructuring,
+  isDestructuringDeclarator,
+} from './destructuring/index.js';
 
 /**
  * Extract all symbols from a TypeScript/JavaScript AST.
@@ -143,30 +147,43 @@ function extractDeclaration(node: SyntaxNode, result: ParsedFile): void {
 }
 
 /**
- * Extract variables or arrow functions from a variable declaration.
+ * Extract variables, arrow functions, or destructuring declarations from a variable declaration.
  *
- * In TypeScript/JavaScript, arrow functions are often declared as:
- * const foo = () => {}
- *
- * We need to distinguish between:
+ * In TypeScript/JavaScript, we need to distinguish between:
  * - Regular variables: const x = 1
  * - Arrow functions: const foo = () => {}
+ * - Destructuring: const { name, age } = user; or const [first, second] = array;
  */
 function extractVariableOrFunction(node: SyntaxNode, result: ParsedFile): void {
   for (const child of node.children) {
     if (child.type === 'variable_declarator') {
+      // Check if it's a destructuring declaration
+      if (isDestructuringDeclarator(child)) {
+        const destructuring = extractDestructuring(node, child);
+        if (destructuring) {
+          result.destructuringDeclarations.push(destructuring);
+        }
+        continue;
+      }
+
       // Check if it's an arrow function
       if (isArrowFunctionDeclarator(child)) {
         const arrowFunc = getArrowFunction(child);
         if (arrowFunc) {
           result.topLevelFunctions.push(extractArrowFunction(child, arrowFunc));
         }
-      } else if (!isVariableFunction(child)) {
-        // Regular variable (not a function expression)
-        const properties = extractVariable(node);
-        result.topLevelProperties.push(...properties);
-        return; // extractVariable handles all declarators in the node
+        continue;
       }
+
+      // Check if it's a function expression
+      if (isVariableFunction(child)) {
+        continue;
+      }
+
+      // Regular variable (not a function expression or destructuring)
+      const properties = extractVariable(node);
+      result.topLevelProperties.push(...properties);
+      return; // extractVariable handles all declarators in the node
     }
   }
 }
