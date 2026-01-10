@@ -27,6 +27,7 @@ import {
   extractObjectExpression,
   findObjectExpressions,
 } from './object-expression/index.js';
+import { extractTypeAlias } from './types/index.js';
 
 /**
  * Extract all symbols from a TypeScript/JavaScript AST.
@@ -143,7 +144,7 @@ function extractDeclaration(node: SyntaxNode, result: ParsedFile): void {
 
     // Type aliases (type Foo = ...)
     case 'type_alias_declaration':
-      // TODO: Implement type alias extraction if needed
+      result.typeAliases.push(extractTypeAlias(node));
       break;
 
     // Ambient declarations (declare ...)
