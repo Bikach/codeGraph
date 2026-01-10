@@ -5,6 +5,7 @@
  * - type_identifier: User-defined type (e.g., "User")
  * - predefined_type: Built-in type (e.g., "string", "number")
  * - generic_type: Parameterized type (e.g., "Array<string>")
+ * - nested_type_identifier: Qualified type (e.g., "React.FC")
  * - union_type: Union type (e.g., "string | number")
  * - intersection_type: Intersection type (e.g., "A & B")
  * - array_type: Array type (e.g., "string[]")
@@ -28,6 +29,7 @@ export function extractTypeName(node: SyntaxNode | undefined): string | undefine
     }
 
     case 'type_identifier':
+    case 'identifier':
     case 'predefined_type':
       return node.text;
 
@@ -35,6 +37,11 @@ export function extractTypeName(node: SyntaxNode | undefined): string | undefine
       // Get the base type (e.g., "Array" from "Array<string>")
       const baseType = findChildByType(node, 'type_identifier');
       return baseType?.text ?? node.text;
+    }
+
+    case 'nested_type_identifier': {
+      // Get the full qualified name (e.g., "React.FC")
+      return node.text;
     }
 
     case 'array_type': {
@@ -45,13 +52,12 @@ export function extractTypeName(node: SyntaxNode | undefined): string | undefine
 
     case 'union_type':
     case 'intersection_type':
-      // Return full text for union/intersection types
+    case 'parenthesized_type':
+    case 'literal_type':
+    case 'function_type':
+    case 'tuple_type':
+      // For complex types, return the full text
       return node.text;
-
-    case 'nested_type_identifier': {
-      // Qualified type (e.g., "Foo.Bar")
-      return node.text;
-    }
 
     default:
       return node.text;
