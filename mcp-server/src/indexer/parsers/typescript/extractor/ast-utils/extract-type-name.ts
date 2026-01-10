@@ -23,8 +23,8 @@ export function extractTypeName(node: SyntaxNode | undefined): string | undefine
 
   switch (node.type) {
     case 'type_annotation': {
-      // Skip the ':' and get the actual type
-      const typeChild = node.children[1];
+      // Skip the ':' and get the actual type, then recursively extract
+      const typeChild = node.children.find((c) => c.type !== ':');
       return typeChild ? extractTypeName(typeChild) : undefined;
     }
 
@@ -72,9 +72,22 @@ export function extractFullTypeName(node: SyntaxNode | undefined): string | unde
 
   if (node.type === 'type_annotation') {
     // Skip the ':' and get the actual type
-    const typeChild = node.children[1];
+    const typeChild = node.children.find((c) => c.type !== ':');
     return typeChild?.text;
   }
 
   return node.text;
+}
+
+/**
+ * Extract the inner type from a type_annotation node (without the colon).
+ */
+export function extractTypeNode(typeAnnotation: SyntaxNode | undefined): SyntaxNode | undefined {
+  if (!typeAnnotation) return undefined;
+
+  if (typeAnnotation.type === 'type_annotation') {
+    return typeAnnotation.children.find((c) => c.type !== ':');
+  }
+
+  return typeAnnotation;
 }

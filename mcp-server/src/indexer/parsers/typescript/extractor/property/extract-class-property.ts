@@ -1,69 +1,68 @@
 /**
- * Extract a property from a TypeScript class member.
+ * Extract class property declarations from TypeScript AST.
  *
  * TypeScript class property types:
  * - public_field_definition: public x = 1
  * - field_definition: private x = 1
  * - property_signature: interface property
- *
- * This is a minimal implementation for Phase 4.
- * Full implementation will come in Phase 5.
  */
 import type { SyntaxNode } from 'tree-sitter';
 import type { ParsedProperty } from '../../../../types.js';
 import { findChildByType, nodeLocation, extractFullTypeName } from '../ast-utils/index.js';
 import { extractModifiers } from '../modifiers/index.js';
+import { extractDecorators } from '../decorators/index.js';
 
 /**
- * Extract a property from a class field definition.
+ * Extract a class property (field) declaration.
+ *
+ * public_field_definition structure:
+ * public_field_definition > decorator*, accessibility_modifier?, static?, readonly?, property_identifier | private_property_identifier, type_annotation?, =?, initializer?
  */
 export function extractClassProperty(node: SyntaxNode): ParsedProperty {
-  const modifiers = extractModifiers(node);
-
-  // Find property name
+  // Name: property_identifier or private_property_identifier (#private)
   const nameNode =
     findChildByType(node, 'property_identifier') ?? findChildByType(node, 'private_property_identifier');
-  const name = nameNode?.text ?? '<unknown>';
+  const name = nameNode?.text ?? 'unknown';
 
-  // Find type annotation
+  const modifiers = extractModifiers(node);
+  const decorators = extractDecorators(node);
+
+  // Type
   const typeAnnotation = findChildByType(node, 'type_annotation');
   let type: string | undefined;
   if (typeAnnotation) {
-    // type_annotation > : type
     const typeNode = typeAnnotation.children.find((c) => c.type !== ':');
     type = extractFullTypeName(typeNode);
   }
 
-  // Check for initializer
-  const initializer = node.children.find(
-    (c) => c.type === 'string' || c.type === 'number' || c.type === 'call_expression' || c.type === 'new_expression'
-  );
+  // Initial value
+  const initializer = findInitializer(node);
 
-  // Check for readonly modifier
+  // Private field (#name) -> visibility private
+  const isPrivateField = nameNode?.type === 'private_property_identifier';
+  const visibility = isPrivateField ? 'private' : modifiers.visibility;
+
+  // Check for readonly
   const isReadonly = modifiers.isReadonly || node.children.some((c) => c.type === 'readonly');
 
   return {
-    name,
+    name: name.replace(/^#/, ''), // Remove # prefix for consistency
     type,
-    visibility: modifiers.visibility,
-    isVal: isReadonly, // readonly in TypeScript maps to val
+    visibility,
+    isVal: isReadonly, // readonly maps to isVal (immutable)
     initializer: initializer?.text,
-    annotations: [], // Decorators on properties will be added in Phase 5
+    annotations: decorators,
     location: nodeLocation(node),
   };
 }
 
 /**
- * Extract a property from an interface property signature.
+ * Extract a property signature from an interface.
  */
 export function extractPropertySignature(node: SyntaxNode): ParsedProperty {
   const nameNode = findChildByType(node, 'property_identifier');
-  const name = nameNode?.text ?? '<unknown>';
+  const name = nameNode?.text ?? 'unknown';
 
-  // Check for optional marker (?)
-  const isOptional = node.children.some((c) => c.type === '?');
-
-  // Find type annotation
   const typeAnnotation = findChildByType(node, 'type_annotation');
   let type: string | undefined;
   if (typeAnnotation) {
@@ -74,13 +73,33 @@ export function extractPropertySignature(node: SyntaxNode): ParsedProperty {
   // Check for readonly
   const isReadonly = node.children.some((c) => c.type === 'readonly');
 
+  // Note: optional (?) is tracked but not currently exposed in ParsedProperty
+  // const _isOptional = node.children.some((c) => c.type === '?');
+
   return {
-    name: isOptional ? `${name}?` : name, // Include optional marker in name for now
+    name,
     type,
     visibility: 'public', // Interface properties are always public
     isVal: isReadonly,
-    initializer: undefined,
+    initializer: undefined, // Interface properties don't have initializers
     annotations: [],
     location: nodeLocation(node),
   };
+}
+
+/**
+ * Find the initializer value in a property declaration.
+ * The initializer follows the = sign.
+ */
+function findInitializer(node: SyntaxNode): SyntaxNode | undefined {
+  let foundEquals = false;
+  for (const child of node.children) {
+    if (foundEquals) {
+      return child;
+    }
+    if (child.type === '=') {
+      foundEquals = true;
+    }
+  }
+  return undefined;
 }

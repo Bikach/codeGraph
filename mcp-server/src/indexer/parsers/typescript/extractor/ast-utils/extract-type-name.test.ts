@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseTypeScript } from '../../parser.js';
 import { extractTypeName, extractFullTypeName } from './extract-type-name.js';
-import { findChildByType } from './find-child-by-type.js';
 import { findNodeByType } from './traverse-node.js';
 
 describe('extractTypeName', () => {

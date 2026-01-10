@@ -3,5 +3,5 @@
  */
 export { mapVisibility } from './map-visibility.js';
 export { extractModifiers, isAbstract, isExported } from './extract-modifiers.js';
-export type { TypeScriptModifiers } from './types.js';
+export type { TypeScriptModifiers, Modifiers } from './types.js';
 export { DEFAULT_TYPESCRIPT_MODIFIERS } from './types.js';

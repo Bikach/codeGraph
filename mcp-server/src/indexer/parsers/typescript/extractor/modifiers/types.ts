@@ -43,3 +43,8 @@ export const DEFAULT_TYPESCRIPT_MODIFIERS: TypeScriptModifiers = {
   isDefault: false,
   isDeclare: false,
 };
+
+/**
+ * Alias for compatibility with Phase 5 code.
+ */
+export type Modifiers = TypeScriptModifiers;
