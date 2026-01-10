@@ -546,4 +546,111 @@ describe('extractSymbols', () => {
       expect(result.topLevelProperties[0]!.name).toBe('age');
     });
   });
+
+  describe('object expressions extraction', () => {
+    it('should extract object expression from variable assignment', () => {
+      const source = `
+        const handler = {
+          name: 'handler',
+          onClick() { console.log('clicked'); }
+        };
+      `;
+      const tree = parseTypeScript(source, '/test/handler.ts');
+      const result = extractSymbols(tree, '/test/handler.ts');
+
+      expect(result.objectExpressions).toHaveLength(1);
+      expect(result.objectExpressions[0]!.properties).toHaveLength(1);
+      expect(result.objectExpressions[0]!.properties[0]!.name).toBe('name');
+      expect(result.objectExpressions[0]!.functions).toHaveLength(1);
+      expect(result.objectExpressions[0]!.functions[0]!.name).toBe('onClick');
+    });
+
+    it('should extract object with arrow function properties', () => {
+      const source = `
+        const api = {
+          fetch: async () => await getData(),
+          process: (data: string) => data.toUpperCase()
+        };
+      `;
+      const tree = parseTypeScript(source, '/test/api.ts');
+      const result = extractSymbols(tree, '/test/api.ts');
+
+      expect(result.objectExpressions).toHaveLength(1);
+      expect(result.objectExpressions[0]!.functions).toHaveLength(2);
+      expect(result.objectExpressions[0]!.functions[0]!.name).toBe('fetch');
+      expect(result.objectExpressions[0]!.functions[0]!.isSuspend).toBe(true);
+    });
+
+    it('should extract object with shorthand properties', () => {
+      const source = `
+        const id = 1;
+        const name = 'test';
+        const config = { id, name };
+      `;
+      const tree = parseTypeScript(source, '/test/config.ts');
+      const result = extractSymbols(tree, '/test/config.ts');
+
+      expect(result.objectExpressions).toHaveLength(1);
+      expect(result.objectExpressions[0]!.properties).toHaveLength(2);
+      expect(result.objectExpressions[0]!.properties[0]!.name).toBe('id');
+      expect(result.objectExpressions[0]!.properties[1]!.name).toBe('name');
+    });
+
+    it('should not extract nested objects separately', () => {
+      const source = `
+        const config = {
+          db: {
+            host: 'localhost',
+            port: 5432
+          }
+        };
+      `;
+      const tree = parseTypeScript(source, '/test/config.ts');
+      const result = extractSymbols(tree, '/test/config.ts');
+
+      // Only the top-level object should be extracted
+      expect(result.objectExpressions).toHaveLength(1);
+      expect(result.objectExpressions[0]!.properties).toHaveLength(1);
+      expect(result.objectExpressions[0]!.properties[0]!.name).toBe('db');
+    });
+
+    it('should extract exported object expression', () => {
+      const source = `
+        export const settings = {
+          debug: true,
+          version: '1.0.0'
+        };
+      `;
+      const tree = parseTypeScript(source, '/test/settings.ts');
+      const result = extractSymbols(tree, '/test/settings.ts');
+
+      expect(result.objectExpressions).toHaveLength(1);
+      expect(result.objectExpressions[0]!.properties).toHaveLength(2);
+    });
+
+    it('should set superTypes to empty array', () => {
+      const source = `const obj = { x: 1 };`;
+      const tree = parseTypeScript(source, '/test/obj.ts');
+      const result = extractSymbols(tree, '/test/obj.ts');
+
+      expect(result.objectExpressions[0]!.superTypes).toEqual([]);
+    });
+
+    it('should extract object with getter and setter methods', () => {
+      const source = `
+        const obj = {
+          _value: 0,
+          get value() { return this._value; },
+          set value(v: number) { this._value = v; }
+        };
+      `;
+      const tree = parseTypeScript(source, '/test/obj.ts');
+      const result = extractSymbols(tree, '/test/obj.ts');
+
+      expect(result.objectExpressions[0]!.properties).toHaveLength(1);
+      expect(result.objectExpressions[0]!.functions).toHaveLength(2);
+      expect(result.objectExpressions[0]!.functions.map((f) => f.name)).toContain('get value');
+      expect(result.objectExpressions[0]!.functions.map((f) => f.name)).toContain('set value');
+    });
+  });
 });

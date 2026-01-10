@@ -23,6 +23,10 @@ import {
   extractDestructuring,
   isDestructuringDeclarator,
 } from './destructuring/index.js';
+import {
+  extractObjectExpression,
+  findObjectExpressions,
+} from './object-expression/index.js';
 
 /**
  * Extract all symbols from a TypeScript/JavaScript AST.
@@ -49,6 +53,9 @@ export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
 
   // Traverse top-level declarations
   traverseTopLevel(root, result);
+
+  // Extract object expressions from variable assignments
+  extractObjectExpressions(root, result);
 
   return result;
 }
@@ -200,4 +207,48 @@ function extractAmbientDeclaration(node: SyntaxNode, result: ParsedFile): void {
     if (child.type === 'declare') continue;
     extractDeclaration(child, result);
   }
+}
+
+/**
+ * Extract object expressions from variable assignments.
+ *
+ * Object expressions in TypeScript/JavaScript are object literals:
+ * const handler = { name: 'handler', onClick() {} };
+ *
+ * We extract these for dependency tracking when objects are used
+ * as implementations (e.g., passed to functions expecting interfaces).
+ */
+function extractObjectExpressions(root: SyntaxNode, result: ParsedFile): void {
+  // Find all object literals in variable declarations
+  const objects = findObjectExpressions(root);
+
+  for (const objectNode of objects) {
+    // Only extract top-level object expressions (direct variable assignments)
+    // Skip nested objects to avoid duplicates
+    if (isTopLevelObjectExpression(objectNode)) {
+      result.objectExpressions.push(extractObjectExpression(objectNode));
+    }
+  }
+}
+
+/**
+ * Check if an object expression is a top-level variable assignment.
+ * This filters out nested objects and objects used as arguments.
+ */
+function isTopLevelObjectExpression(objectNode: SyntaxNode): boolean {
+  const parent = objectNode.parent;
+  if (!parent) return false;
+
+  // Direct assignment: const x = { ... }
+  if (parent.type === 'variable_declarator') {
+    return true;
+  }
+
+  // Inside a pair value (nested object): { outer: { inner } }
+  // We want to skip these as they're nested
+  if (parent.type === 'pair') {
+    return false;
+  }
+
+  return false;
 }
