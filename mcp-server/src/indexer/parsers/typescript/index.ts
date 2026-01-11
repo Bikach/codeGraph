@@ -14,6 +14,14 @@ import type { LanguageParser, ParsedFile } from '../../types.js';
 import { parseTypeScript } from './parser.js';
 import { extractSymbols } from './extractor/index.js';
 
+// Re-export file filtering utilities
+export {
+  shouldParseFile,
+  EXCLUDED_DIRECTORIES,
+  EXCLUDED_CONFIG_FILES,
+  type FileFilterOptions,
+} from './file-filter/index.js';
+
 /**
  * TypeScript language parser.
  *
