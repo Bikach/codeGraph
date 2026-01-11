@@ -9,6 +9,7 @@ import type { SupportedLanguage } from '../../types.js';
 import type { StdlibProvider } from './stdlib-provider.js';
 import { KotlinStdlibProvider } from './kotlin-stdlib.js';
 import { JavaStdlibProvider } from './java-stdlib.js';
+import { TypescriptStdlibProvider } from './typescript-stdlib.js';
 
 /**
  * Registry of stdlib providers indexed by language.
@@ -29,6 +30,7 @@ class StdlibRegistry {
   private registerDefaults(): void {
     const kotlinProvider = new KotlinStdlibProvider();
     const javaProvider = new JavaStdlibProvider();
+    const typescriptProvider = new TypescriptStdlibProvider();
 
     // Kotlin uses both Kotlin stdlib and Java stdlib (JVM interop)
     this.providers.set('kotlin', [kotlinProvider, javaProvider]);
@@ -36,9 +38,9 @@ class StdlibRegistry {
     // Java uses only Java stdlib
     this.providers.set('java', [javaProvider]);
 
-    // TypeScript and JavaScript will be added later
-    this.providers.set('typescript', []);
-    this.providers.set('javascript', []);
+    // TypeScript and JavaScript share the same stdlib (ECMAScript + TypeScript types)
+    this.providers.set('typescript', [typescriptProvider]);
+    this.providers.set('javascript', [typescriptProvider]);
   }
 
   /**
