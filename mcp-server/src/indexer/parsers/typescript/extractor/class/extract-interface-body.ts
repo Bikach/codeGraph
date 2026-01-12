@@ -16,6 +16,7 @@ import type { SyntaxNode } from 'tree-sitter';
 import type { ParsedFunction, ParsedProperty } from '../../../../types.js';
 import { extractPropertySignature } from '../property/index.js';
 import { extractMethodSignature } from '../function/index.js';
+import { nodeLocation } from '../ast-utils/index.js';
 
 /**
  * Result of extracting interface body members.
@@ -63,13 +64,7 @@ export function extractInterfaceBody(interfaceBody: SyntaxNode | undefined): Int
           isSuspend: false,
           isExtension: false,
           annotations: [],
-          location: {
-            filePath: '',
-            startLine: child.startPosition.row + 1,
-            startColumn: child.startPosition.column + 1,
-            endLine: child.endPosition.row + 1,
-            endColumn: child.endPosition.column + 1,
-          },
+          location: nodeLocation(child),
           calls: [],
         });
         break;
@@ -85,13 +80,7 @@ export function extractInterfaceBody(interfaceBody: SyntaxNode | undefined): Int
           isSuspend: false,
           isExtension: false,
           annotations: [],
-          location: {
-            filePath: '',
-            startLine: child.startPosition.row + 1,
-            startColumn: child.startPosition.column + 1,
-            endLine: child.endPosition.row + 1,
-            endColumn: child.endPosition.column + 1,
-          },
+          location: nodeLocation(child),
           calls: [],
         });
         break;
@@ -105,13 +94,7 @@ export function extractInterfaceBody(interfaceBody: SyntaxNode | undefined): Int
           visibility: 'public',
           isVal: false,
           annotations: [],
-          location: {
-            filePath: '',
-            startLine: child.startPosition.row + 1,
-            startColumn: child.startPosition.column + 1,
-            endLine: child.endPosition.row + 1,
-            endColumn: child.endPosition.column + 1,
-          },
+          location: nodeLocation(child),
         });
         break;
 

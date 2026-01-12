@@ -5,3 +5,4 @@ export { findChildByType, findChildrenByType, findChildByTypes } from './find-ch
 export { traverseNode, findNodeByType, findAllNodes, findFirstNode } from './traverse-node.js';
 export { nodeLocation } from './node-location.js';
 export { extractTypeName, extractFullTypeName, extractTypeNode } from './extract-type-name.js';
+export { findInitializer } from './find-initializer.js';

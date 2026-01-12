@@ -25,6 +25,7 @@ import type {
 import { findChildByType, nodeLocation, extractFullTypeName } from '../ast-utils/index.js';
 import { extractCalls } from '../calls/index.js';
 import { extractParameters } from '../function/extract-parameters.js';
+import { extractArrowReturnType } from '../function/extract-return-type.js';
 
 /**
  * Extract an object expression from an `object` AST node.
@@ -234,30 +235,6 @@ function extractArrowFunctionValue(name: string, arrowFunc: SyntaxNode): ParsedF
     location: nodeLocation(arrowFunc),
     calls,
   };
-}
-
-/**
- * Extract return type from an arrow function
- */
-function extractArrowReturnType(arrowFunc: SyntaxNode): string | undefined {
-  let foundParams = false;
-
-  for (const child of arrowFunc.children) {
-    if (child.type === 'formal_parameters') {
-      foundParams = true;
-      continue;
-    }
-
-    if (foundParams && child.type === 'type_annotation') {
-      return extractFullTypeName(child);
-    }
-
-    if (child.type === '=>') {
-      break;
-    }
-  }
-
-  return undefined;
 }
 
 /**

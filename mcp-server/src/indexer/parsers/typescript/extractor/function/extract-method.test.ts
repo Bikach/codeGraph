@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseTypeScript } from '../../parser.js';
-import { extractMethod } from './extract-function.js';
-import { extractMethodSignature } from './extract-method.js';
+import { extractMethod, extractMethodSignature } from './extract-function.js';
 import { findChildByType } from '../ast-utils/index.js';
 
 /**

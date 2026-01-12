@@ -40,8 +40,11 @@ export function extractDecorators(node: SyntaxNode): ParsedAnnotation[] {
  * Decorator structure:
  * - decorator > @ call_expression (for @Foo() or @Foo(args))
  * - decorator > @ identifier (for @Foo without parentheses)
+ *
+ * This is exported for use in extract-class-body.ts where decorators
+ * are extracted as siblings of class members.
  */
-function extractSingleDecorator(decoratorNode: SyntaxNode): ParsedAnnotation | undefined {
+export function extractSingleDecorator(decoratorNode: SyntaxNode): ParsedAnnotation | undefined {
   // Skip the @ symbol
   const expr =
     findChildByType(decoratorNode, 'call_expression') ??

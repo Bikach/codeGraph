@@ -3,7 +3,7 @@
  */
 import type { SyntaxNode } from 'tree-sitter';
 import type { ParsedProperty } from '../../../../types.js';
-import { findChildByType, nodeLocation } from '../ast-utils/index.js';
+import { findChildByType, nodeLocation, findInitializer } from '../ast-utils/index.js';
 import { extractFullTypeName } from '../ast-utils/extract-type-name.js';
 
 /**
@@ -55,23 +55,6 @@ function extractSingleVariable(declarator: SyntaxNode, isConst: boolean): Parsed
     annotations: [],
     location: nodeLocation(declarator),
   };
-}
-
-/**
- * Find the initializer value in a variable declarator.
- * The initializer follows the = sign.
- */
-function findInitializer(node: SyntaxNode): SyntaxNode | undefined {
-  let foundEquals = false;
-  for (const child of node.children) {
-    if (foundEquals) {
-      return child;
-    }
-    if (child.type === '=') {
-      foundEquals = true;
-    }
-  }
-  return undefined;
 }
 
 /**

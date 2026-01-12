@@ -22,6 +22,7 @@ import type { ParsedClass, ParsedFunction, ParsedProperty, ParsedAnnotation } fr
 import { extractClassProperty } from '../property/index.js';
 import { extractMethod, extractMethodSignature, linkOverloadsToImplementations } from '../function/index.js';
 import { extractConstructorProperties } from './extract-constructor-properties.js';
+import { extractSingleDecorator } from '../decorators/index.js';
 
 /**
  * Result of extracting class body members.
@@ -69,7 +70,7 @@ export function extractClassBody(
       // Decorators - collect them for the next declaration
       case 'decorator': {
         // Get the decorator for this specific child
-        const singleDecorator = extractSingleDecoratorFromNode(child);
+        const singleDecorator = extractSingleDecorator(child);
         if (singleDecorator) {
           pendingDecorators.push(singleDecorator);
         }
@@ -160,81 +161,4 @@ export function extractClassBody(
   const linkedFunctions = linkOverloadsToImplementations(functions);
 
   return { properties, functions: linkedFunctions, nestedClasses };
-}
-
-/**
- * Extract a single decorator from a decorator AST node.
- * This is used to extract decorators that are siblings of method/property definitions.
- */
-function extractSingleDecoratorFromNode(decoratorNode: SyntaxNode): ParsedAnnotation | undefined {
-  // Find call_expression or identifier inside decorator
-  const expr = decoratorNode.children.find(
-    (c) => c.type === 'call_expression' || c.type === 'identifier' || c.type === 'member_expression'
-  );
-
-  if (!expr) return undefined;
-
-  if (expr.type === 'call_expression') {
-    // @Decorator() or @Decorator(args)
-    const functionNode = expr.children.find((c) => c.type === 'identifier' || c.type === 'member_expression');
-    const name = functionNode?.text ?? expr.text;
-    const args = extractDecoratorArguments(expr);
-
-    return {
-      name: extractDecoratorName(name),
-      arguments: Object.keys(args).length > 0 ? args : undefined,
-    };
-  }
-
-  // @Decorator without parentheses
-  return {
-    name: extractDecoratorName(expr.text),
-  };
-}
-
-/**
- * Extract decorator arguments from a call_expression.
- */
-function extractDecoratorArguments(callExpr: SyntaxNode): Record<string, string> {
-  const args: Record<string, string> = {};
-
-  const argsNode = callExpr.children.find((c) => c.type === 'arguments');
-  if (!argsNode) return args;
-
-  let argIndex = 0;
-  for (const child of argsNode.children) {
-    // Skip punctuation
-    if (child.type === '(' || child.type === ')' || child.type === ',') continue;
-
-    if (child.type === 'object') {
-      // Object literal argument: { key: value, ... }
-      for (const pair of child.children) {
-        if (pair.type === 'pair') {
-          const keyNode = pair.children[0];
-          const valueNode = pair.children.find(
-            (n) => n.type !== ':' && n !== keyNode && n.type !== 'property_identifier'
-          );
-          if (keyNode && valueNode) {
-            const key = keyNode.text.replace(/['"`]/g, '');
-            args[key] = valueNode.text;
-          }
-        }
-      }
-    } else {
-      // Positional argument
-      args[`arg${argIndex}`] = child.text;
-      argIndex++;
-    }
-  }
-
-  return args;
-}
-
-/**
- * Extract the simple decorator name from a potentially qualified name.
- * For "decorators.Injectable", returns "Injectable".
- */
-function extractDecoratorName(fullName: string): string {
-  const parts = fullName.split('.');
-  return parts[parts.length - 1] ?? fullName;
 }

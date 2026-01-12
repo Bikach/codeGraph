@@ -11,7 +11,7 @@
 
 import type { SyntaxNode } from 'tree-sitter';
 import type { ParsedDestructuringDeclaration } from '../../../../types.js';
-import { findChildByType, nodeLocation } from '../ast-utils/index.js';
+import { findChildByType, findChildByTypes, nodeLocation, findInitializer } from '../ast-utils/index.js';
 import { extractFullTypeName } from '../ast-utils/extract-type-name.js';
 
 /**
@@ -179,13 +179,6 @@ function extractObjectPatternComponents(
 }
 
 /**
- * Find all children matching any of the given types.
- */
-function findChildByTypes(node: SyntaxNode, types: string[]): SyntaxNode | undefined {
-  return node.children.find((c) => types.includes(c.type));
-}
-
-/**
  * Extract component names and types from an array pattern.
  *
  * Array pattern structure:
@@ -261,23 +254,6 @@ function extractTypeFromPattern(node: SyntaxNode): string | undefined {
   const typeAnnotation = findChildByType(node, 'type_annotation');
   if (typeAnnotation) {
     return extractFullTypeName(typeAnnotation);
-  }
-  return undefined;
-}
-
-/**
- * Find the initializer value in a variable declarator.
- * The initializer follows the = sign.
- */
-function findInitializer(node: SyntaxNode): SyntaxNode | undefined {
-  let foundEquals = false;
-  for (const child of node.children) {
-    if (foundEquals) {
-      return child;
-    }
-    if (child.type === '=') {
-      foundEquals = true;
-    }
   }
   return undefined;
 }

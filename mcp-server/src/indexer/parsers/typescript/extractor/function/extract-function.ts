@@ -14,7 +14,6 @@ import { extractTypeParameters } from '../generics/index.js';
 import { extractCalls } from '../calls/index.js';
 import { extractParameters } from './extract-parameters.js';
 import { extractReturnType } from './extract-return-type.js';
-import { extractTypeGuard } from './extract-type-guard.js';
 
 /**
  * Extract a function declaration from an AST node.
@@ -43,9 +42,6 @@ export function extractFunction(node: SyntaxNode): ParsedFunction {
   // Return type
   const returnType = extractReturnType(node);
 
-  // Type guard info (TypeScript-specific)
-  const typeGuard = extractTypeGuard(node);
-
   // Function body calls
   const body = findChildByType(node, 'statement_block');
   const calls = body ? extractCalls(body) : [];
@@ -69,7 +65,6 @@ export function extractFunction(node: SyntaxNode): ParsedFunction {
     annotations: decorators,
     location: nodeLocation(node),
     calls,
-    typeGuard,
   };
 }
 
@@ -104,9 +99,6 @@ export function extractMethod(node: SyntaxNode): ParsedFunction {
   // Return type
   const returnType = extractReturnType(node);
 
-  // Type guard info (TypeScript-specific)
-  const typeGuard = extractTypeGuard(node);
-
   // Method body calls
   const body = findChildByType(node, 'statement_block');
   const calls = body ? extractCalls(body) : [];
@@ -139,7 +131,6 @@ export function extractMethod(node: SyntaxNode): ParsedFunction {
     annotations: decorators,
     location: nodeLocation(node),
     calls,
-    typeGuard,
   };
 }
 

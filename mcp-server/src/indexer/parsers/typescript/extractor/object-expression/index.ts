@@ -3,6 +3,8 @@
  */
 export {
   extractObjectExpression,
-  isObjectExpression,
   findObjectExpressions,
 } from './extract-object-expression.js';
+
+// Note: isObjectExpression is not exported from index as it's only used in tests.
+// Tests can import it directly from ./extract-object-expression.js if needed.
