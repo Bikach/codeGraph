@@ -193,6 +193,29 @@ export interface ParsedMappedType {
   modifiers: ParsedMappedTypeModifier[];
 }
 
+/**
+ * Represents a parsed conditional type: `T extends U ? X : Y`
+ *
+ * Conditional types are a powerful TypeScript feature that allows types to be
+ * selected based on a type relationship test.
+ */
+export interface ParsedConditionalType {
+  /** The type being checked (e.g., "T" in "T extends any[]") */
+  checkType: string;
+  /** The type in the extends clause (e.g., "any[]" in "T extends any[]") */
+  extendsType: string;
+  /** The type returned when the condition is true */
+  trueType: string;
+  /** The type returned when the condition is false */
+  falseType: string;
+  /** Inferred type declarations within this conditional (e.g., "U" in "infer U") */
+  inferTypes?: string[];
+  /** Nested conditional type in the true branch */
+  nestedTrueConditional?: ParsedConditionalType;
+  /** Nested conditional type in the false branch */
+  nestedFalseConditional?: ParsedConditionalType;
+}
+
 export interface ParsedTypeAlias {
   name: string;
   aliasedType: string;
@@ -200,6 +223,8 @@ export interface ParsedTypeAlias {
   typeParameters?: ParsedTypeParameter[];
   /** Structured mapped type if the alias is a mapped type */
   mappedType?: ParsedMappedType;
+  /** Structured conditional type if the aliased type is a conditional */
+  conditionalType?: ParsedConditionalType;
   location: SourceLocation;
 }
 
