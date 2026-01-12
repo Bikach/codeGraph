@@ -51,6 +51,7 @@ export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
     language: 'kotlin',
     packageName: extractPackageName(root),
     imports: extractImports(root),
+    reexports: [], // Kotlin doesn't have re-exports
     classes: [],
     topLevelFunctions: [],
     topLevelProperties: [],

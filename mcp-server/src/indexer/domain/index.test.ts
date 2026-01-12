@@ -273,6 +273,7 @@ function createMockFile(
     language,
     packageName,
     imports: [],
+    reexports: [],
     classes: [],
     topLevelFunctions: [],
     topLevelProperties: [],

@@ -28,6 +28,7 @@ function createResolvedFile(overrides: Partial<ResolvedFile> = {}): ResolvedFile
     filePath: '/test/Test.kt',
     language: 'kotlin',
     imports: [],
+    reexports: [],
     classes: [],
     topLevelFunctions: [],
     topLevelProperties: [],

@@ -55,6 +55,7 @@ describe('indexFile', () => {
     filePath: '/test/Test.kt',
     language: 'kotlin',
     imports: [],
+    reexports: [],
     classes: [],
     topLevelFunctions: [],
     topLevelProperties: [],

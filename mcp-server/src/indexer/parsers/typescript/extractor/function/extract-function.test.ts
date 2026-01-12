@@ -1,8 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { parseTypeScript } from '../../parser.js';
 import { traverseNode } from '../ast-utils/index.js';
-import { extractFunction, extractMethod } from './extract-function.js';
+import {
+  extractFunction,
+  extractMethod,
+  extractFunctionSignature,
+  extractMethodSignature,
+  linkOverloadsToImplementations,
+} from './extract-function.js';
 import type { SyntaxNode } from 'tree-sitter';
+import type { ParsedFunction } from '../../../../types.js';
 
 function findFunctionDeclaration(source: string): SyntaxNode | undefined {
   const tree = parseTypeScript(source, 'test.ts');
@@ -212,5 +219,213 @@ describe('extractMethod', () => {
       const method = extractMethod(node!);
       expect(method.isAbstract).toBe(true);
     });
+  });
+});
+
+describe('extractFunctionSignature', () => {
+  function findFunctionSignature(source: string): SyntaxNode | undefined {
+    const tree = parseTypeScript(source, 'test.ts');
+    let funcSig: SyntaxNode | undefined;
+    traverseNode(tree.rootNode, (node) => {
+      if (node.type === 'function_signature' && !funcSig) {
+        funcSig = node;
+      }
+    });
+    return funcSig;
+  }
+
+  it('should extract function signature name', () => {
+    const node = findFunctionSignature('function parse(input: string): Document;');
+    expect(node).toBeDefined();
+    const func = extractFunctionSignature(node!);
+    expect(func.name).toBe('parse');
+  });
+
+  it('should extract function signature parameters', () => {
+    const node = findFunctionSignature('function parse(input: string): Document;');
+    expect(node).toBeDefined();
+    const func = extractFunctionSignature(node!);
+    expect(func.parameters).toHaveLength(1);
+    expect(func.parameters[0]?.name).toBe('input');
+    expect(func.parameters[0]?.type).toBe('string');
+  });
+
+  it('should extract function signature return type', () => {
+    const node = findFunctionSignature('function parse(input: string): Document;');
+    expect(node).toBeDefined();
+    const func = extractFunctionSignature(node!);
+    expect(func.returnType).toBe('Document');
+  });
+
+  it('should mark as overload signature', () => {
+    const node = findFunctionSignature('function parse(input: string): Document;');
+    expect(node).toBeDefined();
+    const func = extractFunctionSignature(node!);
+    expect(func.isOverloadSignature).toBe(true);
+  });
+
+  it('should have empty calls array', () => {
+    const node = findFunctionSignature('function parse(input: string): Document;');
+    expect(node).toBeDefined();
+    const func = extractFunctionSignature(node!);
+    expect(func.calls).toHaveLength(0);
+  });
+
+  it('should extract generic function signature', () => {
+    const node = findFunctionSignature('function convert<T>(value: T): T;');
+    expect(node).toBeDefined();
+    const func = extractFunctionSignature(node!);
+    expect(func.name).toBe('convert');
+    expect(func.typeParameters).toHaveLength(1);
+    expect(func.typeParameters![0]?.name).toBe('T');
+  });
+
+  it('should extract async function signature', () => {
+    const node = findFunctionSignature('async function fetch(url: string): Promise<Response>;');
+    expect(node).toBeDefined();
+    const func = extractFunctionSignature(node!);
+    expect(func.isSuspend).toBe(true);
+    expect(func.returnType).toBe('Promise<Response>');
+  });
+});
+
+describe('extractMethodSignature', () => {
+  function findMethodSignature(source: string): SyntaxNode | undefined {
+    const tree = parseTypeScript(source, 'test.ts');
+    let methodSig: SyntaxNode | undefined;
+    traverseNode(tree.rootNode, (node) => {
+      if (node.type === 'method_signature' && !methodSig) {
+        methodSig = node;
+      }
+    });
+    return methodSig;
+  }
+
+  it('should extract method signature name', () => {
+    const node = findMethodSignature('class Parser { parse(input: string): Document; }');
+    expect(node).toBeDefined();
+    const method = extractMethodSignature(node!);
+    expect(method.name).toBe('parse');
+  });
+
+  it('should extract method signature parameters', () => {
+    const node = findMethodSignature('class Parser { parse(input: string, options: Options): Document; }');
+    expect(node).toBeDefined();
+    const method = extractMethodSignature(node!);
+    expect(method.parameters).toHaveLength(2);
+    expect(method.parameters[0]?.name).toBe('input');
+    expect(method.parameters[1]?.name).toBe('options');
+  });
+
+  it('should mark as overload signature', () => {
+    const node = findMethodSignature('class Parser { parse(input: string): Document; }');
+    expect(node).toBeDefined();
+    const method = extractMethodSignature(node!);
+    expect(method.isOverloadSignature).toBe(true);
+  });
+
+  it('should extract constructor signature', () => {
+    const node = findMethodSignature('class Parser { constructor(options: string); }');
+    expect(node).toBeDefined();
+    const method = extractMethodSignature(node!);
+    expect(method.name).toBe('constructor');
+    expect(method.isOverloadSignature).toBe(true);
+  });
+});
+
+describe('linkOverloadsToImplementations', () => {
+  function createSignature(name: string, paramType: string, returnType: string): ParsedFunction {
+    return {
+      name,
+      visibility: 'public',
+      parameters: [{ name: 'input', type: paramType, annotations: [] }],
+      returnType,
+      isAbstract: false,
+      isSuspend: false,
+      isExtension: false,
+      annotations: [],
+      location: { filePath: 'test.ts', startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+      calls: [],
+      isOverloadSignature: true,
+    };
+  }
+
+  function createImplementation(name: string, paramType: string, returnType: string): ParsedFunction {
+    return {
+      name,
+      visibility: 'public',
+      parameters: [{ name: 'input', type: paramType, annotations: [] }],
+      returnType,
+      isAbstract: false,
+      isSuspend: false,
+      isExtension: false,
+      annotations: [],
+      location: { filePath: 'test.ts', startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+      calls: [],
+    };
+  }
+
+  it('should return single function unchanged', () => {
+    const funcs = [createImplementation('parse', 'string', 'Document')];
+    const result = linkOverloadsToImplementations(funcs);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.overloads).toBeUndefined();
+  });
+
+  it('should link overload signatures to implementation', () => {
+    const funcs = [
+      createSignature('parse', 'string', 'Document'),
+      createSignature('parse', 'Buffer', 'Document'),
+      createImplementation('parse', 'string | Buffer', 'Document'),
+    ];
+    const result = linkOverloadsToImplementations(funcs);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.name).toBe('parse');
+    expect(result[0]?.isOverloadSignature).toBeUndefined();
+    expect(result[0]?.overloads).toHaveLength(2);
+    expect(result[0]?.overloads![0]?.parameters[0]?.type).toBe('string');
+    expect(result[0]?.overloads![1]?.parameters[0]?.type).toBe('Buffer');
+  });
+
+  it('should keep functions with different names separate', () => {
+    const funcs = [
+      createSignature('parse', 'string', 'Document'),
+      createImplementation('parse', 'string | Buffer', 'Document'),
+      createImplementation('format', 'string', 'string'),
+    ];
+    const result = linkOverloadsToImplementations(funcs);
+
+    expect(result).toHaveLength(2);
+    const parseFunc = result.find((f) => f.name === 'parse');
+    const formatFunc = result.find((f) => f.name === 'format');
+
+    expect(parseFunc?.overloads).toHaveLength(1);
+    expect(formatFunc?.overloads).toBeUndefined();
+  });
+
+  it('should handle signatures without implementation (ambient declarations)', () => {
+    const funcs = [
+      createSignature('parse', 'string', 'Document'),
+      createSignature('parse', 'Buffer', 'Document'),
+    ];
+    const result = linkOverloadsToImplementations(funcs);
+
+    // Both signatures should be kept as separate functions
+    expect(result).toHaveLength(2);
+    expect(result.every((f) => f.isOverloadSignature)).toBe(true);
+  });
+
+  it('should preserve overload signature location info', () => {
+    const sig = createSignature('parse', 'string', 'Document');
+    sig.location = { filePath: 'test.ts', startLine: 5, startColumn: 1, endLine: 5, endColumn: 50 };
+
+    const impl = createImplementation('parse', 'string | Buffer', 'Document');
+    impl.location = { filePath: 'test.ts', startLine: 7, startColumn: 1, endLine: 10, endColumn: 1 };
+
+    const result = linkOverloadsToImplementations([sig, impl]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.overloads![0]?.location.startLine).toBe(5);
   });
 });

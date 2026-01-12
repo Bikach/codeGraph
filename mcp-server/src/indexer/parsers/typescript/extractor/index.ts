@@ -5,3 +5,9 @@
  */
 
 export { extractSymbols } from './extract-symbols.js';
+export {
+  extractNamespace,
+  isNamespaceNode,
+  unwrapNamespaceFromExpression,
+} from './namespace/index.js';
+export type { NamespaceBodyResult } from './namespace/index.js';

@@ -8,11 +8,15 @@
 import type { SyntaxNode, Tree } from 'tree-sitter';
 import type { ParsedFile } from '../../../types.js';
 
-import { extractImports } from './imports/index.js';
+import { extractImports, extractReexports } from './imports/index.js';
 import { extractClass } from './class/extract-class.js';
 import { extractInterface } from './class/extract-interface.js';
 import { extractEnum } from './class/extract-enum.js';
-import { extractFunction } from './function/extract-function.js';
+import {
+  extractFunction,
+  extractFunctionSignature,
+  linkOverloadsToImplementations,
+} from './function/extract-function.js';
 import {
   extractArrowFunction,
   isArrowFunctionDeclarator,
@@ -28,6 +32,10 @@ import {
   findObjectExpressions,
 } from './object-expression/index.js';
 import { extractTypeAlias } from './types/index.js';
+import {
+  extractNamespace,
+  unwrapNamespaceFromExpression,
+} from './namespace/index.js';
 
 /**
  * Extract all symbols from a TypeScript/JavaScript AST.
@@ -44,6 +52,7 @@ export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
     language: 'typescript',
     packageName: undefined, // TypeScript doesn't have package declarations
     imports: extractImports(root),
+    reexports: extractReexports(root),
     classes: [],
     topLevelFunctions: [],
     topLevelProperties: [],
@@ -54,6 +63,9 @@ export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
 
   // Traverse top-level declarations
   traverseTopLevel(root, result);
+
+  // Link function overload signatures to their implementations
+  result.topLevelFunctions = linkOverloadsToImplementations(result.topLevelFunctions);
 
   // Extract object expressions from variable assignments
   extractObjectExpressions(root, result);
@@ -136,6 +148,11 @@ function extractDeclaration(node: SyntaxNode, result: ParsedFile): void {
       result.topLevelFunctions.push(extractFunction(node));
       break;
 
+    // Function overload signatures
+    case 'function_signature':
+      result.topLevelFunctions.push(extractFunctionSignature(node));
+      break;
+
     // Variables (const, let, var) - may contain arrow functions
     case 'lexical_declaration':
     case 'variable_declaration':
@@ -151,6 +168,21 @@ function extractDeclaration(node: SyntaxNode, result: ParsedFile): void {
     case 'ambient_declaration':
       extractAmbientDeclaration(node, result);
       break;
+
+    // Namespaces (namespace/module keyword)
+    case 'internal_module':
+    case 'module':
+      result.classes.push(extractNamespace(node));
+      break;
+
+    // Expression statements may contain namespaces
+    case 'expression_statement': {
+      const namespaceNode = unwrapNamespaceFromExpression(node);
+      if (namespaceNode) {
+        result.classes.push(extractNamespace(namespaceNode));
+      }
+      break;
+    }
   }
 }
 

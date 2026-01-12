@@ -862,4 +862,174 @@ describe('extractSymbols - Integration Tests', () => {
       expect(memoize!.returnType).toBe('T');
     });
   });
+
+  describe('Function overloads', () => {
+    it('should extract function overloads with linked signatures', () => {
+      const source = `
+        function parse(input: string): Document;
+        function parse(input: Buffer): Document;
+        function parse(input: string | Buffer): Document {
+          return new Document();
+        }
+      `;
+      const tree = parseTypeScript(source, '/src/parser.ts');
+      const result = extractSymbols(tree, '/src/parser.ts');
+
+      // Should have a single function with overloads
+      expect(result.topLevelFunctions).toHaveLength(1);
+
+      const parse = result.topLevelFunctions[0]!;
+      expect(parse.name).toBe('parse');
+      expect(parse.isOverloadSignature).toBeUndefined();
+
+      // Implementation signature
+      expect(parse.parameters[0]?.type).toBe('string | Buffer');
+      expect(parse.returnType).toBe('Document');
+
+      // Overload signatures
+      expect(parse.overloads).toHaveLength(2);
+      expect(parse.overloads![0]?.parameters[0]?.type).toBe('string');
+      expect(parse.overloads![1]?.parameters[0]?.type).toBe('Buffer');
+    });
+
+    it('should extract generic function overloads', () => {
+      const source = `
+        function convert<T>(value: T): T;
+        function convert<T, U>(value: T, transformer: (t: T) => U): U;
+        function convert<T, U>(value: T, transformer?: (t: T) => U): T | U {
+          return transformer ? transformer(value) : value;
+        }
+      `;
+      const tree = parseTypeScript(source, '/src/convert.ts');
+      const result = extractSymbols(tree, '/src/convert.ts');
+
+      expect(result.topLevelFunctions).toHaveLength(1);
+
+      const convert = result.topLevelFunctions[0]!;
+      expect(convert.name).toBe('convert');
+      expect(convert.overloads).toHaveLength(2);
+
+      // First overload: <T>(value: T): T
+      const overload1 = convert.overloads![0]!;
+      expect(overload1.typeParameters).toHaveLength(1);
+      expect(overload1.typeParameters![0]?.name).toBe('T');
+      expect(overload1.parameters).toHaveLength(1);
+      expect(overload1.returnType).toBe('T');
+
+      // Second overload: <T, U>(value: T, transformer: (t: T) => U): U
+      const overload2 = convert.overloads![1]!;
+      expect(overload2.typeParameters).toHaveLength(2);
+      expect(overload2.parameters).toHaveLength(2);
+      expect(overload2.returnType).toBe('U');
+    });
+
+    it('should extract method overloads in class', () => {
+      const source = `
+        class Parser {
+          parse(input: string): Document;
+          parse(input: Buffer): Document;
+          parse(input: string | Buffer): Document {
+            return new Document();
+          }
+
+          format(data: string): string;
+          format(data: number): string;
+          format(data: string | number): string {
+            return String(data);
+          }
+        }
+      `;
+      const tree = parseTypeScript(source, '/src/parser.ts');
+      const result = extractSymbols(tree, '/src/parser.ts');
+
+      const parser = result.classes[0]!;
+      expect(parser.name).toBe('Parser');
+
+      // Should have 2 methods (parse and format), each with overloads linked
+      expect(parser.functions).toHaveLength(2);
+
+      const parse = parser.functions.find((f) => f.name === 'parse');
+      expect(parse).toBeDefined();
+      expect(parse!.overloads).toHaveLength(2);
+      expect(parse!.overloads![0]?.parameters[0]?.type).toBe('string');
+      expect(parse!.overloads![1]?.parameters[0]?.type).toBe('Buffer');
+
+      const format = parser.functions.find((f) => f.name === 'format');
+      expect(format).toBeDefined();
+      expect(format!.overloads).toHaveLength(2);
+      expect(format!.overloads![0]?.parameters[0]?.type).toBe('string');
+      expect(format!.overloads![1]?.parameters[0]?.type).toBe('number');
+    });
+
+    it('should extract constructor overloads', () => {
+      const source = `
+        class Parser {
+          constructor(options: string);
+          constructor(options: ParserOptions);
+          constructor(options: string | ParserOptions) {
+            console.log(options);
+          }
+        }
+      `;
+      const tree = parseTypeScript(source, '/src/parser.ts');
+      const result = extractSymbols(tree, '/src/parser.ts');
+
+      const parser = result.classes[0]!;
+      expect(parser.name).toBe('Parser');
+
+      // Constructor overloads are extracted as methods named "constructor"
+      const constructorMethod = parser.functions.find((f) => f.name === 'constructor');
+      expect(constructorMethod).toBeDefined();
+      expect(constructorMethod!.overloads).toHaveLength(2);
+      expect(constructorMethod!.overloads![0]?.parameters[0]?.type).toBe('string');
+      expect(constructorMethod!.overloads![1]?.parameters[0]?.type).toBe('ParserOptions');
+    });
+
+    it('should extract exported function overloads', () => {
+      const source = `
+        export function createElement(type: string): HTMLElement;
+        export function createElement(type: 'div'): HTMLDivElement;
+        export function createElement(type: 'span'): HTMLSpanElement;
+        export function createElement(type: string): HTMLElement {
+          return document.createElement(type);
+        }
+      `;
+      const tree = parseTypeScript(source, '/src/dom.ts');
+      const result = extractSymbols(tree, '/src/dom.ts');
+
+      expect(result.topLevelFunctions).toHaveLength(1);
+
+      const createElement = result.topLevelFunctions[0]!;
+      expect(createElement.name).toBe('createElement');
+      expect(createElement.overloads).toHaveLength(3);
+    });
+
+    it('should handle function with no overloads', () => {
+      const source = `
+        function regularFunction(value: string): number {
+          return parseInt(value, 10);
+        }
+      `;
+      const tree = parseTypeScript(source, '/src/utils.ts');
+      const result = extractSymbols(tree, '/src/utils.ts');
+
+      expect(result.topLevelFunctions).toHaveLength(1);
+      const func = result.topLevelFunctions[0]!;
+      expect(func.name).toBe('regularFunction');
+      expect(func.overloads).toBeUndefined();
+    });
+
+    it('should handle ambient function declarations (signatures only)', () => {
+      const source = `
+        declare function externalFn(x: string): string;
+        declare function externalFn(x: number): number;
+      `;
+      const tree = parseTypeScript(source, '/src/ambient.d.ts');
+      const result = extractSymbols(tree, '/src/ambient.d.ts');
+
+      // Ambient declarations with no implementation keep all signatures
+      expect(result.topLevelFunctions).toHaveLength(2);
+      expect(result.topLevelFunctions.every((f) => f.isOverloadSignature)).toBe(true);
+    });
+  });
 });

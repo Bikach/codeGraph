@@ -25,6 +25,7 @@ function createParsedFile(overrides: Partial<ParsedFile> = {}): ParsedFile {
     filePath: '/test/Test.kt',
     language: 'kotlin',
     imports: [],
+    reexports: [],
     classes: [],
     topLevelFunctions: [],
     topLevelProperties: [],

@@ -16,6 +16,7 @@ function createMockFile(
     language: 'kotlin',
     packageName,
     imports: [],
+    reexports: [],
     classes: [],
     topLevelFunctions: [],
     topLevelProperties: [],

@@ -20,7 +20,8 @@
 import type { SyntaxNode } from 'tree-sitter';
 import type { ParsedClass, ParsedFunction, ParsedProperty, ParsedAnnotation } from '../../../../types.js';
 import { extractClassProperty } from '../property/index.js';
-import { extractMethod } from '../function/index.js';
+import { extractMethod, extractMethodSignature, linkOverloadsToImplementations } from '../function/index.js';
+import { extractConstructorProperties } from './extract-constructor-properties.js';
 
 /**
  * Result of extracting class body members.
@@ -48,13 +49,17 @@ export function extractClassBody(
   classBody: SyntaxNode | undefined,
   extractClass: ClassExtractor
 ): ClassBodyResult {
-  const properties: ParsedProperty[] = [];
   const functions: ParsedFunction[] = [];
   const nestedClasses: ParsedClass[] = [];
 
   if (!classBody) {
-    return { properties, functions, nestedClasses };
+    return { properties: [], functions, nestedClasses };
   }
+
+  // Extract constructor parameter properties first
+  // These appear at the beginning of the properties list
+  const constructorProperties = extractConstructorProperties(classBody);
+  const properties: ParsedProperty[] = [...constructorProperties];
 
   // Track pending decorators that will apply to the next member
   let pendingDecorators: ParsedAnnotation[] = [];
@@ -95,6 +100,15 @@ export function extractClassBody(
       // Abstract method signatures
       case 'abstract_method_signature': {
         const method = extractMethod(child);
+        method.annotations = [...pendingDecorators, ...method.annotations];
+        functions.push(method);
+        pendingDecorators = [];
+        break;
+      }
+
+      // Method overload signatures (non-abstract)
+      case 'method_signature': {
+        const method = extractMethodSignature(child);
         method.annotations = [...pendingDecorators, ...method.annotations];
         functions.push(method);
         pendingDecorators = [];
@@ -142,7 +156,10 @@ export function extractClassBody(
     }
   }
 
-  return { properties, functions, nestedClasses };
+  // Link method overload signatures to their implementations
+  const linkedFunctions = linkOverloadsToImplementations(functions);
+
+  return { properties, functions: linkedFunctions, nestedClasses };
 }
 
 /**

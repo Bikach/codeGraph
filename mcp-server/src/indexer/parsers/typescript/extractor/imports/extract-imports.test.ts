@@ -146,4 +146,64 @@ describe('extractImports', () => {
       expect(imports).toEqual([]);
     });
   });
+
+  describe('dynamic imports', () => {
+    it('should extract dynamic import', () => {
+      const tree = parseTypeScript("const module = import('./module');", '/test.ts');
+      const imports = extractImports(tree.rootNode);
+      expect(imports).toHaveLength(1);
+      expect(imports[0]!.path).toBe('./module');
+      expect(imports[0]!.isDynamic).toBe(true);
+    });
+
+    it('should extract await dynamic import', () => {
+      const code = `
+        async function load() {
+          const module = await import('./lazy');
+        }
+      `;
+      const tree = parseTypeScript(code, '/test.ts');
+      const imports = extractImports(tree.rootNode);
+      expect(imports).toHaveLength(1);
+      expect(imports[0]!.path).toBe('./lazy');
+      expect(imports[0]!.isDynamic).toBe(true);
+    });
+
+    it('should extract both static and dynamic imports', () => {
+      const code = `
+        import React from 'react';
+        const LazyComponent = React.lazy(() => import('./LazyComponent'));
+      `;
+      const tree = parseTypeScript(code, '/test.ts');
+      const imports = extractImports(tree.rootNode);
+      expect(imports).toHaveLength(2);
+      expect(imports[0]!.path).toBe('react');
+      expect(imports[0]!.name).toBe('React');
+      expect(imports[0]!.isDynamic).toBeUndefined();
+      expect(imports[1]!.path).toBe('./LazyComponent');
+      expect(imports[1]!.isDynamic).toBe(true);
+    });
+
+    it('should extract multiple dynamic imports', () => {
+      const code = `
+        const moduleA = import('./moduleA');
+        const moduleB = import('./moduleB');
+      `;
+      const tree = parseTypeScript(code, '/test.ts');
+      const imports = extractImports(tree.rootNode);
+      expect(imports).toHaveLength(2);
+      expect(imports[0]!.path).toBe('./moduleA');
+      expect(imports[1]!.path).toBe('./moduleB');
+    });
+
+    it('should extract dynamic import with template literal', () => {
+      const code = 'const module = import(`./dynamic/${name}`);';
+      const tree = parseTypeScript(code, '/test.ts');
+      const imports = extractImports(tree.rootNode);
+      expect(imports).toHaveLength(1);
+      expect(imports[0]!.path).toBe('`./dynamic/${name}`');
+      expect(imports[0]!.isDynamic).toBe(true);
+      expect(imports[0]!.isTemplateLiteral).toBe(true);
+    });
+  });
 });

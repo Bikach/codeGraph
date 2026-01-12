@@ -12,6 +12,7 @@ function createMockFile(language: 'kotlin' | 'java' | 'typescript' | 'javascript
     language,
     packageName: 'com.example',
     imports: [],
+    reexports: [],
     classes: [],
     topLevelFunctions: [],
     topLevelProperties: [],

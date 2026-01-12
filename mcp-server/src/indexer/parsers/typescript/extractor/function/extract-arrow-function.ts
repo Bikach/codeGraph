@@ -11,6 +11,7 @@ import { extractFullTypeName } from '../ast-utils/extract-type-name.js';
 import { extractTypeParameters } from '../generics/index.js';
 import { extractCalls } from '../calls/index.js';
 import { extractParameters } from './extract-parameters.js';
+import { extractTypeGuard } from './extract-type-guard.js';
 
 /**
  * Extract an arrow function from a variable_declarator.
@@ -58,6 +59,9 @@ export function extractArrowFunction(declarator: SyntaxNode, arrowFunc: SyntaxNo
   // Return type (type_annotation after params but before =>)
   const returnType = extractArrowReturnType(arrowFunc);
 
+  // Type guard info (TypeScript-specific)
+  const typeGuard = extractTypeGuard(arrowFunc);
+
   // Body calls - can be statement_block or expression
   const body =
     findChildByType(arrowFunc, 'statement_block') ??
@@ -88,6 +92,7 @@ export function extractArrowFunction(declarator: SyntaxNode, arrowFunc: SyntaxNo
     annotations: [],
     location: nodeLocation(arrowFunc),
     calls,
+    typeGuard,
   };
 }
 

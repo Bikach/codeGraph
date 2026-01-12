@@ -19,6 +19,7 @@ describe('resolveCall', () => {
     language: 'kotlin',
     packageName: 'com.example',
     imports: [],
+    reexports: [],
     classes: [],
     topLevelFunctions: [],
     topLevelProperties: [],

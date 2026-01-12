@@ -44,6 +44,36 @@ export interface ParsedImport {
   isWildcard?: boolean;
   /** Is this a type-only import? (TypeScript: "import type { X }") */
   isTypeOnly?: boolean;
+  /** Is this a dynamic import? (e.g., "import('./module')") */
+  isDynamic?: boolean;
+  /** Is the path a template literal? (e.g., "import(`./module/${name}`)") */
+  isTemplateLiteral?: boolean;
+}
+
+/**
+ * Represents an re-export statement in TypeScript/JavaScript.
+ * Re-exports make symbols from other modules available from the current module.
+ *
+ * Examples:
+ * - export { foo as bar } from './module';
+ * - export * as utils from './utils';
+ * - export { default as Component } from './Component';
+ * - export * from './module';
+ * - export type { User as AppUser } from './types';
+ */
+export interface ParsedReexport {
+  /** Source module path (e.g., "./module" or "@package/name") */
+  sourcePath: string;
+  /** Original name being exported (undefined for wildcard: export *) */
+  originalName?: string;
+  /** Alias/exported name (e.g., "bar" in "export { foo as bar }") */
+  exportedName?: string;
+  /** Is it a namespace re-export? (export * as X from 'y') */
+  isNamespaceReexport?: boolean;
+  /** Is it a wildcard re-export without alias? (export * from 'y') */
+  isWildcard?: boolean;
+  /** Is this a type-only re-export? (TypeScript: "export type { X }") */
+  isTypeOnly?: boolean;
 }
 
 export interface ParsedAnnotation {
@@ -83,6 +113,23 @@ export interface ParsedParameter {
   isNoinline?: boolean;
 }
 
+/**
+ * TypeScript type guard information for functions.
+ *
+ * Type guards are functions that narrow types at runtime:
+ * - Type predicate: `function isString(x): x is string`
+ * - Assertion function: `function assertDefined(x): asserts x is T`
+ * - This type guard: `function isValid(): this is ValidType`
+ */
+export interface ParsedTypeGuard {
+  /** The parameter being guarded (e.g., "x" in "x is string", or "this") */
+  parameter: string;
+  /** The narrowed type (e.g., "string" in "x is string") */
+  narrowedType: string;
+  /** Whether this is an assertion function (uses `asserts` keyword) */
+  isAssertion: boolean;
+}
+
 export interface ParsedConstructor {
   parameters: ParsedParameter[];
   visibility: Visibility;
@@ -98,6 +145,22 @@ export interface ParsedProperty {
   isVal: boolean; // true = val (immutable), false = var (mutable)
   initializer?: string;
   annotations: ParsedAnnotation[];
+  location: SourceLocation;
+}
+
+/**
+ * Represents a function overload signature (TypeScript).
+ * Overload signatures declare the callable signatures of a function
+ * without providing an implementation body.
+ */
+export interface ParsedOverloadSignature {
+  /** Parameters for this specific overload signature */
+  parameters: ParsedParameter[];
+  /** Return type for this specific overload signature */
+  returnType?: string;
+  /** Type parameters (generics) for this specific overload signature */
+  typeParameters?: ParsedTypeParameter[];
+  /** Location of this overload signature in source */
   location: SourceLocation;
 }
 
@@ -118,6 +181,20 @@ export interface ParsedFunction {
   location: SourceLocation;
   /** Raw function calls found in the body (unresolved) */
   calls: ParsedCall[];
+  /**
+   * Overload signatures for this function (TypeScript-specific).
+   * When present, this function has multiple call signatures.
+   * The main parameters/returnType represent the implementation signature,
+   * while overloads contain the declared callable signatures.
+   */
+  overloads?: ParsedOverloadSignature[];
+  /**
+   * Indicates this is an overload signature without implementation.
+   * Used for interface method signatures and ambient declarations.
+   */
+  isOverloadSignature?: boolean;
+  /** TypeScript type guard info if this is a type guard function */
+  typeGuard?: ParsedTypeGuard;
 }
 
 export interface ParsedCall {
@@ -261,6 +338,8 @@ export interface ParsedFile {
   language: SupportedLanguage;
   packageName?: string;
   imports: ParsedImport[];
+  /** Re-exports (export { ... } from 'module' or export * from 'module') */
+  reexports: ParsedReexport[];
   classes: ParsedClass[];
   /** Top-level functions (Kotlin-specific but other languages may have them) */
   topLevelFunctions: ParsedFunction[];

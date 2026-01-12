@@ -58,6 +58,7 @@ export function extractSymbols(tree: Tree, filePath: string): ParsedFile {
     language: 'java',
     packageName: extractPackageName(root),
     imports: extractImports(root),
+    reexports: [], // Java doesn't have re-exports
     classes: extractClasses(root),
     topLevelFunctions: [], // Java doesn't have top-level functions
     topLevelProperties: [], // Java doesn't have top-level properties

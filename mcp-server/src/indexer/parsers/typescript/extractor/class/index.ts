@@ -11,3 +11,4 @@ export { extractClassBody } from './extract-class-body.js';
 export type { ClassBodyResult, ClassExtractor } from './extract-class-body.js';
 export { extractInterfaceBody } from './extract-interface-body.js';
 export type { InterfaceBodyResult } from './extract-interface-body.js';
+export { extractConstructorProperties } from './extract-constructor-properties.js';

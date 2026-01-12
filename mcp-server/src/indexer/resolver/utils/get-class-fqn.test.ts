@@ -9,6 +9,7 @@ function createMockFile(packageName: string): ParsedFile {
     language: 'kotlin',
     packageName,
     imports: [],
+    reexports: [],
     classes: [],
     topLevelFunctions: [],
     topLevelProperties: [],
