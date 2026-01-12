@@ -36,6 +36,10 @@ import {
   extractNamespace,
   unwrapNamespaceFromExpression,
 } from './namespace/index.js';
+import {
+  extractAmbientModule,
+  isAmbientModuleNode,
+} from './ambient/index.js';
 
 /**
  * Extract all symbols from a TypeScript/JavaScript AST.
@@ -231,11 +235,21 @@ function extractVariableOrFunction(node: SyntaxNode, result: ParsedFile): void {
 /**
  * Extract declarations from ambient (declare) blocks.
  *
- * declare class Foo {}
- * declare function foo(): void
- * declare const x: number
+ * Handles multiple forms of ambient declarations:
+ * - declare class Foo {}
+ * - declare function foo(): void
+ * - declare const x: number
+ * - declare module 'express' { ... }  (module augmentation)
+ * - declare global { ... }            (global augmentation)
  */
 function extractAmbientDeclaration(node: SyntaxNode, result: ParsedFile): void {
+  // Check if this is an ambient module declaration (declare module or declare global)
+  if (isAmbientModuleNode(node)) {
+    result.classes.push(extractAmbientModule(node));
+    return;
+  }
+
+  // Handle regular ambient declarations (declare class, declare function, etc.)
   for (const child of node.children) {
     if (child.type === 'declare') continue;
     extractDeclaration(child, result);
