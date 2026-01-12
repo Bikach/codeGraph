@@ -6,11 +6,13 @@
  * - type User = { name: string; age: number }
  * - type Result<T> = T | Error
  * - type Handler<T, R> = (input: T) => R
+ * - type Readonly<T> = { readonly [K in keyof T]: T[K] } (mapped type)
  */
 import type { SyntaxNode } from 'tree-sitter';
 import type { ParsedTypeAlias } from '../../../../types.js';
 import { findChildByType, nodeLocation } from '../ast-utils/index.js';
 import { extractTypeParameters } from '../generics/index.js';
+import { extractMappedType, isMappedType } from './extract-mapped-type.js';
 
 /**
  * Extract a type alias from a type_alias_declaration node.
@@ -24,6 +26,7 @@ import { extractTypeParameters } from '../generics/index.js';
  * - type User = { name: string }
  * - type Result<T> = T | Error
  * - type Handler<T, R extends object> = (input: T) => R
+ * - type Readonly<T> = { readonly [K in keyof T]: T[K] } (mapped type)
  */
 export function extractTypeAlias(node: SyntaxNode): ParsedTypeAlias {
   // Extract the type name
@@ -35,12 +38,14 @@ export function extractTypeAlias(node: SyntaxNode): ParsedTypeAlias {
 
   // Extract the aliased type (everything after the '=')
   let aliasedType: string | undefined;
+  let aliasedTypeNode: SyntaxNode | undefined;
   let foundEquals = false;
 
   for (const child of node.children) {
     if (foundEquals) {
       // The next node after '=' is the type
       aliasedType = child.text;
+      aliasedTypeNode = child;
       break;
     }
     if (child.type === '=') {
@@ -48,11 +53,18 @@ export function extractTypeAlias(node: SyntaxNode): ParsedTypeAlias {
     }
   }
 
+  // Check if this is a mapped type and extract structured information
+  const mappedType =
+    aliasedTypeNode && isMappedType(aliasedTypeNode)
+      ? extractMappedType(aliasedTypeNode)
+      : undefined;
+
   return {
     name,
     aliasedType: aliasedType ?? '',
     visibility: 'public', // TypeScript type aliases are always public (module-level visibility)
     typeParameters: typeParameters.length > 0 ? typeParameters : undefined,
+    mappedType,
     location: nodeLocation(node),
   };
 }

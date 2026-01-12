@@ -159,11 +159,47 @@ export interface ParsedClass {
   location: SourceLocation;
 }
 
+/**
+ * Represents a TypeScript mapped type modifier.
+ * Examples: readonly, +readonly, -readonly, ?, +?, -?
+ */
+export interface ParsedMappedTypeModifier {
+  /** The modifier keyword (readonly or optional represented as '?') */
+  kind: 'readonly' | 'optional';
+  /** The modifier prefix: '+' (add), '-' (remove), or undefined (no change) */
+  prefix?: '+' | '-';
+}
+
+/**
+ * Represents a TypeScript mapped type.
+ * Examples:
+ * - { [K in keyof T]: T[K] }
+ * - { readonly [K in keyof T]: T[K] }
+ * - { [K in keyof T]?: T[K] }
+ * - { [K in keyof T as NewKey]: T[K] }
+ */
+export interface ParsedMappedType {
+  /** The key type parameter name (e.g., 'K' in [K in keyof T]) */
+  keyName: string;
+  /** The constraint expression (e.g., 'keyof T' in [K in keyof T]) */
+  constraint: string;
+  /** Whether constraint uses keyof operator */
+  hasKeyof: boolean;
+  /** The value type expression (e.g., 'T[K]') */
+  valueType: string;
+  /** Key remapping clause if present (e.g., 'NewKey' in [K in keyof T as NewKey]) */
+  asClause?: string;
+  /** Applied modifiers (readonly, optional with +/-) */
+  modifiers: ParsedMappedTypeModifier[];
+}
+
 export interface ParsedTypeAlias {
   name: string;
   aliasedType: string;
   visibility: Visibility;
   typeParameters?: ParsedTypeParameter[];
+  /** Structured mapped type if the alias is a mapped type */
+  mappedType?: ParsedMappedType;
   location: SourceLocation;
 }
 
