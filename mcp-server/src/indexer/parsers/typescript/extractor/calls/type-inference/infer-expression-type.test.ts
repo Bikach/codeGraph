@@ -1,19 +1,12 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import Parser from 'tree-sitter';
-import TypeScript from 'tree-sitter-typescript';
+import { describe, it, expect } from 'vitest';
+import { parseTypeScript } from '../../../parser.js';
 import { inferExpressionType } from './infer-expression-type.js';
+import type { SyntaxNode } from 'tree-sitter';
 
 describe('inferExpressionType', () => {
-  let parser: Parser;
-
-  beforeAll(() => {
-    parser = new Parser();
-    parser.setLanguage(TypeScript.typescript);
-  });
-
-  function parseExpression(code: string): Parser.SyntaxNode {
+  function parseExpression(code: string): SyntaxNode {
     // Wrap expression in a variable declaration to parse it
-    const tree = parser.parse(`const x = ${code};`);
+    const tree = parseTypeScript(`const x = ${code};`, '/test.ts');
     // Navigate: program > lexical_declaration > variable_declarator > value
     const declarator = tree.rootNode.children[0]?.children[1];
     const value = declarator?.children[2]; // After identifier and '='

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseTypeScript } from '../../parser.js';
 import { extractCallExpression } from './extract-call-expression.js';
-import { findChildByType, traverseNode } from '../ast-utils/index.js';
+import { traverseNode } from '../ast-utils/index.js';
 import type { SyntaxNode } from 'tree-sitter';
 
 /**

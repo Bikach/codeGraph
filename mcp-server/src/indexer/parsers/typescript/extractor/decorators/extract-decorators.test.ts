@@ -15,8 +15,9 @@ function parseClassDecorators(source: string) {
 
 /**
  * Helper to parse and extract decorators from a method.
+ * @internal Reserved for future use in method decorator tests
  */
-function parseMethodDecorators(source: string) {
+function _parseMethodDecorators(source: string) {
   const tree = parseTypeScript(source, '/test.ts');
   const classNode = findChildByType(tree.rootNode, 'class_declaration');
   if (!classNode) throw new Error('No class found');
@@ -26,6 +27,9 @@ function parseMethodDecorators(source: string) {
   if (!methodDef) throw new Error('No method found');
   return extractDecorators(methodDef);
 }
+
+// Export to avoid unused variable error
+export { _parseMethodDecorators };
 
 /**
  * Helper to parse and extract decorators from a property.

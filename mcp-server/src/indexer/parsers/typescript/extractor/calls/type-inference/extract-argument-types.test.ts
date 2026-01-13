@@ -1,22 +1,15 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import Parser from 'tree-sitter';
-import TypeScript from 'tree-sitter-typescript';
+import { describe, it, expect } from 'vitest';
+import { parseTypeScript } from '../../../parser.js';
 import { extractArgumentTypes } from './extract-argument-types.js';
+import type { SyntaxNode } from 'tree-sitter';
 
 describe('extractArgumentTypes', () => {
-  let parser: Parser;
-
-  beforeAll(() => {
-    parser = new Parser();
-    parser.setLanguage(TypeScript.typescript);
-  });
-
-  function parseArguments(code: string): Parser.SyntaxNode {
+  function parseArguments(code: string): SyntaxNode {
     // Parse a call expression to get the arguments node
-    const tree = parser.parse(`fn${code};`);
+    const tree = parseTypeScript(`fn${code};`, '/test.ts');
     // Navigate: program > expression_statement > call_expression > arguments
     const callExpr = tree.rootNode.children[0]?.children[0];
-    const args = callExpr?.children.find((c) => c.type === 'arguments');
+    const args = callExpr?.children.find((c: SyntaxNode) => c.type === 'arguments');
     if (!args) throw new Error(`Could not parse arguments: ${code}`);
     return args;
   }
