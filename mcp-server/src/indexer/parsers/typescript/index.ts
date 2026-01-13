@@ -14,13 +14,17 @@ import type { LanguageParser, ParsedFile } from '../../types.js';
 import { parseTypeScript } from './parser.js';
 import { extractSymbols } from './extractor/index.js';
 
-// Re-export file filtering utilities
+// Re-export file filtering utilities from centralized module
+// Note: The centralized module in ../../file-filter/ is the source of truth.
+// This re-export maintains backward compatibility for existing consumers.
 export {
   shouldParseFile,
+  shouldScanDirectory,
+  isTestFile,
   EXCLUDED_DIRECTORIES,
   EXCLUDED_CONFIG_FILES,
   type FileFilterOptions,
-} from './file-filter/index.js';
+} from '../../file-filter/index.js';
 
 /**
  * TypeScript language parser.

@@ -73,3 +73,13 @@ export {
   type DomainDependency,
   type DomainInferenceOptions,
 } from './domain/index.js';
+
+// File Filtering
+export {
+  shouldParseFile,
+  shouldScanDirectory,
+  isTestFile,
+  EXCLUDED_DIRECTORIES,
+  EXCLUDED_CONFIG_FILES,
+  type FileFilterOptions,
+} from './file-filter/index.js';

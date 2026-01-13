@@ -295,33 +295,57 @@ export class Neo4jWriter {
    * Otherwise, clears all code graph data.
    */
   async clearGraph(projectPath?: string): Promise<ClearResult> {
-    let deleteQuery: string;
-    let params: Record<string, unknown> = {};
+    let totalNodesDeleted = 0;
+    let totalRelationshipsDeleted = 0;
 
     if (projectPath) {
-      // Clear only the specified project and its contents
-      deleteQuery = `
+      // Step 1: Delete all nodes with filePath starting with projectPath
+      // This catches ALL nodes belonging to the project, regardless of relationships
+      const filePathResult = await this.client.execute(
+        `
+        MATCH (n)
+        WHERE n.filePath STARTS WITH $projectPath
+        DETACH DELETE n
+        `,
+        { projectPath },
+        neo4j.routing.WRITE
+      );
+      totalNodesDeleted += filePathResult.summary.counters.nodesDeleted || 0;
+      totalRelationshipsDeleted += filePathResult.summary.counters.relationshipsDeleted || 0;
+
+      // Step 2: Delete the Project node and any directly connected nodes (Packages, Domains)
+      const projectResult = await this.client.execute(
+        `
         MATCH (proj:Project {path: $projectPath})
-        OPTIONAL MATCH (proj)-[:CONTAINS*]->(n)
-        DETACH DELETE proj, n
-      `;
-      params = { projectPath };
+        OPTIONAL MATCH (proj)-[:CONTAINS]->(pkg:Package)
+        OPTIONAL MATCH (proj)-[:HAS_DOMAIN]->(dom:Domain)
+        DETACH DELETE proj, pkg, dom
+        `,
+        { projectPath },
+        neo4j.routing.WRITE
+      );
+      totalNodesDeleted += projectResult.summary.counters.nodesDeleted || 0;
+      totalRelationshipsDeleted += projectResult.summary.counters.relationshipsDeleted || 0;
     } else {
       // Clear all code graph data
-      deleteQuery = `
+      const result = await this.client.execute(
+        `
         MATCH (n)
         WHERE n:Project OR n:Package OR n:Class OR n:Interface OR n:Object
            OR n:Function OR n:Property OR n:Parameter OR n:Annotation OR n:TypeAlias
            OR n:Constructor OR n:Domain
         DETACH DELETE n
-      `;
+        `,
+        {},
+        neo4j.routing.WRITE
+      );
+      totalNodesDeleted = result.summary.counters.nodesDeleted || 0;
+      totalRelationshipsDeleted = result.summary.counters.relationshipsDeleted || 0;
     }
 
-    const result = await this.client.execute(deleteQuery, params, neo4j.routing.WRITE);
-
     return {
-      nodesDeleted: result.summary.counters.nodesDeleted || 0,
-      relationshipsDeleted: result.summary.counters.relationshipsDeleted || 0,
+      nodesDeleted: totalNodesDeleted,
+      relationshipsDeleted: totalRelationshipsDeleted,
     };
   }
 

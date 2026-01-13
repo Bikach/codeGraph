@@ -16,14 +16,15 @@ import {
   Neo4jWriter,
   type ParsedFile,
 } from '../indexer/index.js';
+import {
+  shouldScanDirectory,
+  shouldParseFile,
+  type FileFilterOptions,
+} from '../indexer/file-filter/index.js';
 
 const NEO4J_URI = process.env.NEO4J_URI || 'bolt://localhost:7687';
 const NEO4J_USER = process.env.NEO4J_USER || 'neo4j';
 const NEO4J_PASSWORD = process.env.NEO4J_PASSWORD || '';
-
-const SKIP_DIRS = ['node_modules', '.git', 'build', 'out', '.gradle', '.idea', 'target', 'dist'];
-const TEST_DIR_PATTERNS = [/[/\\]test[/\\]/, /[/\\]tests[/\\]/, /[/\\]__tests__[/\\]/, /[/\\]androidTest[/\\]/];
-const TEST_FILE_PATTERNS = [/Test\.[^.]+$/, /Tests\.[^.]+$/, /Spec\.[^.]+$/, /\.test\.[^.]+$/, /\.spec\.[^.]+$/];
 
 interface ParseError {
   filePath: string;
@@ -47,12 +48,14 @@ interface IndexResult {
   hint?: string;
 }
 
-function isTestFile(path: string): boolean {
-  return TEST_DIR_PATTERNS.some((p) => p.test(path)) || TEST_FILE_PATTERNS.some((p) => p.test(path));
-}
-
 async function findSourceFiles(dir: string, excludeTests: boolean): Promise<string[]> {
   const files: string[] = [];
+
+  const filterOptions: FileFilterOptions = {
+    includeTestFiles: !excludeTests,
+    includeDeclarationFiles: false,
+    includeConfigFiles: false,
+  };
 
   async function scan(currentDir: string): Promise<void> {
     const entries = await readdir(currentDir, { withFileTypes: true });
@@ -61,12 +64,15 @@ async function findSourceFiles(dir: string, excludeTests: boolean): Promise<stri
       const fullPath = resolve(currentDir, entry.name);
 
       if (entry.isDirectory()) {
-        if (!SKIP_DIRS.includes(entry.name)) {
+        // Use centralized directory filtering (pass fullPath for nested exclusions)
+        if (shouldScanDirectory(entry.name, filterOptions, fullPath)) {
           await scan(fullPath);
         }
       } else if (entry.isFile() && isFileSupported(fullPath)) {
-        if (excludeTests && isTestFile(fullPath)) continue;
-        files.push(fullPath);
+        // Use centralized file filtering
+        if (shouldParseFile(fullPath, filterOptions)) {
+          files.push(fullPath);
+        }
       }
     }
   }
