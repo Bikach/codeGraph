@@ -257,10 +257,22 @@ describe('extractCallExpression', () => {
       expect(call!.receiverType).toBeUndefined();
     });
 
-    it('should leave argumentTypes undefined (not implemented)', () => {
+    it('should infer argument types from literals', () => {
       const call = parseCallExpression(`fn(1, 'str', true);`);
 
+      expect(call!.argumentTypes).toEqual(['number', 'string', 'boolean']);
+    });
+
+    it('should return undefined argumentTypes for empty arguments', () => {
+      const call = parseCallExpression(`fn();`);
+
       expect(call!.argumentTypes).toBeUndefined();
+    });
+
+    it('should infer unknown for identifiers', () => {
+      const call = parseCallExpression(`fn(variable);`);
+
+      expect(call!.argumentTypes).toEqual(['unknown']);
     });
   });
 });

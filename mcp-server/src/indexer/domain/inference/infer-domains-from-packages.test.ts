@@ -47,6 +47,22 @@ describe('inferDomainsFromPackages', () => {
       expect(result).toHaveLength(2);
       expect(result.map((d) => d.name).sort()).toEqual(['Payment', 'User']);
     });
+
+    it('should generate slash-based patterns for TypeScript', () => {
+      const packages = ['src/payment/service'];
+
+      const result = inferDomainsFromPackages(packages, 'typescript', {});
+
+      expect(result[0]?.patterns).toEqual(['**/payment/**', '**/payment']);
+    });
+
+    it('should generate slash-based patterns for JavaScript', () => {
+      const packages = ['src/user/handler'];
+
+      const result = inferDomainsFromPackages(packages, 'javascript', {});
+
+      expect(result[0]?.patterns).toEqual(['**/user/**', '**/user']);
+    });
   });
 
   describe('custom segment index', () => {

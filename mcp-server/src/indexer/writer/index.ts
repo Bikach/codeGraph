@@ -23,6 +23,7 @@ import type {
   ParsedConstructor,
   ParsedDestructuringDeclaration,
   ParsedObjectExpression,
+  ParsedReexport,
 } from '../types.js';
 import type { WriteResult, WriterOptions, ClearResult, NodeRelResult } from './types.js';
 import { analyzeDomains, type DomainAnalysisResult } from '../domain/index.js';
@@ -38,6 +39,146 @@ export function buildFqn(packageName: string | undefined, ...parts: string[]): s
   const allParts = packageName ? [packageName, ...parts] : parts;
   return allParts.filter(Boolean).join('.');
 }
+
+/**
+ * Built-in types that should not create USES relationships.
+ * Includes both Kotlin and TypeScript primitives, utility types, and built-in objects.
+ */
+const BUILTIN_TYPES = new Set([
+  // Kotlin types
+  'Unit',
+  'Nothing',
+  'Any',
+  'Boolean',
+  'Byte',
+  'Short',
+  'Int',
+  'Long',
+  'Float',
+  'Double',
+  'Char',
+  'String',
+  'Array',
+  'List',
+  'Set',
+  'Map',
+  'Collection',
+  'Iterable',
+  'Sequence',
+  'Pair',
+  'Triple',
+  'Result',
+  'Comparable',
+  'Number',
+  'Enum',
+  'Object',
+  'Throwable',
+  'Exception',
+  'Error',
+  'RuntimeException',
+
+  // TypeScript primitive types (PascalCase for type annotations)
+  'Void',
+  'Never',
+  'Unknown',
+  'Undefined',
+  'Null',
+  'BigInt',
+  'Symbol',
+
+  // TypeScript utility types
+  'Partial',
+  'Required',
+  'Readonly',
+  'Record',
+  'Pick',
+  'Omit',
+  'Exclude',
+  'Extract',
+  'NonNullable',
+  'Parameters',
+  'ReturnType',
+  'ConstructorParameters',
+  'InstanceType',
+  'ThisParameterType',
+  'OmitThisParameter',
+  'ThisType',
+  'Awaited',
+  'Uppercase',
+  'Lowercase',
+  'Capitalize',
+  'Uncapitalize',
+  'NoInfer',
+
+  // TypeScript built-in objects and types
+  'Promise',
+  'ArrayLike',
+  'Iterator',
+  'IterableIterator',
+  'AsyncIterator',
+  'AsyncIterableIterator',
+  'Generator',
+  'AsyncGenerator',
+  'ReadonlyArray',
+  'ReadonlyMap',
+  'ReadonlySet',
+  'WeakMap',
+  'WeakSet',
+  'WeakRef',
+  'Function',
+  'Date',
+  'RegExp',
+  'JSON',
+  'Math',
+  'Proxy',
+  'Reflect',
+  'ArrayBuffer',
+  'SharedArrayBuffer',
+  'DataView',
+  'Int8Array',
+  'Uint8Array',
+  'Uint8ClampedArray',
+  'Int16Array',
+  'Uint16Array',
+  'Int32Array',
+  'Uint32Array',
+  'Float32Array',
+  'Float64Array',
+  'BigInt64Array',
+  'BigUint64Array',
+
+  // DOM types (commonly used in TypeScript)
+  'HTMLElement',
+  'HTMLDivElement',
+  'HTMLInputElement',
+  'HTMLButtonElement',
+  'HTMLFormElement',
+  'HTMLAnchorElement',
+  'HTMLImageElement',
+  'HTMLSpanElement',
+  'HTMLParagraphElement',
+  'Element',
+  'Node',
+  'NodeList',
+  'Document',
+  'Window',
+  'Event',
+  'MouseEvent',
+  'KeyboardEvent',
+  'CustomEvent',
+  'EventTarget',
+  'Response',
+  'Request',
+  'Headers',
+  'URL',
+  'URLSearchParams',
+  'FormData',
+  'Blob',
+  'File',
+  'FileReader',
+  'AbortController',
+  'AbortSignal',
+]);
 
 /**
  * Extract simple type names from a type string.
@@ -58,39 +199,7 @@ export function extractTypeNames(typeStr: string | undefined): string[] {
   while ((match = typePattern.exec(cleaned)) !== null) {
     const typeName = match[1]!;
     // Skip common primitive/built-in types that don't need USES relationships
-    const builtinTypes = [
-      'Unit',
-      'Nothing',
-      'Any',
-      'Boolean',
-      'Byte',
-      'Short',
-      'Int',
-      'Long',
-      'Float',
-      'Double',
-      'Char',
-      'String',
-      'Array',
-      'List',
-      'Set',
-      'Map',
-      'Collection',
-      'Iterable',
-      'Sequence',
-      'Pair',
-      'Triple',
-      'Result',
-      'Comparable',
-      'Number',
-      'Enum',
-      'Object',
-      'Throwable',
-      'Exception',
-      'Error',
-      'RuntimeException',
-    ];
-    if (!builtinTypes.includes(typeName)) {
+    if (!BUILTIN_TYPES.has(typeName)) {
       types.push(typeName);
     }
   }
@@ -348,6 +457,13 @@ export class Neo4jWriter {
       );
       nodesCreated += objExprResult.nodesCreated;
       relationshipsCreated += objExprResult.relationshipsCreated;
+    }
+
+    // Write re-exports (TypeScript/JavaScript)
+    if (file.reexports.length > 0) {
+      const reexportResult = await this.writeReexports(file.reexports, file.packageName, file.filePath);
+      nodesCreated += reexportResult.nodesCreated;
+      relationshipsCreated += reexportResult.relationshipsCreated;
     }
 
     return { nodesCreated, relationshipsCreated };
@@ -980,18 +1096,22 @@ export class Neo4jWriter {
 
   /**
    * Write EXTENDS relationship.
+   * Supports both Class extends Class and Interface extends Interface scenarios.
    */
   private async writeExtendsRelationship(
     childFqn: string,
     parentName: string,
     childLabel: string
   ): Promise<number> {
-    // Try to find the parent class by FQN or simple name
+    // Try to find the parent by FQN or simple name
+    // Support both Class and Interface as parent (for interface extends interface)
     const extendsQuery = `
       MATCH (child:${childLabel} {fqn: $childFqn})
-      OPTIONAL MATCH (parentByFqn:Class {fqn: $parentName})
-      OPTIONAL MATCH (parentByName:Class {name: $parentName})
-      WITH child, COALESCE(parentByFqn, parentByName) AS parent
+      OPTIONAL MATCH (parentClassByFqn:Class {fqn: $parentName})
+      OPTIONAL MATCH (parentClassByName:Class {name: $parentName})
+      OPTIONAL MATCH (parentIfaceByFqn:Interface {fqn: $parentName})
+      OPTIONAL MATCH (parentIfaceByName:Interface {name: $parentName})
+      WITH child, COALESCE(parentClassByFqn, parentClassByName, parentIfaceByFqn, parentIfaceByName) AS parent
       WHERE parent IS NOT NULL
       MERGE (child)-[:EXTENDS]->(parent)
     `;
@@ -1577,6 +1697,62 @@ export class Neo4jWriter {
       `;
       await this.client.write(dependsOnQuery, { deps: analysis.dependencies });
       relationshipsCreated += analysis.dependencies.length;
+    }
+
+    return { nodesCreated, relationshipsCreated };
+  }
+
+  /**
+   * Write re-exports to Neo4j.
+   * Re-exports create relationships between modules to track module re-exporting patterns.
+   *
+   * Creates:
+   * - Reexport nodes (one per re-export statement)
+   * - REEXPORTS relationship from the module/file to the Reexport node
+   */
+  private async writeReexports(
+    reexports: ParsedReexport[],
+    packageName: string | undefined,
+    filePath: string
+  ): Promise<NodeRelResult> {
+    let nodesCreated = 0;
+    let relationshipsCreated = 0;
+
+    for (const reexport of reexports) {
+      // Create a unique identifier for this re-export
+      const reexportId = `${filePath}:${reexport.sourcePath}:${reexport.originalName || '*'}:${reexport.exportedName || '*'}`;
+
+      const props: Record<string, unknown> = {
+        id: reexportId,
+        sourcePath: reexport.sourcePath,
+        filePath,
+      };
+
+      if (reexport.originalName) props.originalName = reexport.originalName;
+      if (reexport.exportedName) props.exportedName = reexport.exportedName;
+      if (reexport.isNamespaceReexport) props.isNamespaceReexport = true;
+      if (reexport.isWildcard) props.isWildcard = true;
+      if (reexport.isTypeOnly) props.isTypeOnly = true;
+
+      // Create the Reexport node
+      const createQuery = `
+        MERGE (r:Reexport {id: $id})
+        SET r += $props
+        RETURN r
+      `;
+      await this.client.write(createQuery, { id: reexportId, props });
+      nodesCreated++;
+
+      // Create REEXPORTS relationship from package (if exists) to Reexport node
+      if (packageName) {
+        const reexportsQuery = `
+          MATCH (pkg:Package {name: $packageName})
+          MATCH (r:Reexport {id: $reexportId})
+          MERGE (pkg)-[:REEXPORTS]->(r)
+        `;
+        await this.client.write(reexportsQuery, { packageName, reexportId });
+        relationshipsCreated++;
+      }
     }
 
     return { nodesCreated, relationshipsCreated };

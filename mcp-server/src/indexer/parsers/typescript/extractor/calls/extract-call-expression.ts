@@ -7,6 +7,7 @@
 import type { SyntaxNode } from 'tree-sitter';
 import type { ParsedCall } from '../../../../types.js';
 import { findChildByType, nodeLocation } from '../ast-utils/index.js';
+import { extractArgumentTypes } from './type-inference/index.js';
 
 /**
  * Extract a function call from a call_expression AST node.
@@ -50,15 +51,16 @@ export function extractCallExpression(node: SyntaxNode): ParsedCall | undefined 
     name = functionNode.text ?? '<unknown>';
   }
 
-  // Count arguments
+  // Count arguments and infer types
   const argumentCount = countArguments(args);
+  const argumentTypes = extractArgumentTypes(args);
 
   return {
     name,
     receiver,
     receiverType: undefined, // Will be resolved later
     argumentCount,
-    argumentTypes: undefined, // Type inference not implemented yet
+    argumentTypes: argumentTypes.length > 0 ? argumentTypes : undefined,
     isSafeCall: isSafeCall || undefined,
     location: nodeLocation(node),
   };

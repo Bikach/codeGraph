@@ -15,6 +15,25 @@ export const DEFAULT_DOMAIN_SEGMENT_INDEX: Record<SupportedLanguage, number> = {
 };
 
 /**
+ * Languages that use slash-separated paths (like file systems).
+ */
+const SLASH_PATH_LANGUAGES: Set<SupportedLanguage> = new Set(['typescript', 'javascript']);
+
+/**
+ * Generate patterns for a domain name based on the path separator.
+ * - Dot-separated (Kotlin/Java): `*.domain.*`, `*.domain`
+ * - Slash-separated (TypeScript/JS): `** /domain/**`, `** /domain` (without spaces)
+ */
+function generatePatternsForDomain(name: string, language: SupportedLanguage): string[] {
+  if (SLASH_PATH_LANGUAGES.has(language)) {
+    // TypeScript/JavaScript: use glob-style patterns with slashes
+    return [`**/${name}/**`, `**/${name}`];
+  }
+  // Kotlin/Java: use dot-separated patterns
+  return [`*.${name}.*`, `*.${name}`];
+}
+
+/**
  * Infer domains from package names.
  */
 export function inferDomainsFromPackages(
@@ -36,7 +55,7 @@ export function inferDomainsFromPackages(
 
   return Array.from(domainMap.entries()).map(([name, matchedPackages]) => ({
     name: capitalize(name),
-    patterns: [`*.${name}.*`, `*.${name}`], // Inferred patterns
+    patterns: generatePatternsForDomain(name, language),
     matchedPackages,
   }));
 }

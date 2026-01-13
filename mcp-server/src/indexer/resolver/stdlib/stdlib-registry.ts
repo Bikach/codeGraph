@@ -10,6 +10,8 @@ import type { StdlibProvider } from './stdlib-provider.js';
 import { KotlinStdlibProvider } from './kotlin-stdlib.js';
 import { JavaStdlibProvider } from './java-stdlib.js';
 import { TypescriptStdlibProvider } from './typescript-stdlib.js';
+import { NodejsStdlibProvider } from './nodejs-stdlib.js';
+import { DomStdlibProvider } from './dom-stdlib.js';
 
 /**
  * Registry of stdlib providers indexed by language.
@@ -31,6 +33,8 @@ class StdlibRegistry {
     const kotlinProvider = new KotlinStdlibProvider();
     const javaProvider = new JavaStdlibProvider();
     const typescriptProvider = new TypescriptStdlibProvider();
+    const nodejsProvider = new NodejsStdlibProvider();
+    const domProvider = new DomStdlibProvider();
 
     // Kotlin uses both Kotlin stdlib and Java stdlib (JVM interop)
     this.providers.set('kotlin', [kotlinProvider, javaProvider]);
@@ -38,9 +42,11 @@ class StdlibRegistry {
     // Java uses only Java stdlib
     this.providers.set('java', [javaProvider]);
 
-    // TypeScript and JavaScript share the same stdlib (ECMAScript + TypeScript types)
-    this.providers.set('typescript', [typescriptProvider]);
-    this.providers.set('javascript', [typescriptProvider]);
+    // TypeScript and JavaScript share ECMAScript, Node.js, and DOM stdlibs
+    // Note: In a real scenario, you might want to configure which environment
+    // (Node.js vs Browser) is being used and conditionally include providers
+    this.providers.set('typescript', [typescriptProvider, nodejsProvider, domProvider]);
+    this.providers.set('javascript', [typescriptProvider, nodejsProvider, domProvider]);
   }
 
   /**

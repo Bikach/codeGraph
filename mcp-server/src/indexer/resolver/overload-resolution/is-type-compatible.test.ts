@@ -79,4 +79,81 @@ describe('isTypeCompatible', () => {
       expect(isTypeCompatible('List', 'Map')).toBe(false);
     });
   });
+
+  describe('TypeScript types', () => {
+    describe('any type', () => {
+      it('should accept all types', () => {
+        expect(isTypeCompatible('number', 'any')).toBe(true);
+        expect(isTypeCompatible('string', 'any')).toBe(true);
+        expect(isTypeCompatible('boolean', 'any')).toBe(true);
+        expect(isTypeCompatible('CustomType', 'any')).toBe(true);
+      });
+
+      it('should be assignable to all types', () => {
+        expect(isTypeCompatible('any', 'number')).toBe(true);
+        expect(isTypeCompatible('any', 'string')).toBe(true);
+        expect(isTypeCompatible('any', 'CustomType')).toBe(true);
+      });
+    });
+
+    describe('unknown type', () => {
+      it('should accept all types', () => {
+        expect(isTypeCompatible('number', 'unknown')).toBe(true);
+        expect(isTypeCompatible('string', 'unknown')).toBe(true);
+        expect(isTypeCompatible('CustomType', 'unknown')).toBe(true);
+      });
+
+      it('should not be directly assignable to other types', () => {
+        expect(isTypeCompatible('unknown', 'number')).toBe(false);
+        expect(isTypeCompatible('unknown', 'string')).toBe(false);
+      });
+    });
+
+    describe('never type', () => {
+      it('should be assignable to all types', () => {
+        expect(isTypeCompatible('never', 'number')).toBe(true);
+        expect(isTypeCompatible('never', 'string')).toBe(true);
+        expect(isTypeCompatible('never', 'CustomType')).toBe(true);
+      });
+    });
+
+    describe('void and undefined', () => {
+      it('should be compatible with each other', () => {
+        expect(isTypeCompatible('void', 'undefined')).toBe(true);
+        expect(isTypeCompatible('undefined', 'void')).toBe(true);
+      });
+
+      it('should be assignable to any/unknown', () => {
+        expect(isTypeCompatible('void', 'any')).toBe(true);
+        expect(isTypeCompatible('undefined', 'any')).toBe(true);
+        expect(isTypeCompatible('void', 'unknown')).toBe(true);
+      });
+    });
+
+    describe('primitive types', () => {
+      it('should be compatible with same type', () => {
+        expect(isTypeCompatible('number', 'number')).toBe(true);
+        expect(isTypeCompatible('string', 'string')).toBe(true);
+        expect(isTypeCompatible('boolean', 'boolean')).toBe(true);
+      });
+
+      it('should not be compatible with different primitive types', () => {
+        expect(isTypeCompatible('number', 'string')).toBe(false);
+        expect(isTypeCompatible('string', 'boolean')).toBe(false);
+        expect(isTypeCompatible('boolean', 'number')).toBe(false);
+      });
+    });
+
+    describe('null type', () => {
+      it('should be assignable to any/unknown', () => {
+        expect(isTypeCompatible('null', 'any')).toBe(true);
+        expect(isTypeCompatible('null', 'unknown')).toBe(true);
+      });
+
+      it('should not be assignable to primitives', () => {
+        expect(isTypeCompatible('null', 'number')).toBe(false);
+        expect(isTypeCompatible('null', 'string')).toBe(false);
+      });
+    });
+  });
 });

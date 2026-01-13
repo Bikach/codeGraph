@@ -122,13 +122,70 @@ describe('extractCalls', () => {
   });
 
   describe('constructor calls', () => {
-    it('should extract new expression as call', () => {
+    it('should extract new expression as constructor call', () => {
       const calls = parseCalls(`function test() { new User(); }`);
 
-      // Note: new expressions are handled differently - they're not call_expression
-      // This test verifies that extractCalls focuses on call_expression nodes
-      // Constructor calls may be handled separately
-      expect(calls).toHaveLength(0); // new expressions are not call_expression
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.name).toBe('User');
+      expect(calls[0]!.isConstructorCall).toBe(true);
+      expect(calls[0]!.argumentCount).toBe(0);
+    });
+
+    it('should extract new expression with arguments', () => {
+      const calls = parseCalls(`function test() { new User('John', 25); }`);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.name).toBe('User');
+      expect(calls[0]!.isConstructorCall).toBe(true);
+      expect(calls[0]!.argumentCount).toBe(2);
+    });
+
+    it('should extract new expression with generics', () => {
+      const calls = parseCalls(`function test() { new Array<string>(); }`);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.name).toBe('Array');
+      expect(calls[0]!.isConstructorCall).toBe(true);
+    });
+
+    it('should extract namespaced constructor call', () => {
+      const calls = parseCalls(`function test() { new Namespace.MyClass(); }`);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.name).toBe('MyClass');
+      expect(calls[0]!.receiver).toBe('Namespace');
+      expect(calls[0]!.isConstructorCall).toBe(true);
+    });
+
+    it('should extract deeply nested namespace constructor call', () => {
+      const calls = parseCalls(`function test() { new Company.Product.Module.Service(); }`);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.name).toBe('Service');
+      expect(calls[0]!.receiver).toBe('Company.Product.Module');
+      expect(calls[0]!.isConstructorCall).toBe(true);
+    });
+
+    it('should extract nested new expressions', () => {
+      const calls = parseCalls(`function test() { new Wrapper(new Inner()); }`);
+
+      expect(calls).toHaveLength(2);
+      const names = calls.map((c) => c.name);
+      expect(names).toContain('Wrapper');
+      expect(names).toContain('Inner');
+      expect(calls.every((c) => c.isConstructorCall)).toBe(true);
+    });
+
+    it('should extract mix of regular calls and constructor calls', () => {
+      const calls = parseCalls(`function test() { const user = new User(); user.save(); }`);
+
+      expect(calls).toHaveLength(2);
+
+      const constructorCall = calls.find((c) => c.isConstructorCall);
+      const methodCall = calls.find((c) => !c.isConstructorCall);
+
+      expect(constructorCall!.name).toBe('User');
+      expect(methodCall!.name).toBe('save');
     });
   });
 
