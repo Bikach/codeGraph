@@ -27,6 +27,10 @@ import type {
 } from '../types.js';
 import type { WriteResult, WriterOptions, ClearResult, NodeRelResult } from './types.js';
 import { analyzeDomains, type DomainAnalysisResult } from '../domain/index.js';
+import {
+  buildAllImportResolutionMaps,
+  type ImportResolutionMap,
+} from '../resolver/module-resolver/index.js';
 
 // =============================================================================
 // Helper functions
@@ -205,6 +209,27 @@ export function extractTypeNames(typeStr: string | undefined): string[] {
   }
 
   return [...new Set(types)]; // Remove duplicates
+}
+
+/**
+ * Resolve type names to FQNs using import resolution map.
+ * Falls back to simple names if resolution fails.
+ *
+ * @param typeStr - Type string (e.g., "User | null", "Observable<User>")
+ * @param importMap - Import resolution map for the current file
+ * @returns Array of resolved types with name and optional FQN
+ */
+export function resolveTypeNames(
+  typeStr: string | undefined,
+  importMap?: ImportResolutionMap
+): Array<{ name: string; fqn?: string }> {
+  const simpleNames = extractTypeNames(typeStr);
+
+  return simpleNames.map((name) => {
+    // Try to resolve via imports
+    const fqn = importMap?.get(name);
+    return { name, fqn };
+  });
 }
 
 /**
@@ -1211,34 +1236,47 @@ export class Neo4jWriter {
   /**
    * Write USES relationships for functions to types they use in parameters.
    * Collects all parameter types from functions and creates USES relationships.
+   *
+   * Enhanced to use import resolution for TypeScript/JavaScript files,
+   * enabling accurate type resolution via imports.
    */
   private async writeUsesRelationships(files: ResolvedFile[]): Promise<number> {
-    const usesData: { functionFqn: string; typeName: string; context: string }[] = [];
+    // Build import resolution maps for all files (for TypeScript import-aware resolution)
+    const importMaps = buildAllImportResolutionMaps(files);
 
-    // Helper to collect uses from a function
-    const collectFunctionUses = (func: ParsedFunction, functionFqn: string) => {
+    // Data structure for USES relationships
+    // typeFqn is optional - if present, we match by FQN; otherwise by name
+    const usesData: { functionFqn: string; typeName: string; typeFqn?: string; context: string }[] =
+      [];
+
+    // Helper to collect uses from a function with import resolution
+    const collectFunctionUses = (
+      func: ParsedFunction,
+      functionFqn: string,
+      importMap?: ImportResolutionMap
+    ) => {
       // Collect from parameter types
       for (const param of func.parameters) {
-        const types = extractTypeNames(param.type);
-        for (const typeName of types) {
-          usesData.push({ functionFqn, typeName, context: 'parameter' });
+        const resolvedTypes = resolveTypeNames(param.type, importMap);
+        for (const { name, fqn } of resolvedTypes) {
+          usesData.push({ functionFqn, typeName: name, typeFqn: fqn, context: 'parameter' });
         }
         // Also check function types (lambdas)
         if (param.functionType) {
           for (const paramType of param.functionType.parameterTypes) {
-            const types = extractTypeNames(paramType);
-            for (const typeName of types) {
-              usesData.push({ functionFqn, typeName, context: 'parameter' });
+            const resolvedTypes = resolveTypeNames(paramType, importMap);
+            for (const { name, fqn } of resolvedTypes) {
+              usesData.push({ functionFqn, typeName: name, typeFqn: fqn, context: 'parameter' });
             }
           }
-          const returnTypes = extractTypeNames(param.functionType.returnType);
-          for (const typeName of returnTypes) {
-            usesData.push({ functionFqn, typeName, context: 'parameter' });
+          const returnTypes = resolveTypeNames(param.functionType.returnType, importMap);
+          for (const { name, fqn } of returnTypes) {
+            usesData.push({ functionFqn, typeName: name, typeFqn: fqn, context: 'parameter' });
           }
           if (param.functionType.receiverType) {
-            const receiverTypes = extractTypeNames(param.functionType.receiverType);
-            for (const typeName of receiverTypes) {
-              usesData.push({ functionFqn, typeName, context: 'parameter' });
+            const receiverTypes = resolveTypeNames(param.functionType.receiverType, importMap);
+            for (const { name, fqn } of receiverTypes) {
+              usesData.push({ functionFqn, typeName: name, typeFqn: fqn, context: 'parameter' });
             }
           }
         }
@@ -1246,25 +1284,30 @@ export class Neo4jWriter {
 
       // Collect from receiver type (extension functions)
       if (func.receiverType) {
-        const types = extractTypeNames(func.receiverType);
-        for (const typeName of types) {
-          usesData.push({ functionFqn, typeName, context: 'receiver' });
+        const resolvedTypes = resolveTypeNames(func.receiverType, importMap);
+        for (const { name, fqn } of resolvedTypes) {
+          usesData.push({ functionFqn, typeName: name, typeFqn: fqn, context: 'receiver' });
         }
       }
     };
 
     // Helper to process class functions
-    const processClass = (cls: ParsedClass, packageName: string | undefined, parentFqn?: string) => {
+    const processClass = (
+      cls: ParsedClass,
+      packageName: string | undefined,
+      importMap?: ImportResolutionMap,
+      parentFqn?: string
+    ) => {
       const classFqn = parentFqn ? `${parentFqn}.${cls.name}` : buildFqn(packageName, cls.name);
 
       for (const func of cls.functions) {
         const functionFqn = `${classFqn}.${func.name}`;
-        collectFunctionUses(func, functionFqn);
+        collectFunctionUses(func, functionFqn, importMap);
       }
 
       // Process nested classes
       for (const nested of cls.nestedClasses) {
-        processClass(nested, packageName, classFqn);
+        processClass(nested, packageName, importMap, classFqn);
       }
 
       // Process companion object
@@ -1272,31 +1315,37 @@ export class Neo4jWriter {
         const companionFqn = `${classFqn}.${cls.companionObject.name || 'Companion'}`;
         for (const func of cls.companionObject.functions) {
           const functionFqn = `${companionFqn}.${func.name}`;
-          collectFunctionUses(func, functionFqn);
+          collectFunctionUses(func, functionFqn, importMap);
         }
       }
     };
 
     // Collect all USES data from files
     for (const file of files) {
+      // Get import resolution map for this file
+      const importMap = importMaps.get(file.filePath);
+
       // Process classes
       for (const cls of file.classes) {
-        processClass(cls, file.packageName);
+        processClass(cls, file.packageName, importMap);
       }
 
       // Process top-level functions
       for (const func of file.topLevelFunctions) {
         const functionFqn = buildFqn(file.packageName, func.name);
-        collectFunctionUses(func, functionFqn);
+        collectFunctionUses(func, functionFqn, importMap);
       }
     }
 
     if (usesData.length === 0) return 0;
 
     // Deduplicate
-    const uniqueUses = new Map<string, { functionFqn: string; typeName: string; context: string }>();
+    const uniqueUses = new Map<
+      string,
+      { functionFqn: string; typeName: string; typeFqn?: string; context: string }
+    >();
     for (const use of usesData) {
-      const key = `${use.functionFqn}:${use.typeName}`;
+      const key = `${use.functionFqn}:${use.typeFqn || use.typeName}`;
       if (!uniqueUses.has(key)) {
         uniqueUses.set(key, use);
       }
@@ -1309,12 +1358,22 @@ export class Neo4jWriter {
     for (let i = 0; i < uniqueUsesArray.length; i += this.batchSize) {
       const batch = uniqueUsesArray.slice(i, i + this.batchSize);
 
+      // Enhanced query: try FQN match first, then fall back to name match
       const usesQuery = `
         UNWIND $uses AS use
         MATCH (f:Function {fqn: use.functionFqn})
+
+        // Try FQN match first (more accurate)
+        OPTIONAL MATCH (cByFqn:Class {fqn: use.typeFqn})
+        OPTIONAL MATCH (iByFqn:Interface {fqn: use.typeFqn})
+
+        // Fall back to name match if FQN not available or not found
         OPTIONAL MATCH (cByName:Class {name: use.typeName})
+        WHERE use.typeFqn IS NULL OR (cByFqn IS NULL AND iByFqn IS NULL)
         OPTIONAL MATCH (iByName:Interface {name: use.typeName})
-        WITH f, use, COALESCE(cByName, iByName) AS target
+        WHERE use.typeFqn IS NULL OR (cByFqn IS NULL AND iByFqn IS NULL)
+
+        WITH f, use, COALESCE(cByFqn, iByFqn, cByName, iByName) AS target
         WHERE target IS NOT NULL
         MERGE (f)-[r:USES]->(target)
         ON CREATE SET r.context = use.context
