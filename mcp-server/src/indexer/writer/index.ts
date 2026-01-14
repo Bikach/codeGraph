@@ -31,6 +31,13 @@ import {
   buildAllImportResolutionMaps,
   type ImportResolutionMap,
 } from '../resolver/module-resolver/index.js';
+import {
+  inferModulePath,
+  collectModulePaths,
+  buildModuleHierarchy,
+  getModuleName,
+  type ModuleInferenceOptions,
+} from '../module/index.js';
 
 // =============================================================================
 // Helper functions
@@ -255,10 +262,37 @@ export function serializeTypeParameters(typeParams?: ParsedTypeParameter[]): str
 export class Neo4jWriter {
   private client: Neo4jClient;
   private batchSize: number;
+  /** Current project path for adding to all nodes */
+  private currentProjectPath?: string;
+  /** Cache of file path to module path mappings */
+  private fileToModuleMap: Map<string, string | undefined> = new Map();
 
   constructor(client: Neo4jClient, options: WriterOptions = {}) {
     this.client = client;
     this.batchSize = options.batchSize ?? 100;
+  }
+
+  /**
+   * Get the module path for a file.
+   * Uses cached value if available.
+   */
+  private getModulePathForFile(filePath: string): string | undefined {
+    if (!this.currentProjectPath) return undefined;
+
+    // Check cache first
+    if (this.fileToModuleMap.has(filePath)) {
+      return this.fileToModuleMap.get(filePath);
+    }
+
+    // Compute module path
+    const modulePath = inferModulePath(filePath, {
+      projectPath: this.currentProjectPath,
+      includeFileName: false,
+    });
+
+    // Cache the result
+    this.fileToModuleMap.set(filePath, modulePath);
+    return modulePath;
   }
 
   /**
@@ -282,6 +316,8 @@ export class Neo4jWriter {
       'CREATE CONSTRAINT annotation_name_unique IF NOT EXISTS FOR (a:Annotation) REQUIRE a.name IS UNIQUE',
       // Domain uniqueness by name
       'CREATE CONSTRAINT domain_name_unique IF NOT EXISTS FOR (d:Domain) REQUIRE d.name IS UNIQUE',
+      // Module uniqueness by path (for TypeScript/JavaScript module hierarchy)
+      'CREATE CONSTRAINT module_path_unique IF NOT EXISTS FOR (m:Module) REQUIRE m.path IS UNIQUE',
     ];
 
     const indexes = [
@@ -301,6 +337,17 @@ export class Neo4jWriter {
       // Visibility indexes
       'CREATE INDEX class_visibility_index IF NOT EXISTS FOR (c:Class) ON (c.visibility)',
       'CREATE INDEX function_visibility_index IF NOT EXISTS FOR (f:Function) ON (f.visibility)',
+      // Project path indexes for efficient multi-project queries
+      'CREATE INDEX class_project_index IF NOT EXISTS FOR (c:Class) ON (c.projectPath)',
+      'CREATE INDEX interface_project_index IF NOT EXISTS FOR (i:Interface) ON (i.projectPath)',
+      'CREATE INDEX object_project_index IF NOT EXISTS FOR (o:Object) ON (o.projectPath)',
+      'CREATE INDEX function_project_index IF NOT EXISTS FOR (f:Function) ON (f.projectPath)',
+      'CREATE INDEX property_project_index IF NOT EXISTS FOR (p:Property) ON (p.projectPath)',
+      'CREATE INDEX typealias_project_index IF NOT EXISTS FOR (t:TypeAlias) ON (t.projectPath)',
+      'CREATE INDEX constructor_project_index IF NOT EXISTS FOR (c:Constructor) ON (c.projectPath)',
+      // Module indexes for TypeScript/JavaScript hierarchy
+      'CREATE INDEX module_name_index IF NOT EXISTS FOR (m:Module) ON (m.name)',
+      'CREATE INDEX module_project_index IF NOT EXISTS FOR (m:Module) ON (m.projectPath)',
     ];
 
     // Execute constraints first
@@ -338,13 +385,14 @@ export class Neo4jWriter {
       totalNodesDeleted += filePathResult.summary.counters.nodesDeleted || 0;
       totalRelationshipsDeleted += filePathResult.summary.counters.relationshipsDeleted || 0;
 
-      // Step 2: Delete the Project node and any directly connected nodes (Packages, Domains)
+      // Step 2: Delete the Project node and any directly connected nodes (Packages, Domains, Modules)
       const projectResult = await this.client.execute(
         `
         MATCH (proj:Project {path: $projectPath})
         OPTIONAL MATCH (proj)-[:CONTAINS]->(pkg:Package)
+        OPTIONAL MATCH (proj)-[:CONTAINS]->(mod:Module)
         OPTIONAL MATCH (proj)-[:HAS_DOMAIN]->(dom:Domain)
-        DETACH DELETE proj, pkg, dom
+        DETACH DELETE proj, pkg, mod, dom
         `,
         { projectPath },
         neo4j.routing.WRITE
@@ -356,9 +404,9 @@ export class Neo4jWriter {
       const result = await this.client.execute(
         `
         MATCH (n)
-        WHERE n:Project OR n:Package OR n:Class OR n:Interface OR n:Object
+        WHERE n:Project OR n:Package OR n:Module OR n:Class OR n:Interface OR n:Object
            OR n:Function OR n:Property OR n:Parameter OR n:Annotation OR n:TypeAlias
-           OR n:Constructor OR n:Domain
+           OR n:Constructor OR n:Domain OR n:Reexport
         DETACH DELETE n
         `,
         {},
@@ -386,6 +434,11 @@ export class Neo4jWriter {
       errors: [],
     };
 
+    // Store projectPath for use in all write methods
+    this.currentProjectPath = options.projectPath;
+    // Clear module path cache for fresh computation
+    this.fileToModuleMap.clear();
+
     if (options.ensureSchema !== false) {
       await this.ensureConstraintsAndIndexes();
     }
@@ -401,7 +454,7 @@ export class Neo4jWriter {
       result.nodesCreated++;
     }
 
-    // Collect all packages first
+    // Collect all packages first (for Kotlin/Java files with package declarations)
     const packages = new Set<string>();
     for (const file of files) {
       if (file.packageName) {
@@ -413,6 +466,20 @@ export class Neo4jWriter {
     const packageResult = await this.writePackages(Array.from(packages), options.projectPath);
     result.nodesCreated += packageResult.nodesCreated;
     result.relationshipsCreated += packageResult.relationshipsCreated;
+
+    // Create modules for TypeScript/JavaScript files (those without packageName)
+    // This provides a hierarchical structure similar to packages
+    if (options.projectPath) {
+      const tsJsFiles = files
+        .filter((f) => !f.packageName && (f.language === 'typescript' || f.language === 'javascript'))
+        .map((f) => f.filePath);
+
+      if (tsJsFiles.length > 0) {
+        const moduleResult = await this.writeModules(tsJsFiles, options.projectPath);
+        result.nodesCreated += moduleResult.nodesCreated;
+        result.relationshipsCreated += moduleResult.relationshipsCreated;
+      }
+    }
 
     // Process each file
     for (const file of files) {
@@ -565,6 +632,83 @@ export class Neo4jWriter {
   }
 
   /**
+   * Write modules to Neo4j for TypeScript/JavaScript files.
+   * Creates a hierarchical structure: Project -> Module -> ... -> Module -> Class
+   *
+   * @param filePaths - List of TypeScript/JavaScript file paths
+   * @param projectPath - The project root path
+   * @returns Count of nodes and relationships created
+   */
+  private async writeModules(filePaths: string[], projectPath: string): Promise<NodeRelResult> {
+    let nodesCreated = 0;
+    let relationshipsCreated = 0;
+
+    // Collect all module paths from file paths
+    const moduleOptions: ModuleInferenceOptions = {
+      projectPath,
+      includeFileName: false, // Use directory-based modules
+    };
+
+    const modulePaths = collectModulePaths(filePaths, moduleOptions);
+
+    if (modulePaths.size === 0) {
+      return { nodesCreated, relationshipsCreated };
+    }
+
+    // Build hierarchy to understand parent-child relationships
+    const hierarchy = buildModuleHierarchy(modulePaths);
+
+    // Create all module nodes with projectPath
+    const moduleData = Array.from(modulePaths).map((modulePath) => ({
+      path: modulePath,
+      name: getModuleName(modulePath),
+      projectPath,
+    }));
+
+    // Batch create module nodes
+    const createModulesQuery = `
+      UNWIND $modules AS mod
+      MERGE (m:Module {path: mod.path})
+      SET m.name = mod.name, m.projectPath = mod.projectPath
+      RETURN count(m) AS created
+    `;
+    await this.client.write(createModulesQuery, { modules: moduleData });
+    nodesCreated += modulePaths.size;
+
+    // Link top-level modules to project
+    const topLevelModules = hierarchy.get(null) || [];
+    if (topLevelModules.length > 0) {
+      const linkToProjectQuery = `
+        MATCH (proj:Project {path: $projectPath})
+        UNWIND $modules AS modPath
+        MATCH (m:Module {path: modPath})
+        MERGE (proj)-[:CONTAINS]->(m)
+      `;
+      await this.client.write(linkToProjectQuery, {
+        projectPath,
+        modules: topLevelModules,
+      });
+      relationshipsCreated += topLevelModules.length;
+    }
+
+    // Create parent-child relationships between modules
+    for (const [parentPath, children] of hierarchy) {
+      if (parentPath !== null && children.length > 0) {
+        const linkModulesQuery = `
+          MATCH (parent:Module {path: $parentPath})
+          UNWIND $children AS childPath
+          MATCH (child:Module {path: childPath})
+          MERGE (parent)-[:CONTAINS]->(child)
+        `;
+        await this.client.write(linkModulesQuery, { parentPath, children });
+        relationshipsCreated += children.length;
+      }
+    }
+
+    return { nodesCreated, relationshipsCreated };
+  }
+
+  /**
    * Write a class/interface/object/enum to Neo4j with all its members.
    */
   private async writeClass(
@@ -589,6 +733,17 @@ export class Neo4jWriter {
       filePath,
       lineNumber: cls.location.startLine,
     };
+
+    // Add projectPath if available
+    if (this.currentProjectPath) {
+      props.projectPath = this.currentProjectPath;
+    }
+
+    // Add modulePath for TypeScript files without package
+    const modulePath = !packageName ? this.getModulePathForFile(filePath) : undefined;
+    if (modulePath) {
+      props.modulePath = modulePath;
+    }
 
     // Add kind-specific properties
     if (cls.kind === 'class') {
@@ -621,7 +776,7 @@ export class Neo4jWriter {
     await this.client.write(createNodeQuery, { fqn, props });
     nodesCreated++;
 
-    // Create CONTAINS relationship from package
+    // Create CONTAINS relationship from package (Kotlin/Java)
     if (packageName && !parentFqn) {
       const containsQuery = `
         MATCH (pkg:Package {name: $packageName})
@@ -629,6 +784,17 @@ export class Neo4jWriter {
         MERGE (pkg)-[:CONTAINS]->(n)
       `;
       await this.client.write(containsQuery, { packageName, fqn });
+      relationshipsCreated++;
+    }
+
+    // Create BELONGS_TO relationship from module (TypeScript/JavaScript)
+    if (modulePath && !parentFqn) {
+      const belongsToQuery = `
+        MATCH (m:Module {path: $modulePath})
+        MATCH (n:${label} {fqn: $fqn})
+        MERGE (m)-[:CONTAINS]->(n)
+      `;
+      await this.client.write(belongsToQuery, { modulePath, fqn });
       relationshipsCreated++;
     }
 
@@ -732,6 +898,11 @@ export class Neo4jWriter {
       lineNumber: companion.location.startLine,
     };
 
+    // Add projectPath if available
+    if (this.currentProjectPath) {
+      props.projectPath = this.currentProjectPath;
+    }
+
     // Create the companion object node
     const createQuery = `
       MERGE (o:Object {fqn: $fqn})
@@ -794,6 +965,11 @@ export class Neo4jWriter {
       filePath,
       lineNumber: func.location.startLine,
     };
+
+    // Add projectPath if available
+    if (this.currentProjectPath) {
+      props.projectPath = this.currentProjectPath;
+    }
 
     if (func.returnType) props.returnType = func.returnType;
     if (func.receiverType) props.receiverType = func.receiverType;
@@ -862,6 +1038,17 @@ export class Neo4jWriter {
       lineNumber: func.location.startLine,
     };
 
+    // Add projectPath if available
+    if (this.currentProjectPath) {
+      props.projectPath = this.currentProjectPath;
+    }
+
+    // Add modulePath for TypeScript files without package
+    const modulePath = !packageName ? this.getModulePathForFile(filePath) : undefined;
+    if (modulePath) {
+      props.modulePath = modulePath;
+    }
+
     if (func.returnType) props.returnType = func.returnType;
     if (func.receiverType) props.receiverType = func.receiverType;
 
@@ -877,7 +1064,7 @@ export class Neo4jWriter {
     await this.client.write(createQuery, { fqn, props });
     nodesCreated++;
 
-    // Create CONTAINS relationship from package
+    // Create CONTAINS relationship from package (Kotlin/Java)
     if (packageName) {
       const containsQuery = `
         MATCH (pkg:Package {name: $packageName})
@@ -885,6 +1072,17 @@ export class Neo4jWriter {
         MERGE (pkg)-[:CONTAINS]->(f)
       `;
       await this.client.write(containsQuery, { packageName, fqn });
+      relationshipsCreated++;
+    }
+
+    // Create CONTAINS relationship from module (TypeScript/JavaScript)
+    if (modulePath) {
+      const belongsToQuery = `
+        MATCH (m:Module {path: $modulePath})
+        MATCH (f:Function {fqn: $fqn})
+        MERGE (m)-[:CONTAINS]->(f)
+      `;
+      await this.client.write(belongsToQuery, { modulePath, fqn });
       relationshipsCreated++;
     }
 
@@ -925,6 +1123,11 @@ export class Neo4jWriter {
       filePath,
       lineNumber: prop.location.startLine,
     };
+
+    // Add projectPath if available
+    if (this.currentProjectPath) {
+      props.projectPath = this.currentProjectPath;
+    }
 
     if (prop.type) props.type = prop.type;
     if (prop.initializer) props.initializer = prop.initializer;
@@ -978,6 +1181,17 @@ export class Neo4jWriter {
       lineNumber: prop.location.startLine,
     };
 
+    // Add projectPath if available
+    if (this.currentProjectPath) {
+      props.projectPath = this.currentProjectPath;
+    }
+
+    // Add modulePath for TypeScript files without package
+    const modulePath = !packageName ? this.getModulePathForFile(filePath) : undefined;
+    if (modulePath) {
+      props.modulePath = modulePath;
+    }
+
     if (prop.type) props.type = prop.type;
     if (prop.initializer) props.initializer = prop.initializer;
 
@@ -990,7 +1204,7 @@ export class Neo4jWriter {
     await this.client.write(createQuery, { fqn, props });
     nodesCreated++;
 
-    // Create CONTAINS relationship from package
+    // Create CONTAINS relationship from package (Kotlin/Java)
     if (packageName) {
       const containsQuery = `
         MATCH (pkg:Package {name: $packageName})
@@ -998,6 +1212,17 @@ export class Neo4jWriter {
         MERGE (pkg)-[:CONTAINS]->(p)
       `;
       await this.client.write(containsQuery, { packageName, fqn });
+      relationshipsCreated++;
+    }
+
+    // Create CONTAINS relationship from module (TypeScript/JavaScript)
+    if (modulePath) {
+      const belongsToQuery = `
+        MATCH (m:Module {path: $modulePath})
+        MATCH (p:Property {fqn: $fqn})
+        MERGE (m)-[:CONTAINS]->(p)
+      `;
+      await this.client.write(belongsToQuery, { modulePath, fqn });
       relationshipsCreated++;
     }
 
@@ -1070,6 +1295,17 @@ export class Neo4jWriter {
       lineNumber: typeAlias.location.startLine,
     };
 
+    // Add projectPath if available
+    if (this.currentProjectPath) {
+      props.projectPath = this.currentProjectPath;
+    }
+
+    // Add modulePath for TypeScript files without package
+    const modulePath = !packageName ? this.getModulePathForFile(filePath) : undefined;
+    if (modulePath) {
+      props.modulePath = modulePath;
+    }
+
     const typeParams = serializeTypeParameters(typeAlias.typeParameters);
     if (typeParams) props.typeParameters = typeParams;
 
@@ -1082,7 +1318,7 @@ export class Neo4jWriter {
     await this.client.write(createQuery, { fqn, props });
     nodesCreated++;
 
-    // Create CONTAINS relationship from package
+    // Create CONTAINS relationship from package (Kotlin/Java)
     if (packageName) {
       const containsQuery = `
         MATCH (pkg:Package {name: $packageName})
@@ -1090,6 +1326,17 @@ export class Neo4jWriter {
         MERGE (pkg)-[:CONTAINS]->(t)
       `;
       await this.client.write(containsQuery, { packageName, fqn });
+      relationshipsCreated++;
+    }
+
+    // Create CONTAINS relationship from module (TypeScript/JavaScript)
+    if (modulePath) {
+      const belongsToQuery = `
+        MATCH (m:Module {path: $modulePath})
+        MATCH (t:TypeAlias {fqn: $fqn})
+        MERGE (m)-[:CONTAINS]->(t)
+      `;
+      await this.client.write(belongsToQuery, { modulePath, fqn });
       relationshipsCreated++;
     }
 
@@ -1507,6 +1754,11 @@ export class Neo4jWriter {
       parameterCount: ctor.parameters.length,
     };
 
+    // Add projectPath if available
+    if (this.currentProjectPath) {
+      props.projectPath = this.currentProjectPath;
+    }
+
     if (ctor.delegatesTo) {
       props.delegatesTo = ctor.delegatesTo;
     }
@@ -1606,6 +1858,11 @@ export class Neo4jWriter {
         lineNumber: destructuring.location.startLine,
       };
 
+      // Add projectPath if available
+      if (this.currentProjectPath) {
+        props.projectPath = this.currentProjectPath;
+      }
+
       if (componentType) props.type = componentType;
       if (destructuring.initializer) props.initializer = destructuring.initializer;
 
@@ -1657,6 +1914,11 @@ export class Neo4jWriter {
       filePath,
       lineNumber: objExpr.location.startLine,
     };
+
+    // Add projectPath if available
+    if (this.currentProjectPath) {
+      props.projectPath = this.currentProjectPath;
+    }
 
     if (objExpr.superTypes.length > 0) {
       props.superTypes = objExpr.superTypes;
@@ -1810,6 +2072,11 @@ export class Neo4jWriter {
         sourcePath: reexport.sourcePath,
         filePath,
       };
+
+      // Add projectPath if available
+      if (this.currentProjectPath) {
+        props.projectPath = this.currentProjectPath;
+      }
 
       if (reexport.originalName) props.originalName = reexport.originalName;
       if (reexport.exportedName) props.exportedName = reexport.exportedName;

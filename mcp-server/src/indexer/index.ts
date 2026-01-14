@@ -83,3 +83,13 @@ export {
   EXCLUDED_CONFIG_FILES,
   type FileFilterOptions,
 } from './file-filter/index.js';
+
+// Module Path Inference (for TypeScript/JavaScript projects)
+export {
+  inferModulePath,
+  collectModulePaths,
+  buildModuleHierarchy,
+  getParentModulePath,
+  getModuleName,
+  type ModuleInferenceOptions,
+} from './module/index.js';
