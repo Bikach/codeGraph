@@ -16,9 +16,9 @@ The result: faster navigation, fewer hallucinations, and more accurate refactori
 |----------|--------|
 | **Kotlin** | ✅ Available |
 | **Java** | ✅ Available |
-| TypeScript/Node.js | 🔜 Coming soon |
+| **TypeScript/JavaScript** | ✅ Available |
 
-> 📢 Follow me on [LinkedIn](https://www.linkedin.com/in/chakib-houd-io/) to get notified when new languages are available!
+> 📢 Follow me on [LinkedIn](https://www.linkedin.com/in/chakib-houd-io/) to stay updated on new features!
 
 ### Benchmark Results
 
