@@ -20,7 +20,7 @@ export function buildTypeHierarchy(table: SymbolTable, files: ParsedFile[]): voi
   for (const file of files) {
     const packageName = file.packageName || '';
     for (const cls of file.classes) {
-      buildClassHierarchy(table, cls, packageName);
+      buildClassHierarchy(table, cls, packageName, file.filePath);
     }
   }
 }

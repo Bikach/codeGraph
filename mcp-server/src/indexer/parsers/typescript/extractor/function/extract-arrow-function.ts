@@ -8,7 +8,7 @@ import type { SyntaxNode } from 'tree-sitter';
 import type { ParsedFunction, ParsedParameter } from '../../../../types.js';
 import { findChildByType, nodeLocation } from '../ast-utils/index.js';
 import { extractTypeParameters } from '../generics/index.js';
-import { extractCalls } from '../calls/index.js';
+import { extractCalls, extractLocalVars } from '../calls/index.js';
 import { extractParameters } from './extract-parameters.js';
 import { extractArrowReturnType } from './extract-return-type.js';
 
@@ -71,6 +71,7 @@ export function extractArrowFunction(declarator: SyntaxNode, arrowFunc: SyntaxNo
         c.type !== 'identifier',
     );
   const calls = body ? extractCalls(body) : [];
+  const localVars = body ? extractLocalVars(body) : undefined;
 
   return {
     name,
@@ -88,6 +89,7 @@ export function extractArrowFunction(declarator: SyntaxNode, arrowFunc: SyntaxNo
     annotations: [],
     location: nodeLocation(arrowFunc),
     calls,
+    localVars,
   };
 }
 

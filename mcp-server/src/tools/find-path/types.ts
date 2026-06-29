@@ -8,6 +8,7 @@ export type FindPathParams = {
   max_depth?: number;
   relationship_types?: string[];
   project_path?: string;
+  directed?: boolean;
 };
 
 export type PathStep = {

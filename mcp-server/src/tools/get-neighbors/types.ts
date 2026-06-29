@@ -7,6 +7,7 @@ export type GetNeighborsParams = {
   direction?: 'outgoing' | 'incoming' | 'both';
   depth?: number;
   include_external?: boolean;
+  scope?: 'main' | 'all';
   project_path?: string;
 };
 

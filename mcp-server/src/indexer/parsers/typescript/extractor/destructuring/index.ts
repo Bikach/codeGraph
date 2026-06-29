@@ -4,4 +4,5 @@
 export {
   extractDestructuring,
   isDestructuringDeclarator,
+  extractObjectPatternBindingNames,
 } from './extract-destructuring.js';

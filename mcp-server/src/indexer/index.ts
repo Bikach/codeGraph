@@ -52,26 +52,19 @@ export {
   type ResolutionStats,
 } from './resolver/index.js';
 
-// Writer
-export {
-  Neo4jWriter,
-  buildFqn,
-  serializeTypeParameters,
-  type WriteResult,
-  type WriteError,
-  type WriterOptions,
-  type ClearResult,
-} from './writer/index.js';
-
 // Domain
 export {
   analyzeDomains,
+  analyzeDomainsForGraph,
   type Domain,
   type DomainConfig,
   type DomainsConfigFile,
   type DomainAnalysisResult,
   type DomainDependency,
   type DomainInferenceOptions,
+  type GraphDomain,
+  type GraphDomainAnalysis,
+  type GraphDomainOptions,
 } from './domain/index.js';
 
 // File Filtering
@@ -79,6 +72,7 @@ export {
   shouldParseFile,
   shouldScanDirectory,
   isTestFile,
+  isLikelyMinified,
   EXCLUDED_DIRECTORIES,
   EXCLUDED_CONFIG_FILES,
   type FileFilterOptions,

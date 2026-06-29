@@ -100,6 +100,17 @@ export function extractDestructuring(
  * - { name = 'default' } -> object_assignment_pattern
  * - { ...rest } -> rest_pattern
  */
+/**
+ * The local binding names introduced by an object destructuring pattern.
+ * `{ a, b: c, d = 1 }` → `['a', 'c', 'd']`. Used to expand destructured function parameters.
+ */
+export function extractObjectPatternBindingNames(pattern: SyntaxNode): string[] {
+  const names: string[] = [];
+  const types: (string | undefined)[] = [];
+  extractObjectPatternComponents(pattern, names, types);
+  return names;
+}
+
 function extractObjectPatternComponents(
   pattern: SyntaxNode,
   names: string[],

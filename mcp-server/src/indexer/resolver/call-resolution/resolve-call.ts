@@ -4,7 +4,7 @@
  * Supports overload resolution using argument types from the call.
  */
 
-import type { SymbolTable, ResolutionContext } from '../types.js';
+import type { SymbolTable, ResolutionContext, FunctionSymbol } from '../types.js';
 import type { ParsedCall } from '../../types.js';
 import { getStdlibProvider } from '../stdlib/stdlib-registry.js';
 import { getClassFqn } from '../utils/index.js';
@@ -79,9 +79,14 @@ export function resolveCall(
       if (resolved) return resolved;
     }
 
-    // Check if receiver is a property in the current class
+    // Check if receiver is a property in the current class. Strip a leading `this.` first: the
+    // TS/JS parser emits `this.dealerGateway` as the receiver for `this.dealerGateway.method()`,
+    // whereas the property is named `dealerGateway`. Resolving via the property's declared type
+    // (e.g. the injected port interface) is the robust path — without it these calls fell through
+    // to the by-name last resort, which we no longer trust for receiver-bearing calls.
     if (context.currentClass) {
-      const prop = context.currentClass.properties.find((p) => p.name === receiver);
+      const propName = receiver.startsWith('this.') ? receiver.slice('this.'.length) : receiver;
+      const prop = context.currentClass.properties.find((p) => p.name === propName);
       if (prop?.type) {
         const resolved = resolveMethodInType(table, context, prop.type, name, call);
         if (resolved) return resolved;
@@ -160,15 +165,31 @@ export function resolveCall(
     if (extensionFunc) return extensionFunc;
   }
 
-  // 8. Top-level function in any package (last resort, with overload resolution)
+  // 8. Last resort by bare method name.
+  // - No receiver (top-level/unqualified call): full resolution incl. overload selection.
+  // - Receiver present but its type is unknown (steps 1-7 failed): resolve by name ONLY when the
+  //   name is UNAMBIGUOUS (exactly one method bears it anywhere). With multiple candidates we do NOT
+  //   guess — picking one arbitrarily fabricates edges to same-named methods on unrelated classes
+  //   (the `notify`/`get` false positives on clean-arch code). This keeps precision on collisions
+  //   while recovering recall for unique names (e.g. a DI'd `notificationSender.sendToSlot()`).
   const candidates = table.functionsByName.get(name);
   if (candidates && candidates.length > 0) {
-    if (candidates.length === 1 && candidates[0]) {
+    if (!receiver) {
+      if (candidates.length === 1 && candidates[0]) {
+        return candidates[0].fqn;
+      }
+      // Multiple candidates - use overload resolution
+      const best = selectBestOverload(candidates, call);
+      if (best) return best.fqn;
+    } else if (candidates.length === 1 && candidates[0]) {
       return candidates[0].fqn;
+    } else {
+      // Receiver type unknown + multiple candidates: resolve ONLY if they form a single type
+      // hierarchy (an interface/base + its implementors) — the call is then polymorphic and the base
+      // declaration is the right target. Unrelated same-named methods stay unresolved (no guessing).
+      const byHierarchy = resolveByHierarchy(table, candidates);
+      if (byHierarchy) return byHierarchy;
     }
-    // Multiple candidates - use overload resolution
-    const best = selectBestOverload(candidates, call);
-    if (best) return best.fqn;
   }
 
   // 9. Check stdlib functions (language-specific via provider)
@@ -187,5 +208,38 @@ export function resolveCall(
   }
 
   // Could not resolve
+  return undefined;
+}
+
+/**
+ * For a receiver-bearing call whose receiver type is unknown and that has several same-named
+ * candidates: resolve to the base declaration IFF the candidates form one type hierarchy (a base /
+ * interface + its subtypes), i.e. one candidate's declaring type is an ancestor (or equal) of every
+ * other's. Returns that base candidate's fqn, or undefined when the candidates are unrelated — in
+ * which case the caller must NOT guess (those are the cross-class collisions we want unresolved).
+ */
+function resolveByHierarchy(table: SymbolTable, candidates: FunctionSymbol[]): string | undefined {
+  const declaringTypeOf = (fqn: string): string => {
+    const i = fqn.lastIndexOf('.');
+    return i >= 0 ? fqn.slice(0, i) : fqn;
+  };
+  const ancestorsOf = (typeFqn: string): Set<string> => {
+    const seen = new Set<string>();
+    const stack = [...(table.typeHierarchy.get(typeFqn) ?? [])];
+    while (stack.length > 0) {
+      const t = stack.pop()!;
+      if (seen.has(t)) continue;
+      seen.add(t);
+      stack.push(...(table.typeHierarchy.get(t) ?? []));
+    }
+    return seen;
+  };
+
+  const types = candidates.map((c) => declaringTypeOf(c.fqn));
+  for (let i = 0; i < candidates.length; i++) {
+    const root = types[i]!;
+    const isRootOfAll = types.every((t) => t === root || ancestorsOf(t).has(root));
+    if (isRootOfAll) return candidates[i]!.fqn;
+  }
   return undefined;
 }

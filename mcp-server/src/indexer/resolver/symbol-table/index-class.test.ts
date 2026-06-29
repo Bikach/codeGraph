@@ -67,7 +67,8 @@ describe('indexClass', () => {
       const cls = createClass({ name: 'RootClass' });
       indexClass(table, cls, '', '/test/Test.kt');
 
-      expect(table.byFqn.has('RootClass')).toBe(true);
+      // Package-less type: file-qualified FQN (B-9).
+      expect(table.byFqn.has('/test/Test.kt::RootClass')).toBe(true);
     });
 
     it('should create FQN with parent for nested class', () => {

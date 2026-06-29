@@ -56,7 +56,7 @@ describe('buildClassHierarchy', () => {
         superClass: 'BaseClass',
       });
 
-      buildClassHierarchy(table, cls, 'com.example');
+      buildClassHierarchy(table, cls, 'com.example', '/src/Test.kt');
 
       expect(table.typeHierarchy.get('com.example.ChildClass')).toEqual([
         'com.example.BaseClass',
@@ -69,7 +69,7 @@ describe('buildClassHierarchy', () => {
         superClass: 'ExternalBase',
       });
 
-      buildClassHierarchy(table, cls, 'com.example');
+      buildClassHierarchy(table, cls, 'com.example', '/src/Test.kt');
 
       expect(table.typeHierarchy.get('com.example.ChildClass')).toEqual([
         'ExternalBase',
@@ -101,7 +101,7 @@ describe('buildClassHierarchy', () => {
         interfaces: ['Repository', 'Serializable'],
       });
 
-      buildClassHierarchy(table, cls, 'com.example');
+      buildClassHierarchy(table, cls, 'com.example', '/src/Test.kt');
 
       expect(table.typeHierarchy.get('com.example.UserRepository')).toEqual([
         'com.example.Repository',
@@ -115,7 +115,7 @@ describe('buildClassHierarchy', () => {
         interfaces: ['ExternalInterface'],
       });
 
-      buildClassHierarchy(table, cls, 'com.example');
+      buildClassHierarchy(table, cls, 'com.example', '/src/Test.kt');
 
       expect(table.typeHierarchy.get('com.example.UserRepository')).toEqual([
         'ExternalInterface',
@@ -148,7 +148,7 @@ describe('buildClassHierarchy', () => {
         interfaces: ['Closeable'],
       });
 
-      buildClassHierarchy(table, cls, 'com.example');
+      buildClassHierarchy(table, cls, 'com.example', '/src/Test.kt');
 
       expect(table.typeHierarchy.get('com.example.UserService')).toEqual([
         'com.example.BaseService',
@@ -178,7 +178,7 @@ describe('buildClassHierarchy', () => {
         nestedClasses: [nestedClass],
       });
 
-      buildClassHierarchy(table, cls, 'com.example');
+      buildClassHierarchy(table, cls, 'com.example', '/src/Test.kt');
 
       expect(table.typeHierarchy.get('com.example.Outer.Inner')).toEqual([
         'com.example.BaseNested',
@@ -201,7 +201,7 @@ describe('buildClassHierarchy', () => {
         nestedClasses: [middleNested],
       });
 
-      buildClassHierarchy(table, cls, 'com.example');
+      buildClassHierarchy(table, cls, 'com.example', '/src/Test.kt');
 
       expect(table.typeHierarchy.get('com.example.Outer.Middle.DeepNested')).toEqual([
         'DeepInterface',
@@ -216,7 +216,7 @@ describe('buildClassHierarchy', () => {
         superClass: 'Base',
       });
 
-      buildClassHierarchy(table, cls, 'com.example.domain');
+      buildClassHierarchy(table, cls, 'com.example.domain', '/src/Test.kt');
 
       expect(table.typeHierarchy.has('com.example.domain.MyClass')).toBe(true);
     });
@@ -227,9 +227,9 @@ describe('buildClassHierarchy', () => {
         superClass: 'Base',
       });
 
-      buildClassHierarchy(table, cls, '');
+      buildClassHierarchy(table, cls, '', '/src/Test.kt');
 
-      expect(table.typeHierarchy.has('MyClass')).toBe(true);
+      expect(table.typeHierarchy.has('/src/Test.kt::MyClass')).toBe(true);
     });
 
     it('should generate correct FQN for nested class with parent FQN', () => {
@@ -238,7 +238,7 @@ describe('buildClassHierarchy', () => {
         interfaces: ['SomeInterface'],
       });
 
-      buildClassHierarchy(table, cls, 'com.example', 'com.example.Parent');
+      buildClassHierarchy(table, cls, 'com.example', '/src/Test.kt', 'com.example.Parent');
 
       expect(table.typeHierarchy.has('com.example.Parent.Nested')).toBe(true);
     });
@@ -250,7 +250,7 @@ describe('buildClassHierarchy', () => {
         name: 'StandaloneClass',
       });
 
-      buildClassHierarchy(table, cls, 'com.example');
+      buildClassHierarchy(table, cls, 'com.example', '/src/Test.kt');
 
       expect(table.typeHierarchy.has('com.example.StandaloneClass')).toBe(false);
     });

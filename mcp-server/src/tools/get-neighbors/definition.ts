@@ -9,6 +9,7 @@ export const getNeighborsDefinition = {
     direction: z.enum(['outgoing', 'incoming', 'both']).optional().default('both').describe('Direction: outgoing (dependencies), incoming (dependents), or both'),
     depth: z.number().int().min(1).max(5).optional().default(1).describe('Search depth (1 = direct only)'),
     include_external: z.boolean().optional().default(false).describe('Include external dependencies (npm packages)'),
+    scope: z.enum(['main', 'all']).optional().default('all').describe('Scope: all (default, includes test neighbors) or main (prod only — excludes neighbors in test files)'),
     project_path: z.string().optional().describe('Filter by project path (use current working directory). If not provided, searches all indexed projects.'),
   },
 };

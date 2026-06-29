@@ -104,6 +104,32 @@ describe('inferModulePath', () => {
     });
   });
 
+  describe('nested source root (monorepo packages, B-11)', () => {
+    it('groups by the package owning the nested src (lambda)', () => {
+      const result = inferModulePath('/Users/test/my-project/packages/lambdas/insert-report/src/main.ts', {
+        projectPath,
+      });
+      // src is nested, so the owning package directory becomes the leading (domain) segment.
+      expect(result).toBe('insert-report');
+    });
+
+    it('keeps two sibling packages on distinct module paths (no shared `packages` wrapper)', () => {
+      const a = inferModulePath('/Users/test/my-project/packages/lambdas/insert-report/src/x.ts', { projectPath });
+      const b = inferModulePath('/Users/test/my-project/packages/lambdas/job-status/src/y.ts', { projectPath });
+      expect(a).toBe('insert-report');
+      expect(b).toBe('job-status');
+    });
+
+    it('preserves the in-package path after the owner, stripping further source roots', () => {
+      const result = inferModulePath(
+        '/Users/test/my-project/packages/libraries/shared-entities/src/lib/models/job-order.ts',
+        { projectPath }
+      );
+      // owner = shared-entities; `src` and the nested `lib` source root are stripped from the tail.
+      expect(result).toBe('shared-entities/models');
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle Windows-style paths', () => {
       // This test verifies path.normalize handles cross-platform paths

@@ -54,11 +54,13 @@ describe('indexFunction', () => {
       expect(table.byFqn.has('com.example.utils.formatDate')).toBe(true);
     });
 
-    it('should create FQN without package (root level)', () => {
+    it('should qualify package-less top-level function FQN by file path (B-8)', () => {
+      // Without a package (TS/JS), the bare name is not unique across files, so the FQN is
+      // qualified by file path to keep homonyms on distinct nodes (see fqn.ts / topLevelSymbolFqn).
       const func = createFunction({ name: 'main' });
       indexFunction(table, func, '', '/test/Test.kt', undefined);
 
-      expect(table.byFqn.has('main')).toBe(true);
+      expect(table.byFqn.has('/test/Test.kt::main')).toBe(true);
     });
 
     it('should handle nested class functions', () => {

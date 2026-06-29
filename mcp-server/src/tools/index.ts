@@ -26,6 +26,10 @@ export { findPathDefinition, handleFindPath, type FindPathParams } from './find-
 // File analysis
 export { getFileSymbolsDefinition, handleGetFileSymbols, type GetFileSymbolsParams } from './get-file-symbols/index.js';
 
+// Global analysis
+export { getGodNodesDefinition, handleGetGodNodes, type GetGodNodesParams } from './get-god-nodes/index.js';
+export { getModuleOverviewDefinition, handleGetModuleOverview, type GetModuleOverviewParams } from './get-module-overview/index.js';
+
 // Shared utilities
 export { formatters, buildCompactOutput } from './formatters.js';
-export { validateProject, projectNotFoundResponse, type ProjectValidationResult } from './project-filter.js';
+export { projectNotFoundResponse, projectNotFoundError } from './project-filter.js';

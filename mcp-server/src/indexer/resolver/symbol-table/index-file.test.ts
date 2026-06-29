@@ -86,7 +86,8 @@ describe('indexFile', () => {
       });
       indexFile(table, file);
 
-      expect(table.byFqn.has('RootClass')).toBe(true);
+      // Package-less type: file-qualified FQN (B-9). createFile defaults filePath to /test/Test.kt.
+      expect(table.byFqn.has('/test/Test.kt::RootClass')).toBe(true);
     });
 
     it('should index multiple classes', () => {
@@ -117,13 +118,14 @@ describe('indexFile', () => {
       expect(table.byFqn.has('com.example.utils.formatDate')).toBe(true);
     });
 
-    it('should index top-level functions without package', () => {
+    it('should index top-level functions without package (FQN qualified by file path, B-8)', () => {
       const file = createFile({
         topLevelFunctions: [createFunction({ name: 'main' })],
       });
       indexFile(table, file);
 
-      expect(table.byFqn.has('main')).toBe(true);
+      // Package-less (TS/JS) free functions are file-qualified so homonyms across files stay distinct.
+      expect(table.byFqn.has('/test/Test.kt::main')).toBe(true);
     });
 
     it('should add to functionsByName', () => {

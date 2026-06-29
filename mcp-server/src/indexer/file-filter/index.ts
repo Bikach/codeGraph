@@ -11,6 +11,7 @@ export {
   shouldParseFile,
   shouldScanDirectory,
   isTestFile,
+  isLikelyMinified,
   EXCLUDED_DIRECTORIES,
   EXCLUDED_CONFIG_FILES,
   type FileFilterOptions,

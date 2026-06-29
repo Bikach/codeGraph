@@ -4,6 +4,7 @@
 
 import type { ParsedClass } from '../../types.js';
 import type { ClassSymbol, PropertySymbol, SymbolTable } from '../types.js';
+import { topLevelSymbolFqn } from '../../fqn.js';
 import { addSymbol } from './add-symbol.js';
 import { indexFunction } from './index-function.js';
 
@@ -17,11 +18,7 @@ export function indexClass(
   filePath: string,
   parentFqn?: string
 ): void {
-  const fqn = parentFqn
-    ? `${parentFqn}.${cls.name}`
-    : packageName
-      ? `${packageName}.${cls.name}`
-      : cls.name;
+  const fqn = parentFqn ? `${parentFqn}.${cls.name}` : topLevelSymbolFqn(packageName, filePath, cls.name);
 
   // Add the class itself with full metadata
   const classSymbol: ClassSymbol = {

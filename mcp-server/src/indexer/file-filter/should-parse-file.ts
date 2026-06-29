@@ -88,6 +88,11 @@ export const EXCLUDED_DIRECTORIES = [
   '.nx',
   '.pnpm',
 
+  // Vendored third-party code (checked-in dependencies)
+  'vendor',
+  'bower_components',
+  'jspm_packages',
+
   // Python
   '__pycache__',
   '.venv',
@@ -379,6 +384,29 @@ export function shouldParseFile(filePath: string, options: FileFilterOptions = {
 export function isTestFile(filePath: string): boolean {
   const normalizedPath = normalizePath(filePath);
   return TEST_PATTERNS.some((pattern) => pattern.test(normalizedPath));
+}
+
+/** A single line this long is, in practice, only ever produced by a minifier/bundler. */
+const MINIFIED_LINE_LENGTH = 5000;
+const MINIFIABLE_EXT = /\.([cm]?jsx?|tsx?)$/;
+
+/**
+ * Content-based detection of minified / bundled JS-TS files that escape the name patterns (a vendored
+ * `jquery.js`, a checked-in bundle, …). Such files pack everything onto one or a few enormous lines,
+ * producing thousands of junk nodes. Only JS/TS qualify — Java/Kotlin are never minified, and we don't
+ * want to drop a generated-but-meaningful source there. The scan is a single O(n) pass over `source`.
+ */
+export function isLikelyMinified(filePath: string, source: string): boolean {
+  if (!MINIFIABLE_EXT.test(normalizePath(filePath))) return false;
+  let lineLen = 0;
+  for (let i = 0; i < source.length; i++) {
+    if (source.charCodeAt(i) === 10 /* \n */) {
+      lineLen = 0;
+    } else if (++lineLen >= MINIFIED_LINE_LENGTH) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // =============================================================================

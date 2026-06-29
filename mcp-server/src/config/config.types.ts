@@ -2,18 +2,17 @@
  * Configuration type definitions
  */
 
-export interface Neo4jConfig {
-  uri: string;
-  user: string;
-  password: string;
-}
-
 export interface ServerConfig {
   name: string;
   version: string;
 }
 
+export interface EmbeddedConfig {
+  /** On-disk LadybugDB file. Omit for in-memory (tests only — a server needs a persisted file). */
+  dbPath?: string;
+}
+
 export interface Config {
-  neo4j: Neo4jConfig;
   server: ServerConfig;
+  embedded: EmbeddedConfig;
 }

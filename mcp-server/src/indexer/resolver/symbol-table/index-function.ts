@@ -4,6 +4,7 @@
 
 import type { ParsedFunction, SupportedLanguage } from '../../types.js';
 import type { FunctionSymbol, SymbolTable } from '../types.js';
+import { topLevelSymbolFqn } from '../../fqn.js';
 import { addSymbol } from './add-symbol.js';
 
 /**
@@ -46,7 +47,9 @@ export function indexFunction(
   filePath: string,
   declaringTypeFqn?: string
 ): void {
-  const fqn = declaringTypeFqn ? `${declaringTypeFqn}.${func.name}` : packageName ? `${packageName}.${func.name}` : func.name;
+  const fqn = declaringTypeFqn
+    ? `${declaringTypeFqn}.${func.name}`
+    : topLevelSymbolFqn(packageName, filePath, func.name);
 
   const language = detectLanguageFromPath(filePath);
   const defaultType = getDefaultType(language);
