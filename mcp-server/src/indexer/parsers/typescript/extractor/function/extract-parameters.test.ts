@@ -124,4 +124,20 @@ describe('extractParameters', () => {
       expect(result).toHaveLength(0);
     });
   });
+
+  describe('destructured parameters', () => {
+    it('captures binding names and the container type for `{ a, b }: Deps`', () => {
+      const params = findFormalParameters('function useX({ getUsers, getCompanies }: UseXDeps) {}');
+      const result = extractParameters(params!);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.type).toBe('UseXDeps');
+      expect(result[0]?.destructuredBindings).toEqual(['getUsers', 'getCompanies']);
+    });
+
+    it('captures the renamed local binding for `{ key: local }`', () => {
+      const params = findFormalParameters('function useX({ getUsers: usersUc }: UseXDeps) {}');
+      const result = extractParameters(params!);
+      expect(result[0]?.destructuredBindings).toEqual(['usersUc']);
+    });
+  });
 });

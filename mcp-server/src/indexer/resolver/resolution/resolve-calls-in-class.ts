@@ -1,6 +1,7 @@
 import type { ParsedClass, ResolvedCall } from '../../types.js';
 import type { SymbolTable, ResolutionContext } from '../types.js';
 import { resolveCallsInFunction } from './resolve-calls-in-function.js';
+import { topLevelSymbolFqn } from '../../fqn.js';
 
 /**
  * Resolve calls in a class and its members.
@@ -14,9 +15,7 @@ export function resolveCallsInClass(
 ): ResolvedCall[] {
   const classFqn = parentFqn
     ? `${parentFqn}.${cls.name}`
-    : packageName
-      ? `${packageName}.${cls.name}`
-      : cls.name;
+    : topLevelSymbolFqn(packageName, context.currentFile.filePath, cls.name);
 
   const resolvedCalls: ResolvedCall[] = [];
 

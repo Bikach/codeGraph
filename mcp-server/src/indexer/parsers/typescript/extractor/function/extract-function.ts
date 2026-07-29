@@ -11,7 +11,7 @@ import { findChildByType, nodeLocation } from '../ast-utils/index.js';
 import { extractModifiers } from '../modifiers/index.js';
 import { extractDecorators } from '../decorators/index.js';
 import { extractTypeParameters } from '../generics/index.js';
-import { extractCalls } from '../calls/index.js';
+import { extractCalls, extractLocalVars } from '../calls/index.js';
 import { extractParameters } from './extract-parameters.js';
 import { extractReturnType } from './extract-return-type.js';
 
@@ -45,6 +45,7 @@ export function extractFunction(node: SyntaxNode): ParsedFunction {
   // Function body calls
   const body = findChildByType(node, 'statement_block');
   const calls = body ? extractCalls(body) : [];
+  const localVars = body ? extractLocalVars(body) : undefined;
 
   // Check for async - it appears as a direct child with type 'async'
   const isAsync = node.children.some((c) => c.type === 'async');
@@ -65,6 +66,7 @@ export function extractFunction(node: SyntaxNode): ParsedFunction {
     annotations: decorators,
     location: nodeLocation(node),
     calls,
+    localVars,
   };
 }
 
@@ -102,6 +104,7 @@ export function extractMethod(node: SyntaxNode): ParsedFunction {
   // Method body calls
   const body = findChildByType(node, 'statement_block');
   const calls = body ? extractCalls(body) : [];
+  const localVars = body ? extractLocalVars(body) : undefined;
 
   // Check for async
   const isAsync = node.children.some((c) => c.type === 'async');
@@ -131,6 +134,7 @@ export function extractMethod(node: SyntaxNode): ParsedFunction {
     annotations: decorators,
     location: nodeLocation(node),
     calls,
+    localVars,
   };
 }
 

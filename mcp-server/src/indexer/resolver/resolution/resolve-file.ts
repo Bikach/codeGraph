@@ -3,6 +3,7 @@ import type { SymbolTable } from '../types.js';
 import { createResolutionContext } from './create-resolution-context.js';
 import { resolveCallsInFunction } from './resolve-calls-in-function.js';
 import { resolveCallsInClass } from './resolve-calls-in-class.js';
+import { topLevelSymbolFqn } from '../../fqn.js';
 
 /**
  * Resolve symbols in a single file.
@@ -14,7 +15,7 @@ export function resolveFile(table: SymbolTable, file: ParsedFile): ResolvedFile 
 
   // Resolve calls in top-level functions
   for (const func of file.topLevelFunctions) {
-    const funcFqn = packageName ? `${packageName}.${func.name}` : func.name;
+    const funcFqn = topLevelSymbolFqn(file.packageName, file.filePath, func.name);
     resolvedCalls.push(...resolveCallsInFunction(table, context, func, funcFqn));
   }
 

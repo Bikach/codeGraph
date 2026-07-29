@@ -47,7 +47,19 @@ export function resolveMethodInType(
   }
 
   // Find all methods with this name in the type
-  const candidates = findMethodsInType(table, typeFqn, methodName);
+  let candidates = findMethodsInType(table, typeFqn, methodName);
+
+  // Fallback when the type name did not resolve to a unique symbol (e.g. homonymous interfaces in
+  // different files): its file-qualified FQN is unknown, so `typeFqn` fell back to the bare name,
+  // which matches no node. Search the method across EVERY same-named type using their real FQNs, then
+  // let overload selection pick. Without this, a call like `this.repo.find()` on an interface-typed
+  // field silently loses its CALLS edge once the interface name collides (regression from B-9).
+  if (candidates.length === 0 && !symbol) {
+    const sameNamedTypes = (table.byName.get(baseType) ?? []).filter(
+      (s) => s.kind === 'class' || s.kind === 'interface' || s.kind === 'object'
+    );
+    candidates = sameNamedTypes.flatMap((t) => findMethodsInType(table, t.fqn, methodName));
+  }
 
   if (candidates.length === 0) {
     // Check type hierarchy

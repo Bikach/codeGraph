@@ -55,10 +55,16 @@ export const formatters = {
 export function buildCompactOutput<T>(
   header: string,
   items: T[],
-  formatter: (item: T) => string
+  formatter: (item: T) => string,
+  total?: number
 ): string {
   if (items.length === 0) {
     return `${header}: No results found.`;
   }
-  return `${header} (${items.length}):\n${items.map(formatter).join('\n')}`;
+  const truncated = total !== undefined && total > items.length;
+  const count = truncated ? `${items.length} of ${total}` : `${items.length}`;
+  const body = `${header} (${count}):\n${items.map(formatter).join('\n')}`;
+  return truncated
+    ? `${body}\n… ${total - items.length} more (raise limit, or narrow with scope/depth)`
+    : body;
 }

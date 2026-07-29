@@ -290,8 +290,9 @@ describe('buildSymbolTable', () => {
 
       const table = buildSymbolTable([file]);
 
-      expect(table.byFqn.has('Script')).toBe(true);
-      expect(table.byFqn.has('main')).toBe(true);
+      // Package-less type + free function: both file-qualified so homonyms stay distinct (B-9 / B-8).
+      expect(table.byFqn.has('/test/Test.kt::Script')).toBe(true);
+      expect(table.byFqn.has('/test/Test.kt::main')).toBe(true);
     });
   });
 });

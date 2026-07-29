@@ -1,12 +1,9 @@
 {
   "name": "@codegraph/mcp-server",
-  "version": "1.6.0",
-  "description": "MCP Server for CodeGraph - Code analysis and navigation via Neo4j knowledge graph",
+  "version": "2.0.0",
+  "description": "MCP Server for CodeGraph - Code analysis and navigation via an embedded knowledge graph",
   "type": "module",
   "main": "dist/index.js",
-  "bin": {
-    "codegraph": "./dist/cli.js"
-  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
@@ -23,14 +20,17 @@
     "mcp",
     "model-context-protocol",
     "codegraph",
-    "neo4j",
+    "ladybugdb",
     "code-analysis"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@ladybugdb/core": "^0.17.1",
     "@modelcontextprotocol/sdk": "^1.24.3",
-    "neo4j-driver": "^5.28.1",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
+    "seedrandom": "^3.0.5",
     "tree-sitter": "^0.22.4",
     "tree-sitter-java": "^0.23.5",
     "tree-sitter-kotlin": "^0.3.8",
@@ -38,11 +38,11 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
-    "@testcontainers/neo4j": "^11.10.0",
     "@types/node": "^22.15.30",
+    "@types/seedrandom": "^3.0.8",
     "esbuild": "^0.27.2",
     "glob": "^11.0.0",
-    "testcontainers": "^11.10.0",
+    "graphology-types": "^0.24.8",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
     "vitest": "^4.0.15"

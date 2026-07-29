@@ -1,6 +1,11 @@
+# Dependencies
+node_modules/
+
 # Testcontainers (local Docker config)
 .testcontainers.properties
 .env
+.DS_Store
+.idea/*
 
 # Claude Code
 CLAUDE.md

@@ -6,6 +6,7 @@ import type { ParsedParameter } from '../../../../types.js';
 import { findChildByType } from '../ast-utils/index.js';
 import { extractFullTypeName } from '../ast-utils/extract-type-name.js';
 import { extractDecorators } from '../decorators/index.js';
+import { extractObjectPatternBindingNames } from '../destructuring/index.js';
 
 /**
  * Extract parameters from a formal_parameters node.
@@ -49,6 +50,19 @@ function extractRequiredParameter(node: SyntaxNode): ParsedParameter {
     return extractRestPatternParameter(restPattern, node);
   }
 
+  // Object-destructured parameter: `{ a, b }: Deps`. Keep the binding names so the resolver can map
+  // each one to the matching property type of the annotated container type.
+  const objectPattern = findChildByType(node, 'object_pattern');
+  if (objectPattern) {
+    return {
+      name: 'unknown',
+      type: extractFullTypeName(findChildByType(node, 'type_annotation')),
+      destructuredBindings: extractObjectPatternBindingNames(objectPattern),
+      defaultValue: findInitializer(node)?.text,
+      annotations: extractDecorators(node),
+    };
+  }
+
   const nameNode =
     findChildByType(node, 'identifier') ?? findChildByType(node, 'shorthand_property_identifier_pattern');
   const typeAnnotation = findChildByType(node, 'type_annotation');
@@ -85,6 +99,17 @@ function extractRestPatternParameter(restPattern: SyntaxNode, parentNode: Syntax
  * Extract an optional parameter (marked with ?).
  */
 function extractOptionalParameter(node: SyntaxNode): ParsedParameter {
+  const objectPattern = findChildByType(node, 'object_pattern');
+  if (objectPattern) {
+    return {
+      name: 'unknown',
+      type: extractFullTypeName(findChildByType(node, 'type_annotation')),
+      destructuredBindings: extractObjectPatternBindingNames(objectPattern),
+      defaultValue: findInitializer(node)?.text,
+      annotations: extractDecorators(node),
+    };
+  }
+
   const nameNode =
     findChildByType(node, 'identifier') ?? findChildByType(node, 'shorthand_property_identifier_pattern');
   const typeAnnotation = findChildByType(node, 'type_annotation');

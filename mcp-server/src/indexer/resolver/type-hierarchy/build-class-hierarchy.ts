@@ -4,6 +4,7 @@
 
 import type { SymbolTable } from '../types.js';
 import type { ParsedClass } from '../../types.js';
+import { topLevelSymbolFqn } from '../../fqn.js';
 import { resolveTypeName } from './resolve-type-name.js';
 
 /**
@@ -21,13 +22,10 @@ export function buildClassHierarchy(
   table: SymbolTable,
   cls: ParsedClass,
   packageName: string,
+  filePath: string,
   parentFqn?: string
 ): void {
-  const fqn = parentFqn
-    ? `${parentFqn}.${cls.name}`
-    : packageName
-      ? `${packageName}.${cls.name}`
-      : cls.name;
+  const fqn = parentFqn ? `${parentFqn}.${cls.name}` : topLevelSymbolFqn(packageName, filePath, cls.name);
 
   const parents: string[] = [];
 
@@ -58,6 +56,6 @@ export function buildClassHierarchy(
 
   // Process nested classes
   for (const nested of cls.nestedClasses) {
-    buildClassHierarchy(table, nested, packageName, fqn);
+    buildClassHierarchy(table, nested, packageName, filePath, fqn);
   }
 }

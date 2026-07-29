@@ -210,6 +210,47 @@ describe('resolveCall', () => {
 
       expect(result).toBe('com.example.Logger.info');
     });
+
+    it('should resolve a `this.<prop>` receiver via the property type (DI / hexagonal pattern)', () => {
+      // The TS/JS parser emits `this.gateway` as the receiver for `this.gateway.check()`.
+      table.byFqn.set('com.example.DealerGateway', {
+        name: 'DealerGateway',
+        fqn: 'com.example.DealerGateway',
+        kind: 'interface' as const,
+        filePath: '/src/DealerGateway.ts',
+        location: createLocation('/src/DealerGateway.ts'),
+        packageName: 'com.example',
+      });
+      table.byFqn.set(
+        'com.example.DealerGateway.checkDealerExists',
+        createFunctionSymbol('com.example.DealerGateway.checkDealerExists', {
+          declaringTypeFqn: 'com.example.DealerGateway',
+        })
+      );
+
+      const context = createContext({
+        currentClass: createClass({
+          properties: [
+            {
+              name: 'gateway',
+              type: 'DealerGateway',
+              visibility: 'private',
+              isVal: true,
+              location: createLocation(),
+              annotations: [],
+            },
+          ],
+        }),
+      });
+
+      const result = resolveCall(table, context, {
+        name: 'checkDealerExists',
+        receiver: 'this.gateway',
+        location: createLocation(),
+      });
+
+      expect(result).toBe('com.example.DealerGateway.checkDealerExists');
+    });
   });
 
   describe('current class method resolution', () => {
@@ -295,6 +336,74 @@ describe('resolveCall', () => {
       });
 
       expect(result).toBeUndefined();
+    });
+
+    it('should NOT guess a receiver-bearing call by bare name when AMBIGUOUS (multiple candidates)', () => {
+      // Two classes both declare notify(); a call `x.notify()` whose receiver type is unknown must
+      // stay UNRESOLVED rather than being attached arbitrarily to one of them (false-positive fix).
+      table.functionsByName.set('notify', [
+        createFunctionSymbol('com.example.A.notify', { declaringTypeFqn: 'com.example.A' }),
+        createFunctionSymbol('com.example.B.notify', { declaringTypeFqn: 'com.example.B' }),
+      ]);
+
+      const result = resolveCall(table, createContext(), {
+        name: 'notify',
+        receiver: 'someUntypedDep',
+        location: createLocation(),
+      });
+
+      expect(result).toBeUndefined();
+    });
+
+    it('resolves a receiver-bearing call by name when UNAMBIGUOUS (single candidate)', () => {
+      // `notificationSender.sendToSlot()` with an untyped (DI) receiver: sendToSlot is defined in
+      // exactly one place → safe to resolve by name (recall recovery without false positives).
+      table.functionsByName.set('sendToSlot', [
+        createFunctionSymbol('com.example.NotificationSender.sendToSlot', {
+          declaringTypeFqn: 'com.example.NotificationSender',
+        }),
+      ]);
+
+      const result = resolveCall(table, createContext(), {
+        name: 'sendToSlot',
+        receiver: 'notificationSender',
+        location: createLocation(),
+      });
+
+      expect(result).toBe('com.example.NotificationSender.sendToSlot');
+    });
+
+    it('resolves a receiver call to the base when candidates form one hierarchy (interface + impl)', () => {
+      // `notificationSender.sendToSlot()` (untyped receiver) with TWO candidates: the interface and
+      // its implementation. They share a hierarchy → polymorphic call → resolve to the base method.
+      table.functionsByName.set('sendToSlot', [
+        createFunctionSymbol('com.example.NotificationSender.sendToSlot', {
+          declaringTypeFqn: 'com.example.NotificationSender',
+        }),
+        createFunctionSymbol('com.example.FirebaseNotificationSender.sendToSlot', {
+          declaringTypeFqn: 'com.example.FirebaseNotificationSender',
+        }),
+      ]);
+      table.typeHierarchy.set('com.example.FirebaseNotificationSender', ['com.example.NotificationSender']);
+
+      const result = resolveCall(table, createContext(), {
+        name: 'sendToSlot',
+        receiver: 'notificationSender',
+        location: createLocation(),
+      });
+
+      expect(result).toBe('com.example.NotificationSender.sendToSlot');
+    });
+
+    it('still resolves a no-receiver top-level call by name (step 8 unchanged for those)', () => {
+      table.functionsByName.set('helper', [createFunctionSymbol('com.example.helper')]);
+
+      const result = resolveCall(table, createContext(), {
+        name: 'helper',
+        location: createLocation(),
+      });
+
+      expect(result).toBe('com.example.helper');
     });
   });
 });

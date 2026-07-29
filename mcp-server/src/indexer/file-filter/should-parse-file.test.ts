@@ -3,9 +3,37 @@ import {
   shouldParseFile,
   shouldScanDirectory,
   isTestFile,
+  isLikelyMinified,
   EXCLUDED_DIRECTORIES,
   EXCLUDED_CONFIG_FILES,
 } from './should-parse-file.js';
+
+describe('vendored directories', () => {
+  it('excludes vendor / bower_components / jspm_packages', () => {
+    expect(shouldParseFile('/project/vendor/jquery/jquery.js')).toBe(false);
+    expect(shouldParseFile('/project/bower_components/angular/angular.js')).toBe(false);
+    expect(shouldParseFile('/project/jspm_packages/npm/lib.js')).toBe(false);
+  });
+  it('keeps real source unaffected', () => {
+    expect(shouldParseFile('/project/src/vendorService.ts')).toBe(true); // "vendor" as a substring, not a segment
+  });
+});
+
+describe('isLikelyMinified', () => {
+  it('flags a JS/TS file with a 5000+ char single line', () => {
+    const oneHugeLine = 'a'.repeat(6000);
+    expect(isLikelyMinified('/p/jquery.js', oneHugeLine)).toBe(true);
+    expect(isLikelyMinified('/p/bundle.ts', `const x=1;\n${oneHugeLine}`)).toBe(true);
+  });
+  it('keeps normal source (reasonable line lengths)', () => {
+    const normal = Array.from({ length: 500 }, () => 'const value = computeSomething(a, b, c);').join('\n');
+    expect(isLikelyMinified('/p/service.ts', normal)).toBe(false);
+  });
+  it('never flags Java/Kotlin (not minifiable)', () => {
+    expect(isLikelyMinified('/p/Generated.java', 'x'.repeat(20000))).toBe(false);
+    expect(isLikelyMinified('/p/Generated.kt', 'x'.repeat(20000))).toBe(false);
+  });
+});
 
 describe('shouldScanDirectory', () => {
   describe('excluded directories', () => {

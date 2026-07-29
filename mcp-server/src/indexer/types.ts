@@ -103,6 +103,12 @@ export interface ParsedFunctionType {
 export interface ParsedParameter {
   name: string;
   type?: string;
+  /**
+   * For an object-destructured parameter (`{ a, b }: Deps`): the bound local names. `type` then holds
+   * the container type (`Deps`); the resolver expands each binding to its property's type so calls on
+   * the binding (`a.method()`) resolve via that type.
+   */
+  destructuredBindings?: string[];
   /** For lambda parameters, the parsed function type */
   functionType?: ParsedFunctionType;
   defaultValue?: string;
@@ -164,6 +170,18 @@ export interface ParsedOverloadSignature {
   location: SourceLocation;
 }
 
+/**
+ * A local variable declaration whose static type the resolver can use to resolve subsequent calls on it.
+ * Exactly one of `type` / `initCall` is meaningful: `type` when known at parse-time (explicit annotation,
+ * `new X()`, `x as T`); `initCall` when the type is the RETURN type of a call (resolved cross-file later).
+ */
+export interface ParsedLocalVar {
+  name: string;
+  type?: string;
+  /** Initializer is a call to a simple-identifier function; the var's type is that function's return type. */
+  initCall?: { name: string; awaited?: boolean };
+}
+
 export interface ParsedFunction {
   name: string;
   visibility: Visibility;
@@ -181,6 +199,12 @@ export interface ParsedFunction {
   location: SourceLocation;
   /** Raw function calls found in the body (unresolved) */
   calls: ParsedCall[];
+  /**
+   * Local variable declarations in the body whose type lets the resolver resolve later calls on them
+   * (`const repo = makeRepo(); repo.find()`). Either `type` is known at parse-time (explicit annotation,
+   * `new X()`, `x as T`), OR `initCall` names a call whose RETURN type the resolver must look up.
+   */
+  localVars?: ParsedLocalVar[];
   /**
    * Overload signatures for this function (TypeScript-specific).
    * When present, this function has multiple call signatures.

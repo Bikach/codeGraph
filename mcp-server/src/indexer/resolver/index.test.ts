@@ -104,7 +104,8 @@ describe('buildSymbolTable', () => {
 
       const table = buildSymbolTable([file]);
 
-      expect(table.byFqn.has('UserService')).toBe(true);
+      // Package-less (TS/JS) top-level type: FQN qualified by file path (B-9).
+      expect(table.byFqn.has('/test/Test.kt::UserService')).toBe(true);
     });
 
     it('should index interfaces', () => {
@@ -1271,8 +1272,8 @@ describe('edge cases', () => {
     const table = buildSymbolTable([file]);
     const resolved = resolveSymbols([file], table);
 
-    expect(table.byFqn.has('NoPackage')).toBe(true);
-    expect(table.byFqn.has('NoPackage.method')).toBe(true);
+    expect(table.byFqn.has('/test/Test.kt::NoPackage')).toBe(true);
+    expect(table.byFqn.has('/test/Test.kt::NoPackage.method')).toBe(true);
     expect(resolved).toHaveLength(1);
   });
 
@@ -1635,5 +1636,158 @@ describe('Multi-language resolution', () => {
 
     // require is a Kotlin stdlib function
     expect(calls?.[0]?.toFqn).toBe('kotlin.require');
+  });
+});
+
+describe('destructured deps parameter expansion (BUG-1)', () => {
+  it('resolves a method call on a binding from `{ x }: Deps` via the property type', () => {
+    // Mirrors the React clean-arch convention: a hook receives its use cases as a destructured
+    // parameter typed by a Deps interface, then calls `getUsersUsecase.notify()`.
+    const file = createParsedFile({
+      language: 'typescript',
+      filePath: '/src/components/useManagementCard.ts',
+      classes: [
+        createParsedClass({
+          name: 'UseManagementCardDeps',
+          kind: 'interface',
+          properties: [
+            { name: 'getUsersUsecase', type: 'GetUsersUseCase', visibility: 'public', isVal: true, annotations: [], location: defaultLocation },
+          ],
+        }),
+        createParsedClass({
+          name: 'GetUsersUseCase',
+          functions: [createParsedFunction({ name: 'notify' })],
+        }),
+      ],
+      topLevelFunctions: [
+        createParsedFunction({
+          name: 'useManagementCard',
+          parameters: [{ name: 'unknown', type: 'UseManagementCardDeps', destructuredBindings: ['getUsersUsecase'], annotations: [] }],
+          calls: [createParsedCall({ name: 'notify', receiver: 'getUsersUsecase' })],
+        }),
+      ],
+    });
+
+    const resolved = resolveSymbols([file]);
+    const calls = resolved.find((f) => f.filePath.includes('useManagementCard'))?.resolvedCalls;
+
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        // Package-less (TS) free function + type: both FQNs are file-qualified (B-8 / B-9).
+        fromFqn: '/src/components/useManagementCard.ts::useManagementCard',
+        toFqn: '/src/components/useManagementCard.ts::GetUsersUseCase.notify',
+      })
+    );
+  });
+});
+
+describe('local variable type inference (§3.3)', () => {
+  // A factory returns a Repo; the consumer does `const repo = makeRepo(); repo.find()`.
+  const repoClass = createParsedClass({ name: 'Repo', functions: [createParsedFunction({ name: 'find' })] });
+
+  it('resolves a call on a var whose type is the RETURN type of a named call', () => {
+    const file = createParsedFile({
+      language: 'typescript',
+      filePath: '/src/consumer.ts',
+      classes: [repoClass],
+      topLevelFunctions: [
+        createParsedFunction({ name: 'makeRepo', returnType: 'Repo' }),
+        createParsedFunction({
+          name: 'consume',
+          localVars: [{ name: 'repo', initCall: { name: 'makeRepo' } }],
+          calls: [createParsedCall({ name: 'find', receiver: 'repo' })],
+        }),
+      ],
+    });
+
+    const calls = resolveSymbols([file]).find((f) => f.filePath.includes('consumer'))?.resolvedCalls;
+    expect(calls).toContainEqual(expect.objectContaining({ fromFqn: '/src/consumer.ts::consume', toFqn: '/src/consumer.ts::Repo.find' }));
+  });
+
+  it('unwraps Promise<T> for an awaited factory call', () => {
+    const file = createParsedFile({
+      language: 'typescript',
+      filePath: '/src/consumer.ts',
+      classes: [repoClass],
+      topLevelFunctions: [
+        createParsedFunction({ name: 'loadRepo', returnType: 'Promise<Repo>' }),
+        createParsedFunction({
+          name: 'consume',
+          localVars: [{ name: 'repo', initCall: { name: 'loadRepo', awaited: true } }],
+          calls: [createParsedCall({ name: 'find', receiver: 'repo' })],
+        }),
+      ],
+    });
+
+    const calls = resolveSymbols([file]).find((f) => f.filePath.includes('consumer'))?.resolvedCalls;
+    expect(calls).toContainEqual(expect.objectContaining({ fromFqn: '/src/consumer.ts::consume', toFqn: '/src/consumer.ts::Repo.find' }));
+  });
+
+  it('resolves a call on a var with an explicit type annotation', () => {
+    const file = createParsedFile({
+      language: 'typescript',
+      filePath: '/src/consumer.ts',
+      classes: [repoClass],
+      topLevelFunctions: [
+        createParsedFunction({
+          name: 'consume',
+          localVars: [{ name: 'repo', type: 'Repo' }],
+          calls: [createParsedCall({ name: 'find', receiver: 'repo' })],
+        }),
+      ],
+    });
+
+    const calls = resolveSymbols([file]).find((f) => f.filePath.includes('consumer'))?.resolvedCalls;
+    expect(calls).toContainEqual(expect.objectContaining({ fromFqn: '/src/consumer.ts::consume', toFqn: '/src/consumer.ts::Repo.find' }));
+  });
+});
+
+describe('homonymous interface method call (B-9 regression fix)', () => {
+  // `this.repo.findDetailsById()` where `repo: JobOrderRepository` (an interface). Once the interface
+  // name is duplicated across files, its bare name no longer resolves to a unique symbol — the method
+  // call must still resolve (to the interface that actually declares it), not silently drop its edge.
+  it('resolves a method call on an interface-typed field even when the interface name is duplicated', () => {
+    const ifaceWithMethod = createParsedFile({
+      language: 'typescript',
+      filePath: '/back/job-order.repository.ts',
+      classes: [
+        createParsedClass({
+          name: 'JobOrderRepository',
+          kind: 'interface',
+          functions: [createParsedFunction({ name: 'findDetailsById' })],
+        }),
+      ],
+    });
+    const ifaceHomonym = createParsedFile({
+      language: 'typescript',
+      filePath: '/back/other/job-order.repository.ts',
+      classes: [
+        createParsedClass({
+          name: 'JobOrderRepository',
+          kind: 'interface',
+          functions: [createParsedFunction({ name: 'somethingElse' })],
+        }),
+      ],
+    });
+    const useCase = createParsedFile({
+      language: 'typescript',
+      filePath: '/back/get-details.usecase.ts',
+      classes: [
+        createParsedClass({
+          name: 'GetDetailsUseCase',
+          properties: [
+            { name: 'repo', type: 'JobOrderRepository', visibility: 'private', isVal: true, annotations: [], location: defaultLocation },
+          ],
+          functions: [
+            createParsedFunction({ name: 'handle', calls: [createParsedCall({ name: 'findDetailsById', receiver: 'this.repo' })] }),
+          ],
+        }),
+      ],
+    });
+
+    const calls = resolveSymbols([ifaceWithMethod, ifaceHomonym, useCase]).find((f) => f.filePath.includes('usecase'))?.resolvedCalls;
+    expect(calls).toContainEqual(
+      expect.objectContaining({ toFqn: '/back/job-order.repository.ts::JobOrderRepository.findDetailsById' })
+    );
   });
 });

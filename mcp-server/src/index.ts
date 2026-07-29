@@ -3,18 +3,21 @@
 /**
  * CodeGraph MCP Server
  *
- * MCP (Model Context Protocol) server that exposes the Neo4j code graph
- * to LLMs for code analysis and navigation.
+ * MCP (Model Context Protocol) server that exposes the embedded code graph
+ * (LadybugDB) to LLMs for code analysis and navigation.
+ *
+ * The graph is a single on-disk file produced by the indexer. The server opens it
+ * READ-ONLY and PER REQUEST (open → read → close), holding no handle in between, so
+ * the indexer can rewrite the file at any time and the next request sees fresh data.
  *
  * Configuration via environment variables:
- * - NEO4J_URI: Neo4j connection URI (default: bolt://localhost:7687)
- * - NEO4J_USER: Neo4j user (default: neo4j)
- * - NEO4J_PASSWORD: Neo4j password (required)
+ * - EMBEDDED_DB_PATH: path to the LadybugDB file (written by the indexer)
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { Neo4jClient } from './neo4j/neo4j.js';
+import { EmbeddedConnection } from './engine/store/embedded/connection.js';
+import { EmbeddedReader } from './engine/store/embedded/embedded-reader.js';
 import {
   searchNodesDefinition,
   handleSearchNodes,
@@ -32,6 +35,10 @@ import {
   handleFindPath,
   getFileSymbolsDefinition,
   handleGetFileSymbols,
+  getGodNodesDefinition,
+  handleGetGodNodes,
+  getModuleOverviewDefinition,
+  handleGetModuleOverview,
 } from './tools/index.js';
 import { config } from './config/config.js';
 
@@ -40,7 +47,6 @@ import { config } from './config/config.js';
  */
 class CodeGraphServer {
   private server: McpServer;
-  private readonly neo4jClient: Neo4jClient;
 
   constructor() {
     // Initialize MCP server
@@ -48,13 +54,6 @@ class CodeGraphServer {
       name: config.server.name,
       version: config.server.version,
     });
-
-    // Initialize Neo4j client
-    this.neo4jClient = new Neo4jClient(
-      config.neo4j.uri,
-      config.neo4j.user,
-      config.neo4j.password
-    );
 
     // Register tools
     this.registerTools();
@@ -71,6 +70,21 @@ class CodeGraphServer {
   }
 
   /**
+   * Run a read against a freshly-opened, read-only embedded store, then close it.
+   * Opening per request (not holding the file) lets the indexer rewrite the graph without
+   * restarting the server — the next request sees the latest data. Cost ~38ms on a 10MB DB.
+   */
+  private async read<T>(fn: (store: EmbeddedReader) => Promise<T>): Promise<T> {
+    const cx = new EmbeddedConnection(config.embedded.dbPath, { readOnly: true });
+    await cx.open();
+    try {
+      return await fn(new EmbeddedReader(cx));
+    } finally {
+      await cx.close();
+    }
+  }
+
+  /**
    * Register all MCP tools with modern registerTool API
    */
   private registerTools(): void {
@@ -82,15 +96,7 @@ class CodeGraphServer {
         description: searchNodesDefinition.description,
         inputSchema: searchNodesDefinition.inputSchema,
       },
-      async ({ query, node_types, exact_match, limit, project_path }) => {
-        return await handleSearchNodes(this.neo4jClient, {
-          query,
-          node_types,
-          exact_match: exact_match ?? false,
-          limit: limit ?? 20,
-          project_path,
-        });
-      }
+      async (args) => this.read((store) => handleSearchNodes(store, args))
     );
 
     // Tool: get_callers
@@ -101,14 +107,7 @@ class CodeGraphServer {
         description: getCallersDefinition.description,
         inputSchema: getCallersDefinition.inputSchema,
       },
-      async ({ function_name, class_name, depth, project_path }) => {
-        return await handleGetCallers(this.neo4jClient, {
-          function_name,
-          class_name,
-          depth: depth ?? 2,
-          project_path,
-        });
-      }
+      async (args) => this.read((store) => handleGetCallers(store, args))
     );
 
     // Tool: get_callees
@@ -119,14 +118,7 @@ class CodeGraphServer {
         description: getCalleesDefinition.description,
         inputSchema: getCalleesDefinition.inputSchema,
       },
-      async ({ function_name, class_name, depth, project_path }) => {
-        return await handleGetCallees(this.neo4jClient, {
-          function_name,
-          class_name,
-          depth: depth ?? 2,
-          project_path,
-        });
-      }
+      async (args) => this.read((store) => handleGetCallees(store, args))
     );
 
     // Tool: get_neighbors
@@ -137,15 +129,7 @@ class CodeGraphServer {
         description: getNeighborsDefinition.description,
         inputSchema: getNeighborsDefinition.inputSchema,
       },
-      async ({ node_name, direction, depth, include_external, project_path }) => {
-        return await handleGetNeighbors(this.neo4jClient, {
-          node_name,
-          direction: direction ?? 'both',
-          depth: depth ?? 1,
-          include_external: include_external ?? false,
-          project_path,
-        });
-      }
+      async (args) => this.read((store) => handleGetNeighbors(store, args))
     );
 
     // Tool: get_implementations
@@ -156,13 +140,7 @@ class CodeGraphServer {
         description: getImplementationsDefinition.description,
         inputSchema: getImplementationsDefinition.inputSchema,
       },
-      async ({ interface_name, include_indirect, project_path }) => {
-        return await handleGetImplementations(this.neo4jClient, {
-          interface_name,
-          include_indirect: include_indirect ?? false,
-          project_path,
-        });
-      }
+      async (args) => this.read((store) => handleGetImplementations(store, args))
     );
 
     // Tool: get_impact
@@ -173,14 +151,7 @@ class CodeGraphServer {
         description: getImpactDefinition.description,
         inputSchema: getImpactDefinition.inputSchema,
       },
-      async ({ node_name, node_type, depth, project_path }) => {
-        return await handleGetImpact(this.neo4jClient, {
-          node_name,
-          node_type,
-          depth: depth ?? 3,
-          project_path,
-        });
-      }
+      async (args) => this.read((store) => handleGetImpact(store, args))
     );
 
     // Tool: find_path
@@ -191,15 +162,7 @@ class CodeGraphServer {
         description: findPathDefinition.description,
         inputSchema: findPathDefinition.inputSchema,
       },
-      async ({ from_node, to_node, max_depth, relationship_types, project_path }) => {
-        return await handleFindPath(this.neo4jClient, {
-          from_node,
-          to_node,
-          max_depth: max_depth ?? 5,
-          relationship_types,
-          project_path,
-        });
-      }
+      async (args) => this.read((store) => handleFindPath(store, args))
     );
 
     // Tool: get_file_symbols
@@ -210,13 +173,29 @@ class CodeGraphServer {
         description: getFileSymbolsDefinition.description,
         inputSchema: getFileSymbolsDefinition.inputSchema,
       },
-      async ({ file_path, include_private, project_path }) => {
-        return await handleGetFileSymbols(this.neo4jClient, {
-          file_path,
-          include_private: include_private ?? true,
-          project_path,
-        });
-      }
+      async (args) => this.read((store) => handleGetFileSymbols(store, args))
+    );
+
+    // Tool: get_god_nodes
+    this.server.registerTool(
+      getGodNodesDefinition.name,
+      {
+        title: getGodNodesDefinition.title,
+        description: getGodNodesDefinition.description,
+        inputSchema: getGodNodesDefinition.inputSchema,
+      },
+      async (args) => this.read((store) => handleGetGodNodes(store, args))
+    );
+
+    // Tool: get_module_overview
+    this.server.registerTool(
+      getModuleOverviewDefinition.name,
+      {
+        title: getModuleOverviewDefinition.title,
+        description: getModuleOverviewDefinition.description,
+        inputSchema: getModuleOverviewDefinition.inputSchema,
+      },
+      async (args) => this.read((store) => handleGetModuleOverview(store, args))
     );
   }
 
@@ -224,9 +203,15 @@ class CodeGraphServer {
    * Start the MCP server
    */
   async start(): Promise<void> {
-    // Verify Neo4j connection
-    await this.neo4jClient.connect();
-    console.error('Connected to Neo4j');
+    // Validate the embedded DB is present & readable (then every request opens it read-only).
+    try {
+      await this.read(async () => undefined);
+      console.error(`CodeGraph embedded store ready: ${config.embedded.dbPath ?? '(in-memory)'}`);
+    } catch (err) {
+      console.error(
+        `CodeGraph: cannot open embedded DB at ${config.embedded.dbPath ?? '(EMBEDDED_DB_PATH unset)'} — run the indexer first. ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
 
     // Start stdio transport
     const transport = new StdioServerTransport();
@@ -235,10 +220,9 @@ class CodeGraphServer {
   }
 
   /**
-   * Cleanup resources
+   * Cleanup resources (nothing is held open between requests)
    */
   async cleanup(): Promise<void> {
-    await this.neo4jClient.close();
     await this.server.close();
   }
 }

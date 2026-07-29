@@ -39,7 +39,7 @@ export interface ModuleInferenceOptions {
 /**
  * Default source roots to strip from module paths.
  */
-const DEFAULT_SOURCE_ROOTS = ['src', 'lib', 'app', 'source', 'sources'];
+export const DEFAULT_SOURCE_ROOTS = ['src', 'lib', 'app', 'source', 'sources'];
 
 /**
  * Infer a module path from a file path.
@@ -88,7 +88,24 @@ export function inferModulePath(
     }
   }
 
-  // Strip source root directories from the beginning
+  // Locate the source root (src/lib/app/…): it marks the package boundary. Modern monorepos nest it
+  // (`packages/<pkg>/src/…`), so it is not always at the front — find its first occurrence.
+  const srcIdx = parts.findIndex((p) => sourceRoots.includes(p));
+
+  if (srcIdx > 0) {
+    // Nested source root: the directory just above it is the OWNING package — use it as the leading
+    // (domain) segment, followed by the in-package path with any further source roots stripped. This
+    // keeps a monorepo `packages/libraries/shared-entities/src/lib/x` grouped under `shared-entities`
+    // instead of collapsing every package under the shared `packages` wrapper (bug B-11).
+    const owner = parts[srcIdx - 1]!;
+    let rest = parts.slice(srcIdx);
+    while (rest.length > 0 && sourceRoots.includes(rest[0]!)) {
+      rest = rest.slice(1);
+    }
+    return [owner, ...rest].join(separator);
+  }
+
+  // Source root at the front (or none present): strip leading source roots, as before.
   while (parts.length > 0 && sourceRoots.includes(parts[0]!)) {
     parts = parts.slice(1);
   }

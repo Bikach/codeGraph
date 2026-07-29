@@ -137,7 +137,8 @@ describe('buildTypeHierarchy', () => {
 
       buildTypeHierarchy(table, [file]);
 
-      expect(table.typeHierarchy.get('RootClass')).toEqual(['Base']);
+      // Package-less type: file-qualified hierarchy key (B-9). createFile defaults filePath to /src/Test.kt.
+      expect(table.typeHierarchy.get('/src/Test.kt::RootClass')).toEqual(['Base']);
     });
 
     it('should handle undefined package as empty string', () => {
@@ -148,7 +149,7 @@ describe('buildTypeHierarchy', () => {
 
       buildTypeHierarchy(table, [file]);
 
-      expect(table.typeHierarchy.get('RootClass')).toEqual(['Interface1']);
+      expect(table.typeHierarchy.get('/src/Test.kt::RootClass')).toEqual(['Interface1']);
     });
   });
 
