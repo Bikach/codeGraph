@@ -28,8 +28,16 @@ const commonOptions = {
   format: 'cjs', // CommonJS for compatibility
   sourcemap: false,
   minify: false,
-  // tree-sitter has native bindings, keep external
-  external: ['tree-sitter', 'tree-sitter-kotlin', 'tree-sitter-java', 'tree-sitter-typescript'],
+  // Native modules cannot be bundled: they ship .node bindings and/or
+  // platform-specific optionalDependencies, so they must resolve from
+  // node_modules at runtime.
+  external: [
+    'tree-sitter',
+    'tree-sitter-kotlin',
+    'tree-sitter-java',
+    'tree-sitter-typescript',
+    '@ladybugdb/core',
+  ],
 };
 
 async function build() {
@@ -43,15 +51,7 @@ async function build() {
   });
   console.log('  ✓ mcp-server.js');
 
-  // 2. Setup script
-  await esbuild.build({
-    ...commonOptions,
-    entryPoints: ['src/scripts/setup.ts'],
-    outfile: resolve(pluginDist, 'setup.js'),
-  });
-  console.log('  ✓ setup.js');
-
-  // 3. Index project script
+  // 2. Index project script
   await esbuild.build({
     ...commonOptions,
     entryPoints: ['src/scripts/index-project.ts'],
@@ -59,13 +59,13 @@ async function build() {
   });
   console.log('  ✓ index-project.js');
 
-  // 4. Status script
+  // 3. Clear graph script
   await esbuild.build({
     ...commonOptions,
-    entryPoints: ['src/scripts/status.ts'],
-    outfile: resolve(pluginDist, 'status.js'),
+    entryPoints: ['src/scripts/clear-graph.ts'],
+    outfile: resolve(pluginDist, 'clear-graph.js'),
   });
-  console.log('  ✓ status.js');
+  console.log('  ✓ clear-graph.js');
 
   console.log('');
   console.log(`Done! Bundles written to ${pluginDist}`);

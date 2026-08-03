@@ -44,9 +44,11 @@ See the [full benchmark report](https://bikach.github.io/codeGraph/report/) for 
 
 ```bash
 cd mcp-server
-npm install
+npm install --legacy-peer-deps
 npm run build
 ```
+
+> `--legacy-peer-deps` is required: the tree-sitter grammars declare conflicting peer versions of `tree-sitter`, so a plain `npm install` aborts on `ERESOLVE`.
 
 ### 2. Index Your Project
 
@@ -102,8 +104,8 @@ For the best experience with Claude Code, use the CodeGraph plugin with slash co
 
 | Command | Description |
 |---------|-------------|
+| `/codegraph:init` | Install the native dependencies (run once after install) |
 | `/codegraph:index` | Index your project into the graph |
-| `/codegraph:status` | Check the graph file and its stats |
 
 👉 See [Claude Code Plugin](https://github.com/Bikach/claude-plugins/tree/main/codegraph) for installation and usage.
 
