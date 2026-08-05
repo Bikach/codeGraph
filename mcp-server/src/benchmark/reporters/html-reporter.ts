@@ -41,13 +41,23 @@ export function generateHtmlReport(report: BenchmarkReport): string {
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <script>
+    // Craft Software Consulting - Modernist palette (navy accent, warm neutrals).
+    // Remap Tailwind's default scales so the report inherits the brand without
+    // rewriting every utility class in the markup.
+    const navy = { 50: '#e9ecf2', 100: '#ccd3e0', 200: '#a7b2c8', 300: '#7383a1', 400: '#3f5578', 500: '#14233b', 600: '#101f36', 700: '#0a1626', 800: '#0a1626', 900: '#0a1626' };
+    const warm = { 50: '#f3f2f2', 100: '#eae9e9', 200: '#d7d3d3', 300: '#bab6b6', 400: '#9b9797', 500: '#7d7979', 600: '#605d5d', 700: '#444141', 800: '#201e1d', 900: '#201e1d' };
     tailwind.config = {
       theme: {
         extend: {
+          fontFamily: { sans: ['Archivo', 'system-ui', 'sans-serif'] },
           colors: {
-            mcp: { 50: '#f0fdf4', 100: '#dcfce7', 500: '#22c55e', 600: '#16a34a', 700: '#15803d' },
-            native: { 50: '#fef2f2', 100: '#fee2e2', 500: '#ef4444', 600: '#dc2626', 700: '#b91c1c' },
+            slate: warm, neutral: warm,
+            emerald: navy, blue: navy, violet: navy,
+            mcp: navy, native: warm,
           }
         }
       }
@@ -56,6 +66,9 @@ export function generateHtmlReport(report: BenchmarkReport): string {
   <style>
     .chart-wrapper { position: relative; width: 100%; height: 300px; }
     @media (min-width: 768px) { .chart-wrapper { height: 350px; } }
+    /* Modernist: square corners + flat surfaces */
+    .rounded, .rounded-lg, .rounded-xl { border-radius: 0 !important; }
+    .shadow-sm, .shadow, .shadow-lg { box-shadow: none !important; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased">
@@ -396,8 +409,8 @@ export function generateHtmlReport(report: BenchmarkReport): string {
     const scenarios = ${scenariosJson};
 
     const chartColors = {
-      mcp: '#10b981',
-      native: '#94a3b8'
+      mcp: '#14233b',
+      native: '#bab6b6'
     };
 
     // Fix: disable resize animation to prevent infinite loop
@@ -415,7 +428,7 @@ export function generateHtmlReport(report: BenchmarkReport): string {
         datalabels: {
           anchor: 'end',
           align: 'top',
-          color: '#475569',
+          color: '#605d5d',
           font: { weight: '600', size: 10 },
           formatter: (value) => value.toLocaleString()
         }
@@ -423,13 +436,13 @@ export function generateHtmlReport(report: BenchmarkReport): string {
       scales: {
         y: {
           beginAtZero: true,
-          grid: { color: '#f1f5f9' },
-          ticks: { color: '#64748b', font: { size: 11 } }
+          grid: { color: '#eae9e9' },
+          ticks: { color: '#7d7979', font: { size: 11 } }
         },
         x: {
           grid: { display: false },
           ticks: {
-            color: '#64748b',
+            color: '#7d7979',
             font: { size: 10 },
             maxRotation: 45,
             minRotation: 0
@@ -448,14 +461,14 @@ export function generateHtmlReport(report: BenchmarkReport): string {
             label: 'With MCP',
             data: scenarios.map(s => s.optimized.llmCalls),
             backgroundColor: chartColors.mcp,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           },
           {
             label: 'Without MCP',
             data: scenarios.map(s => s.baseline.llmCalls),
             backgroundColor: chartColors.native,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           }
         ]
@@ -473,14 +486,14 @@ export function generateHtmlReport(report: BenchmarkReport): string {
             label: 'With MCP',
             data: scenarios.map(s => s.optimized.tokens),
             backgroundColor: chartColors.mcp,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           },
           {
             label: 'Without MCP',
             data: scenarios.map(s => s.baseline.tokens),
             backgroundColor: chartColors.native,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           }
         ]
@@ -507,14 +520,14 @@ export function generateHtmlReport(report: BenchmarkReport): string {
             label: 'With MCP',
             data: scenarios.map(s => s.optimized.totalCost),
             backgroundColor: chartColors.mcp,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           },
           {
             label: 'Without MCP',
             data: scenarios.map(s => s.baseline.totalCost),
             backgroundColor: chartColors.native,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           }
         ]
@@ -541,14 +554,14 @@ export function generateHtmlReport(report: BenchmarkReport): string {
             label: 'With MCP',
             data: scenarios.map(s => s.optimized.executionTimeMs / 1000),
             backgroundColor: chartColors.mcp,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           },
           {
             label: 'Without MCP',
             data: scenarios.map(s => s.baseline.executionTimeMs / 1000),
             backgroundColor: chartColors.native,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           }
         ]

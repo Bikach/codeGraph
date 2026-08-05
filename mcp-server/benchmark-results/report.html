@@ -7,13 +7,23 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <script>
+    // Craft Software Consulting - Modernist palette (navy accent, warm neutrals).
+    // Remap Tailwind's default scales so the report inherits the brand without
+    // rewriting every utility class in the markup.
+    const navy = { 50: '#e9ecf2', 100: '#ccd3e0', 200: '#a7b2c8', 300: '#7383a1', 400: '#3f5578', 500: '#14233b', 600: '#101f36', 700: '#0a1626', 800: '#0a1626', 900: '#0a1626' };
+    const warm = { 50: '#f3f2f2', 100: '#eae9e9', 200: '#d7d3d3', 300: '#bab6b6', 400: '#9b9797', 500: '#7d7979', 600: '#605d5d', 700: '#444141', 800: '#201e1d', 900: '#201e1d' };
     tailwind.config = {
       theme: {
         extend: {
+          fontFamily: { sans: ['Archivo', 'system-ui', 'sans-serif'] },
           colors: {
-            mcp: { 50: '#f0fdf4', 100: '#dcfce7', 500: '#22c55e', 600: '#16a34a', 700: '#15803d' },
-            native: { 50: '#fef2f2', 100: '#fee2e2', 500: '#ef4444', 600: '#dc2626', 700: '#b91c1c' },
+            slate: warm, neutral: warm,
+            emerald: navy, blue: navy, violet: navy,
+            mcp: navy, native: warm,
           }
         }
       }
@@ -22,6 +32,9 @@
   <style>
     .chart-wrapper { position: relative; width: 100%; height: 300px; }
     @media (min-width: 768px) { .chart-wrapper { height: 350px; } }
+    /* Modernist: square corners + flat surfaces */
+    .rounded, .rounded-lg, .rounded-xl { border-radius: 0 !important; }
+    .shadow-sm, .shadow, .shadow-lg { box-shadow: none !important; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased">
@@ -38,7 +51,7 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
             </svg>
-            <span>December 22, 2025</span>
+            <span>August 5, 2026</span>
           </div>
         </div>
       </div>
@@ -219,8 +232,8 @@
                   </td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">4.3</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">7.7</td>
-                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">1 112</td>
-                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">1 335</td>
+                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">1,112</td>
+                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">1,335</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">$0.1303</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">$0.1619</td>
                   <td class="text-right px-4 sm:px-6 py-4">
@@ -255,8 +268,8 @@
                   </td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">14.7</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">38.7</td>
-                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">2 789</td>
-                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">7 380</td>
+                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">2,789</td>
+                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">7,380</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">$0.1846</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">$0.4027</td>
                   <td class="text-right px-4 sm:px-6 py-4">
@@ -273,8 +286,8 @@
                   </td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">9.7</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">31.3</td>
-                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">2 129</td>
-                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">5 304</td>
+                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">2,129</td>
+                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">5,304</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">$0.1440</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">$0.2891</td>
                   <td class="text-right px-4 sm:px-6 py-4">
@@ -291,8 +304,8 @@
                   </td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">10.7</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">14.0</td>
-                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">1 637</td>
-                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">2 782</td>
+                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">1,637</td>
+                  <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">2,782</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">$0.1336</td>
                   <td class="text-right px-3 sm:px-4 py-4 text-slate-700 tabular-nums">$0.3130</td>
                   <td class="text-right px-4 sm:px-6 py-4">
@@ -345,9 +358,9 @@
                   <div class="bg-slate-50 rounded-lg p-3">
                     <p class="text-xs text-slate-500 mb-1">Tokens</p>
                     <div class="flex items-baseline gap-2">
-                      <span class="text-lg font-semibold text-emerald-600">1 112</span>
+                      <span class="text-lg font-semibold text-emerald-600">1,112</span>
                       <span class="text-sm text-slate-400">vs</span>
-                      <span class="text-sm text-slate-600">1 335</span>
+                      <span class="text-sm text-slate-600">1,335</span>
                     </div>
                   </div>
                 </div>
@@ -465,9 +478,9 @@
                   <div class="bg-slate-50 rounded-lg p-3">
                     <p class="text-xs text-slate-500 mb-1">Tokens</p>
                     <div class="flex items-baseline gap-2">
-                      <span class="text-lg font-semibold text-emerald-600">2 789</span>
+                      <span class="text-lg font-semibold text-emerald-600">2,789</span>
                       <span class="text-sm text-slate-400">vs</span>
-                      <span class="text-sm text-slate-600">7 380</span>
+                      <span class="text-sm text-slate-600">7,380</span>
                     </div>
                   </div>
                 </div>
@@ -525,9 +538,9 @@
                   <div class="bg-slate-50 rounded-lg p-3">
                     <p class="text-xs text-slate-500 mb-1">Tokens</p>
                     <div class="flex items-baseline gap-2">
-                      <span class="text-lg font-semibold text-emerald-600">2 129</span>
+                      <span class="text-lg font-semibold text-emerald-600">2,129</span>
                       <span class="text-sm text-slate-400">vs</span>
-                      <span class="text-sm text-slate-600">5 304</span>
+                      <span class="text-sm text-slate-600">5,304</span>
                     </div>
                   </div>
                 </div>
@@ -585,9 +598,9 @@
                   <div class="bg-slate-50 rounded-lg p-3">
                     <p class="text-xs text-slate-500 mb-1">Tokens</p>
                     <div class="flex items-baseline gap-2">
-                      <span class="text-lg font-semibold text-emerald-600">1 637</span>
+                      <span class="text-lg font-semibold text-emerald-600">1,637</span>
                       <span class="text-sm text-slate-400">vs</span>
-                      <span class="text-sm text-slate-600">2 782</span>
+                      <span class="text-sm text-slate-600">2,782</span>
                     </div>
                   </div>
                 </div>
@@ -666,8 +679,8 @@
     const scenarios = [{"scenarioName":"Find Callers","description":"Find all functions that call a specific function","optimized":{"llmCalls":4.333333333333333,"toolCalls":3.3333333333333335,"tokens":1112,"totalCost":0.13028468333333335,"executionTimeMs":27661.666666666668},"baseline":{"llmCalls":7.666666666666667,"toolCalls":15.333333333333334,"tokens":1335,"totalCost":0.16186045000000002,"executionTimeMs":53528},"savings":{"tokens":16.704119850187265,"cost":19.50801858432166,"time":48.322996064365064,"llmCalls":43.47826086956522}},{"scenarioName":"Find Implementations","description":"Find all classes that implement a specific interface","optimized":{"llmCalls":3,"toolCalls":2,"tokens":490.6666666666667,"totalCost":0.05724819999999999,"executionTimeMs":19008.333333333332},"baseline":{"llmCalls":7,"toolCalls":6,"tokens":842,"totalCost":0.048400066666666665,"executionTimeMs":24933},"savings":{"tokens":41.72604908946951,"cost":-18.28124203685669,"time":23.762349764034283,"llmCalls":57.14285714285714}},{"scenarioName":"Impact Analysis","description":"Analyze the impact of modifying a class or function","optimized":{"llmCalls":14.666666666666666,"toolCalls":13.666666666666666,"tokens":2789,"totalCost":0.18457556666666666,"executionTimeMs":70979.33333333333},"baseline":{"llmCalls":38.666666666666664,"toolCalls":46.666666666666664,"tokens":7379.666666666667,"totalCost":0.4027384833333334,"executionTimeMs":178813.66666666666},"savings":{"tokens":62.20696508424049,"cost":54.16987094478887,"time":60.30542035377609,"llmCalls":62.06896551724138}},{"scenarioName":"Dependency Analysis","description":"Analyze all dependencies of a class (incoming and outgoing)","optimized":{"llmCalls":9.666666666666666,"toolCalls":8.666666666666666,"tokens":2129,"totalCost":0.14399733333333334,"executionTimeMs":53257},"baseline":{"llmCalls":31.333333333333332,"toolCalls":30.333333333333332,"tokens":5304.333333333333,"totalCost":0.2891006333333333,"executionTimeMs":113715.33333333333},"savings":{"tokens":59.863005090177836,"cost":50.19127710892827,"time":53.16638623932275,"llmCalls":69.14893617021276}},{"scenarioName":"Call Chain","description":"Trace the call chain between two functions","optimized":{"llmCalls":10.666666666666666,"toolCalls":9.666666666666666,"tokens":1637,"totalCost":0.13360771666666668,"executionTimeMs":42320.666666666664},"baseline":{"llmCalls":14,"toolCalls":64.66666666666667,"tokens":2781.6666666666665,"totalCost":0.31295658333333326,"executionTimeMs":145211.66666666666},"savings":{"tokens":41.15038945476333,"cost":57.307906661174236,"time":70.85587705303752,"llmCalls":23.809523809523814}}];
 
     const chartColors = {
-      mcp: '#10b981',
-      native: '#94a3b8'
+      mcp: '#14233b',
+      native: '#bab6b6'
     };
 
     // Fix: disable resize animation to prevent infinite loop
@@ -685,7 +698,7 @@
         datalabels: {
           anchor: 'end',
           align: 'top',
-          color: '#475569',
+          color: '#605d5d',
           font: { weight: '600', size: 10 },
           formatter: (value) => value.toLocaleString()
         }
@@ -693,13 +706,13 @@
       scales: {
         y: {
           beginAtZero: true,
-          grid: { color: '#f1f5f9' },
-          ticks: { color: '#64748b', font: { size: 11 } }
+          grid: { color: '#eae9e9' },
+          ticks: { color: '#7d7979', font: { size: 11 } }
         },
         x: {
           grid: { display: false },
           ticks: {
-            color: '#64748b',
+            color: '#7d7979',
             font: { size: 10 },
             maxRotation: 45,
             minRotation: 0
@@ -718,14 +731,14 @@
             label: 'With MCP',
             data: scenarios.map(s => s.optimized.llmCalls),
             backgroundColor: chartColors.mcp,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           },
           {
             label: 'Without MCP',
             data: scenarios.map(s => s.baseline.llmCalls),
             backgroundColor: chartColors.native,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           }
         ]
@@ -743,14 +756,14 @@
             label: 'With MCP',
             data: scenarios.map(s => s.optimized.tokens),
             backgroundColor: chartColors.mcp,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           },
           {
             label: 'Without MCP',
             data: scenarios.map(s => s.baseline.tokens),
             backgroundColor: chartColors.native,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           }
         ]
@@ -777,14 +790,14 @@
             label: 'With MCP',
             data: scenarios.map(s => s.optimized.totalCost),
             backgroundColor: chartColors.mcp,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           },
           {
             label: 'Without MCP',
             data: scenarios.map(s => s.baseline.totalCost),
             backgroundColor: chartColors.native,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           }
         ]
@@ -811,14 +824,14 @@
             label: 'With MCP',
             data: scenarios.map(s => s.optimized.executionTimeMs / 1000),
             backgroundColor: chartColors.mcp,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           },
           {
             label: 'Without MCP',
             data: scenarios.map(s => s.baseline.executionTimeMs / 1000),
             backgroundColor: chartColors.native,
-            borderRadius: 4,
+            borderRadius: 0,
             barPercentage: 0.35
           }
         ]
